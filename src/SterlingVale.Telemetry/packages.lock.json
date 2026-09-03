@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net9.0": {
+      "System.Diagnostics.DiagnosticSource": {
+        "type": "Direct",
+        "requested": "[9.0.0, )",
+        "resolved": "9.0.0",
+        "contentHash": "ddppcFpnbohLWdYKr/ZeLZHmmI+DXFgZ3Snq+/E7SwcdW4UnvxmaugkwGywvGVWkHPGCSZjCP+MLzu23AL5SDw=="
+      }
+    }
+  }
+}

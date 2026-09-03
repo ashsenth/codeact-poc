@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>SterlingVale.Api.Hosting</RootNamespace>
+    <AssemblyName>SterlingVale.Api.Shared</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SterlingVale.AgentShared\SterlingVale.AgentShared.csproj" />
+  </ItemGroup>
+
+</Project>

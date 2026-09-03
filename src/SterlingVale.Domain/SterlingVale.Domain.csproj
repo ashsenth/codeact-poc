@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Domain is pure: no references to Agent Framework, ASP.NET, Hyperlight,
+         storage, or model-provider SDKs. Enforced by architecture tests. -->
+    <RootNamespace>SterlingVale.Domain</RootNamespace>
+    <AssemblyName>SterlingVale.Domain</AssemblyName>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>SterlingVale.Classic.Api</RootNamespace>
+    <AssemblyName>SterlingVale.Classic.Api</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SterlingVale.Infrastructure\SterlingVale.Infrastructure.csproj" />
+    <ProjectReference Include="..\SterlingVale.AgentShared\SterlingVale.AgentShared.csproj" />
+    <ProjectReference Include="..\SterlingVale.Api.Shared\SterlingVale.Api.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,38 @@
+## .NET build outputs
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.user
+*.suo
+.vs/
+
+## Test / coverage
+TestResults/
+coverage/
+*.coverage
+*.trx
+
+## Secrets & local config
+.env
+.env.local
+*.env
+appsettings.*.local.json
+
+## Generated data (regenerable from seed via SterlingVale.DataGenerator)
+data/small/
+data/medium/
+data/large/
+data/generated/
+
+## Temp build/test logs
+*.log
+
+## OS
+.DS_Store
+Thumbs.db
+
+## Rider / VS Code
+.idea/
+*.sln.iml

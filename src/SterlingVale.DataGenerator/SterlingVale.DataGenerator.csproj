@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>SterlingVale.DataGenerator</RootNamespace>
+    <AssemblyName>SterlingVale.DataGenerator</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SterlingVale.Domain\SterlingVale.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

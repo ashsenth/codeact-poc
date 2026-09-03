@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>SterlingVale.Benchmark</RootNamespace>
+    <AssemblyName>SterlingVale.Benchmark</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SterlingVale.Application\SterlingVale.Application.csproj" />
+    <ProjectReference Include="..\SterlingVale.AgentShared\SterlingVale.AgentShared.csproj" />
+    <ProjectReference Include="..\SterlingVale.Infrastructure\SterlingVale.Infrastructure.csproj" />
+    <ProjectReference Include="..\SterlingVale.CodeAct\SterlingVale.CodeAct.csproj" />
+    <ProjectReference Include="..\SterlingVale.DataGenerator\SterlingVale.DataGenerator.csproj" />
+  </ItemGroup>
+
+</Project>

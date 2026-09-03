@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>SterlingVale.CodeAct</RootNamespace>
+    <AssemblyName>SterlingVale.CodeAct</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SterlingVale.AgentShared\SterlingVale.AgentShared.csproj" />
+    <ProjectReference Include="..\SterlingVale.Tools\SterlingVale.Tools.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Agents.AI" />
+    <PackageReference Include="Microsoft.Agents.AI.Hyperlight" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
+  </ItemGroup>
+
+</Project>

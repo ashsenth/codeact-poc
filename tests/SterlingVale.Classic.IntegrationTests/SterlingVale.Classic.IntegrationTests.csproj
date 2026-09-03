@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>SterlingVale.Classic.IntegrationTests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Xunit.SkippableFact" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SterlingVale.Classic.Api\SterlingVale.Classic.Api.csproj" />
+    <ProjectReference Include="..\..\src\SterlingVale.DataGenerator\SterlingVale.DataGenerator.csproj" />
+    <ProjectReference Include="..\..\src\SterlingVale.AgentShared\SterlingVale.AgentShared.csproj" />
+  </ItemGroup>
+
+</Project>

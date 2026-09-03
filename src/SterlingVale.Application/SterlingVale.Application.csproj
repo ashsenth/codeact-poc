@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Application depends ONLY on Domain. No Agent Framework, ASP.NET, Hyperlight,
+         storage, or model-provider SDKs. Enforced by architecture tests. -->
+    <RootNamespace>SterlingVale.Application</RootNamespace>
+    <AssemblyName>SterlingVale.Application</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SterlingVale.Domain\SterlingVale.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
