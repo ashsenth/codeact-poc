@@ -67,15 +67,7 @@ public static class Prompt
         "them across several steps — because a single step with too many parallel tool calls is " +
         "rejected by the service. Only after every position of every household has been priced and " +
         "classified do you compute the report. Your final answer MUST contain one entry in the " +
-        "households array for EVERY household in scope; never return an empty households array. " +
-        "DO NOT emit a placeholder, template, or example report. NEVER output an empty households " +
-        "array, a made-up runId such as \"run_20231010_001\", or a hard-coded/example date — any of " +
-        "those is an automatic FAILURE. You already have every household's data in this conversation " +
-        "from the tool results above; your job now is to SYNTHESIZE it. Work household by household: " +
-        "for each one, compute its allocations, drift, concentration, FX and crypto exposure, flags, " +
-        "and proposed notionals from the retrieved numbers, and append the fully-computed object to " +
-        "the households array. If you retrieved data for N households, the households array MUST have " +
-        "exactly N fully-populated entries — not zero, not a summary, not a subset.";
+        "households array for EVERY household in scope; never return an empty households array.";
 
     /// <summary>CodeAct mechanism note: batch households across execute_code calls, then assemble.</summary>
     public const string CodeActAddendum =

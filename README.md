@@ -184,12 +184,20 @@ per-dataset deltas follow, with deltas marked `n/a` wherever a mode never produc
 | large | 120 | **Failed** 0/3 | Completed 3/3 | ~60.5k / $0.16 | ~65.8k / $0.28 |
 
 **What the Classic failure actually is — and what it is *not*.** In these runs Classic gathered the
-data successfully (54–81 tool calls over 4–5 turns) but then returned an empty / schema-invalid
-report instead of the final `ExposureReport` — at **every** size, including the smallest (10
-households). It was **not** stopped by a per-message tool-call cap or the context window: it used
-33–60k tokens, well under gpt-4o's 128k limit. With this model and prompt it simply failed to emit
-the final structured output. Because Classic fails even at trivial scale, **this is an
-output-emission failure, not a scaling result.**
+data successfully (54–81 tool calls over 4–5 turns) but then returned an empty report instead of the
+final `ExposureReport` — at **every** size, including the smallest (10 households). The final message
+was a canned 88-byte placeholder: `{ "runId": "run_20231010_001", "generatedAt":
+"2023-10-10T00:00:00Z", "households": [] }`. It was **not** stopped by a per-message tool-call cap or
+the context window — it used 33–60k tokens, well under gpt-4o's 128k limit. With this model it simply
+did not synthesize the gathered data into the report. Because Classic fails even at trivial scale,
+**this is an output-emission failure, not a scaling result.**
+
+**It is robust to prompting.** We added explicit anti-stub instructions to the Classic prompt —
+"never emit a placeholder," "synthesize household by household," and even forbidding that exact
+`run_20231010_001` runId. On a fresh live run gpt-4o produced the **identical** placeholder,
+reproducing verbatim the runId it was told not to use. So this is not a prompt bug: with gpt-4o,
+direct tool-calling reliably gathers data but will not assemble the final structured output, and
+prompt engineering does not change it. (The ineffective prompt change was reverted.)
 
 **Honest caveat — this is not yet a fair head-to-head.** Because Classic never produced a report, the
 two modes cannot be compared on tokens, cost, latency, or tool calls: Classic's *lower* token/cost
@@ -207,8 +215,11 @@ chunks that the model reassembles (hence its higher token count).
 
 **Open work.** The interesting architectural claim — that CodeAct's model-visible interaction is
 roughly O(1) in dataset size while direct tool-calling is O(n) — can only be *measured* once Classic
-also completes. Making the Classic agent reliably emit a schema-valid report (a prompt/harness fix,
-not a fundamental limit) is the next step toward a fair comparison.
+also completes. Prompt engineering does **not** get Classic there (see above), so a fair head-to-head
+would require an architectural change to how Classic emits its result — e.g. a `submit_report` tool
+whose parameters are the report (models fill function-call arguments far more reliably than a final
+free-form JSON message), Azure **Structured Outputs** (strict `json_schema`), or incremental
+per-household emission. That is deliberately left as future work.
 
 The generated HTML dashboards state this inline, per dataset, including the caveat that the
 efficiency charts are not a like-for-like comparison while one mode fails.
