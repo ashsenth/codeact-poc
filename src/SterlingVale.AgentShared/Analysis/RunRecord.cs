@@ -24,6 +24,12 @@ public sealed record RunRecord
     /// </summary>
     public string? GeneratedCode { get; init; }
 
+    /// <summary>
+    /// The tool results returned to the model (e.g. the sandbox stdout/stderr for each
+    /// <c>execute_code</c> call), preserved verbatim for diagnostics; null when none were captured.
+    /// </summary>
+    public string? ToolResults { get; init; }
+
     /// <summary>Fairness fingerprints recorded for this run.</summary>
     public required FairnessFingerprints Fingerprints { get; init; }
 }

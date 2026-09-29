@@ -103,4 +103,12 @@ public sealed class RunArtifactsTests
         Assert.Contains("fingerprints", metadata, StringComparison.Ordinal);
         Assert.Contains("exposure-analysis/v1", metadata, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Raw_model_output_is_captured()
+    {
+        var files = RunArtifacts.Build(Record(null), Model, Pricing);
+        Assert.Contains(RunArtifacts.Files.RawOutput, files.Keys);
+        Assert.Equal("{\"households\":[]}", files[RunArtifacts.Files.RawOutput]);
+    }
 }

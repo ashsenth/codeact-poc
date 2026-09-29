@@ -49,7 +49,7 @@ public sealed class AnalysisRunner
         if (timedOut || run is null)
         {
             return BuildRecord(context, RunStatus.TimedOut, rawOutput: string.Empty, report: null,
-                generatedCode: null, metrics: EmptyMetrics(stopwatch.Elapsed));
+                generatedCode: null, toolResults: null, metrics: EmptyMetrics(stopwatch.Elapsed));
         }
 
         var messages = run.Messages;
@@ -60,13 +60,15 @@ public sealed class AnalysisRunner
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
 
         string? generatedCode = ExtractGeneratedCode(calls);
+        string? toolResults = ExtractToolResults(messages);
+
+        string raw = run.Text ?? string.Empty;
 
         long? input = run.Usage?.InputTokenCount;
         long? output = run.Usage?.OutputTokenCount;
         long? total = run.Usage?.TotalTokenCount ?? (input is not null && output is not null ? input + output : null);
         decimal? cost = context.Pricing.EstimateCost(input, output);
 
-        string raw = run.Text ?? string.Empty;
         bool capped = turns > context.Model.MaxTurns;
         bool valid = !capped && OutputSchema.IsValid(raw);
 
@@ -75,7 +77,9 @@ public sealed class AnalysisRunner
         {
             var dto = ReportJson.TryParse(raw);
             report = dto is not null ? ReportJson.ToDomain(dto) : null;
-            valid = report is not null;
+            // A schema-valid but empty households array is an analytically empty result (e.g. a stub
+            // the model salvaged after a sandbox failure); treat it as a failure, not a pass.
+            valid = report is not null && report.Households.Count > 0;
         }
 
         var status = capped ? RunStatus.Capped : valid ? RunStatus.Completed : RunStatus.Failed;
@@ -96,7 +100,19 @@ public sealed class AnalysisRunner
             SchemaValid = valid,
         };
 
-        return BuildRecord(context, status, raw, report, generatedCode, metrics);
+        return BuildRecord(context, status, raw, report, generatedCode, toolResults, metrics);
+    }
+
+    private static string? ExtractToolResults(IEnumerable<ChatMessage> messages)
+    {
+        var results = messages
+            .SelectMany(m => m.Contents)
+            .OfType<FunctionResultContent>()
+            .Select(r => r.Result?.ToString())
+            .Where(s => !string.IsNullOrEmpty(s))
+            .ToList();
+
+        return results.Count == 0 ? null : string.Join("\n---\n", results);
     }
 
     private static string? ExtractGeneratedCode(IEnumerable<FunctionCallContent> calls)
@@ -121,7 +137,7 @@ public sealed class AnalysisRunner
     };
 
     private static RunRecord BuildRecord(
-        RunContext context, RunStatus status, string rawOutput, ExposureReport? report, string? generatedCode, RunMetrics metrics) => new()
+        RunContext context, RunStatus status, string rawOutput, ExposureReport? report, string? generatedCode, string? toolResults, RunMetrics metrics) => new()
         {
             Response = new AnalysisResponse
             {
@@ -134,6 +150,7 @@ public sealed class AnalysisRunner
             Mode = context.Mode,
             RawModelOutput = rawOutput,
             GeneratedCode = generatedCode,
+            ToolResults = toolResults,
             Fingerprints = context.Fingerprints,
         };
 }

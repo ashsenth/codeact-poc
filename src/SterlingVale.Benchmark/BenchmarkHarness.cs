@@ -1,3 +1,4 @@
+using System.ClientModel;
 using System.Diagnostics;
 using SterlingVale.AgentShared.Agents;
 using SterlingVale.AgentShared.Analysis;
@@ -46,9 +47,9 @@ public sealed class BenchmarkHarness(Composition composition)
         long seed = SeedFromHash(datasetHash);
         var random = new Random((int)(seed & 0x7FFFFFFF));
 
-        // One unmeasured warm-up per mode.
-        _ = await classicService.AnalyzeAsync(request, cancellationToken).ConfigureAwait(false);
-        _ = await codeactService.AnalyzeAsync(request, cancellationToken).ConfigureAwait(false);
+        // One unmeasured warm-up per mode; a warm-up failure is non-fatal (measured trials record it).
+        await WarmUpAsync(classicService, request, cancellationToken).ConfigureAwait(false);
+        await WarmUpAsync(codeactService, request, cancellationToken).ConfigureAwait(false);
 
         var results = new List<TrialResult>();
         for (int pair = 1; pair <= trials; pair++)
@@ -62,7 +63,21 @@ public sealed class BenchmarkHarness(Composition composition)
             {
                 var (mode, service) = order[orderIndex];
                 var stopwatch = Stopwatch.StartNew();
-                var record = await service.AnalyzeAsync(request, cancellationToken).ConfigureAwait(false);
+                RunRecord record;
+                try
+                {
+                    record = await service.AnalyzeAsync(request, cancellationToken).ConfigureAwait(false);
+                }
+                catch (ClientResultException ex)
+                {
+                    // A provider rejection (e.g. Classic exceeding the tool-call cap on larger datasets)
+                    // is recorded as a failed trial so the paired comparison completes instead of aborting.
+                    stopwatch.Stop();
+                    Console.Error.WriteLine($"[{mode}] provider error on pair {pair}: {ex.Message}");
+                    results.Add(FailedTrial(pair, orderIndex, mode, stopwatch.Elapsed.TotalMilliseconds));
+                    continue;
+                }
+
                 stopwatch.Stop();
                 composition.RunStore.Save(record);
 
@@ -73,11 +88,13 @@ public sealed class BenchmarkHarness(Composition composition)
                 var m = record.Response.Metrics;
                 results.Add(new TrialResult(
                     pair, orderIndex, mode, stopwatch.Elapsed.TotalMilliseconds, record.Response.Status.ToString(),
-                    m.ToolCallCount, m.ExecuteCodeCallCount, m.TotalTokens, m.EstimatedCostUsd, record.Response.RunId, score));
+                    m.ToolCallCount, m.ModelTurnCount, m.ExecuteCodeCallCount, m.TotalTokens, m.EstimatedCostUsd, record.Response.RunId, score));
             }
         }
 
         string comparisonId = $"{profile}-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..8]}";
+        var classicSummary = Aggregator.Summarize("classic", results);
+        var codeactSummary = Aggregator.Summarize("codeact", results);
         return new ComparisonReport(
             comparisonId,
             DateTimeOffset.UtcNow.ToString("O"),
@@ -86,11 +103,29 @@ public sealed class BenchmarkHarness(Composition composition)
             seed,
             WarmupsPerMode: 1,
             trials,
+            snapshot.Households.Count,
             fairness,
-            Aggregator.Summarize("classic", results),
-            Aggregator.Summarize("codeact", results),
+            classicSummary,
+            codeactSummary,
+            Aggregator.ComputeDelta(classicSummary, codeactSummary),
             results);
     }
+
+    private static async Task WarmUpAsync(AnalysisService service, AnalysisRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            _ = await service.AnalyzeAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ClientResultException)
+        {
+            // Warm-up errors are non-fatal; measured trials capture provider failures.
+        }
+    }
+
+    private static TrialResult FailedTrial(int pair, int orderIndex, string mode, double durationMs) =>
+        new(pair, orderIndex, mode, durationMs, "Failed", 0, 0, 0, null, null, "failed",
+            RunScore.ForFailure("Failed", schemaValid: false, CorrectnessScorer.Match.Failed));
 
     private static FairnessReport BuildFairness(FairnessFingerprints classic, FairnessFingerprints codeact)
     {

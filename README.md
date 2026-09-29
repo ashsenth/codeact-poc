@@ -43,16 +43,49 @@ See [docs/architecture.md](docs/architecture.md) for detail.
 
 - **.NET SDK 9.0** (pinned in `global.json`).
 - For **live** runs: an Azure OpenAI deployment (prefer `DefaultAzureCredential`).
-- For **CodeAct runtime**: Hyperlight requirements below.
+- For **CodeAct runtime**: an **x64 host with hardware virtualization** — see below.
 
-### Hyperlight virtualization requirements
+### CodeAct runtime (Hyperlight) — host requirements and setup
 
-CodeAct's `execute_code` runs generated code inside a **Hyperlight micro-VM**, which needs
-**hardware virtualization** on the host (e.g. KVM on Linux / WHP on Windows) and a guest module path
-in `HYPERLIGHT_PYTHON_GUEST_PATH`. When that variable is **unset**, the CodeAct API and benchmark run
-with an offline `execute_code` stand-in so everything still works without virtualization — and the
-Hyperlight runtime tests **skip** with an explicit reason. No Docker image is provided because
-Hyperlight requires host virtualization that is not portable across containers.
+CodeAct's `execute_code` runs model-generated code inside a **Hyperlight micro-VM**, which requires
+an **x64 host with hardware virtualization**:
+
+| Host | Hypervisor backend | Notes |
+| --- | --- | --- |
+| Linux x64 | KVM (`/dev/kvm`) or MSHV | recommended; simplest guest build/run |
+| Windows x64 | Windows Hypervisor Platform (WHP) | enable the "Windows Hypervisor Platform" optional feature |
+
+> **Not supported: Windows on ARM64.** Hyperlight's backends (WHP / KVM / MSHV) are x64-oriented, so
+> the CodeAct sandbox cannot run on an ARM64 Windows machine. Use an x64 Linux or Windows host, an
+> x64 cloud VM, or GitHub Codespaces for CodeAct runtime and the gated Hyperlight tests. On an
+> unsupported host, leave `HYPERLIGHT_PYTHON_GUEST_PATH` **unset** — the CodeAct API and benchmark
+> fall back to an offline `execute_code` stand-in (deterministic, but **not** a real CodeAct
+> measurement: the sandbox and `call_tool(...)` are not exercised, so CodeAct produces no real data).
+
+**Setup on a supported x64 host:**
+
+1. **Enable virtualization.** Linux: ensure `/dev/kvm` exists and your user can access it. Windows
+   x64: enable the *Windows Hypervisor Platform* feature, then reboot.
+2. **Obtain the Hyperlight Python guest module.** This is a preview artifact — build or download it by
+   following the official Microsoft Agent Framework Hyperlight CodeAct sample
+   (`microsoft/agent-framework`) together with the `hyperlight-dev/hyperlight-wasm` project. The
+   factory calls `HyperlightCodeActProviderOptions.CreateForWasm(<guest>)`, so the guest is the
+   Python-on-WASM module those samples produce. On Linux x64,
+   [`scripts/vm/download-guest.sh`](scripts/vm/download-guest.sh) fetches the version-matched guest
+   package and records its path for you.
+3. **Point the app at the guest:**
+   - Linux/macOS: `export HYPERLIGHT_PYTHON_GUEST_PATH=/abs/path/to/guest`
+   - Windows x64: `$env:HYPERLIGHT_PYTHON_GUEST_PATH = "C:\abs\path\to\guest"`
+4. **Verify the runtime** before benchmarking — this should now **pass**, not skip:
+   ```bash
+   dotnet test --filter "Category=Hyperlight"
+   ```
+5. Run the live benchmark as usual; CodeAct will execute for real and its `households` will be
+   populated.
+
+When `HYPERLIGHT_PYTHON_GUEST_PATH` is unset the CodeAct API and benchmark use the offline
+`execute_code` stand-in and the Hyperlight runtime tests **skip** with an explicit reason. No Docker
+image is provided because Hyperlight needs host virtualization that isn't portable across containers.
 
 ## Local setup
 
@@ -92,12 +125,117 @@ curl -X POST localhost:5000/api/v1/analyses -H "content-type: application/json" 
 
 ```bash
 dotnet run --project src/SterlingVale.Benchmark -- validate-data
-dotnet run --project src/SterlingVale.Benchmark -- run --profile small --trials 3
+dotnet run --project src/SterlingVale.Benchmark -- run --profile small --trials 10 [--open]
 dotnet run --project src/SterlingVale.Benchmark -- compare
-dotnet run --project src/SterlingVale.Benchmark -- report --comparison-id <id>
+dotnet run --project src/SterlingVale.Benchmark -- report --comparison-id <id> [--open]
+dotnet run --project src/SterlingVale.Benchmark -- visualize [--profiles small,medium,large] [--open]
 ```
 
-Outputs land in `artifacts/runs/{runId}/` and `artifacts/comparisons/{id}.{json,md}`.
+Each `run`/`report` writes `artifacts/comparisons/{id}.{json,md,csv,html}`; per-run artifacts land in
+`artifacts/runs/{runId}/`. `visualize` stitches the latest comparison per profile into
+`artifacts/comparisons/scaling-{timestamp}.html`.
+
+### View the results
+
+Open the generated `.html` in any browser — it is fully self-contained (inline SVG, no internet, no
+JavaScript). Each dashboard is written for someone seeing the benchmark for the first time and leads
+with **what actually happened** rather than raw numbers:
+
+- **Completion badges** — how many trials each mode *finished with a valid report* (e.g. `Classic
+  0/3` vs `CodeAct 3/3`), colour-coded, so a total Classic failure reads as "0/3 completed", not a
+  misleading "0 ms".
+- **Plain-language takeaway** — one sentence summarising the outcome for this dataset.
+- **"How each mode runs"** — a short panel contrasting Classic (model calls each tool itself, one
+  network round-trip per call) with CodeAct (model writes one program that loops and calls tools
+  *inside* the sandbox).
+- **"What happened & why"** — a data-driven diagnosis. When Classic returns an empty report it
+  explains the cause (context bloat, the service's per-message tool-call cap, and gpt-4o
+  under-iterating), and why CodeAct completed instead.
+- **Delta cards + charts** for duration / tokens / tool calls / cost — shown **only when both modes
+  completed**, so you never compare against a run that produced nothing. When a mode failed, the
+  affected cells read `n/a`.
+- **"Every trial" table** with a *"What the run produced"* column (e.g. "priced 120/120 households",
+  "returned empty households", "hit tool-call cap") and colour-coded status.
+
+Add `--open` to launch it automatically:
+
+```bash
+dotnet run --project src/SterlingVale.Benchmark -- run --profile small --trials 10 --open
+```
+
+The `.csv` beside it has one row per trial for your own plots. Run all three profiles, then
+`visualize`, to see the gap widen with dataset size. The scaling dashboard leads with a **completion
+matrix** — one row per dataset (smallest → largest) with a colour-coded **Completed / Partial /
+Failed** badge for each mode — so you can tell at a glance which sizes each mode finished. Charts and
+per-dataset deltas follow, with deltas marked `n/a` wherever a mode never produced a comparable run.
+
+## What we observed (live, x64 VM)
+
+> Outcomes depend on the model, dataset, and environment — nothing below is hard-coded or
+> guaranteed. These are the results from our own live runs (Azure OpenAI `gpt-4o`, 3 trials per
+> profile, on an x64 Linux VM with the real Hyperlight sandbox). Reproduce them with the scripts in
+> [`scripts/vm/`](scripts/vm/).
+
+| Profile | Households | Classic completed | CodeAct completed |
+| --- | --- | --- | --- |
+| small | 10 | flaky (occasionally an empty stub) | completes |
+| medium | 40 | **fails** | completes |
+| large | 120 | **fails** | completes |
+
+**Why Classic fails as the dataset grows.** Classic asks the model to drive every tool call itself.
+Each call is a separate model→service round-trip, and the model must hold every household's data in
+its context to decide the next step. At medium/large this hits two hard ceilings at once: the
+service caps tool calls *per message* (so a "gather everything now" turn is rejected), and gpt-4o's
+context fills up — so the model under-iterates and stops early, emitting an empty
+`{"households":[]}` report that scores as **Failed**.
+
+**Why CodeAct scales.** CodeAct asks the model to write **one program**. The looping over households,
+the tool calls, and the aggregation all happen *inside* the Hyperlight sandbox, so there are no
+per-tool round-trips and the model's context stays small. The one remaining limit is the sandbox's
+fixed ~16 KB guest→host output buffer, which CodeAct works around by returning the report in
+several small `execute_code` chunks that the model reassembles.
+
+The generated HTML dashboards explain all of this inline, per dataset, so a first-time reader
+understands *why* a Classic run reads "Failed" and what CodeAct did differently.
+
+### Reproducing the live run on an x64 VM
+
+The real (non-offline) numbers require an x64 host with the Hyperlight sandbox. The helper scripts in
+[`scripts/vm/`](scripts/vm/) automate a run on a fresh Linux x64 VM (they assume Azure OpenAI via the
+VM's managed identity):
+
+| Script | Purpose |
+| --- | --- |
+| `setup-vm.sh` | Install the toolchain (.NET 9, Rust, `just`, `uv`) — run once. |
+| `download-guest.sh` | Download the version-matched Hyperlight Python guest and record its path in `/root/guest_path.txt`. |
+| `run-benchmark.sh` | Generate data and run the benchmark for the given profiles, detached (`bash run-benchmark.sh "medium large"`). |
+| `wait-for-run.sh` | Block until the detached run finishes, then print the tail and newest artifacts. |
+| `summarize.sh` | Print a compact human-readable summary of the newest comparison per profile. |
+
+
+
+### Live comparison against Azure OpenAI
+
+The offline fake model is a control (both modes emit the oracle, so timings are tiny). A real
+Classic-vs-CodeAct comparison needs a live model. Set these in the **same shell** before running
+(PowerShell: use `$env:NAME = "value"`):
+
+```bash
+az login
+export AZURE_OPENAI_ENDPOINT="https://<resource>.openai.azure.com/"   # base endpoint, WITH trailing slash
+export AZURE_OPENAI_DEPLOYMENT_NAME="<your-chat-deployment>"          # e.g. gpt-4o (deployment name, not model id)
+# export AZURE_OPENAI_API_KEY="<key>"                                 # optional; only if key auth is enabled
+dotnet run --project src/SterlingVale.Benchmark -- run --profile small --trials 10 --open
+```
+
+Common setup gotchas:
+- Use the **base resource endpoint** (`https://<resource>.openai.azure.com/`), not an AI Foundry
+  `.../openai/v1` URL — the wrong form returns HTTP 404 "Resource not found".
+- `AZURE_OPENAI_DEPLOYMENT_NAME` is your **deployment** name (case-sensitive), not the base model id.
+- For identity auth (`DefaultAzureCredential`), your account needs the **Cognitive Services OpenAI
+  User** role on the resource; without it you get 403 `PermissionDenied`. Key auth may be disabled by
+  policy.
+- Environment variables are per-shell — set them in the same terminal you run the benchmark from.
 
 ## Testing
 
@@ -150,6 +288,8 @@ model, dataset, and environment. **No performance outcome is guaranteed or hard-
 | --- | --- |
 | `/health/ready` returns 503 | generate data (`DataGenerator`) or set `DATASET_ROOT` |
 | Benchmark: "profile not available" | run the data generator first |
+| Live: HTTP 404 "Resource not found" | use the base `https://<resource>.openai.azure.com/` endpoint and the exact deployment name |
+| Live: 403 `PermissionDenied` | assign the **Cognitive Services OpenAI User** role to your identity on the resource |
 | Hyperlight tests skipped | set `HYPERLIGHT_PYTHON_GUEST_PATH` and ensure virtualization |
 | Live tests skipped | set `ENABLE_LIVE_TESTS=true` and configure Azure OpenAI |
 | `NU1403`/locked restore fails | run `dotnet restore` to refresh lock files |

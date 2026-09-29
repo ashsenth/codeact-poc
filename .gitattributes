@@ -19,6 +19,10 @@
 *.yaml      text eol=crlf
 *.editorconfig text eol=crlf
 
+# Shell scripts run on Linux hosts (e.g. the Hyperlight VM); they MUST stay LF
+# or bash fails with "$'\r': command not found".
+*.sh        text eol=lf
+
 # Binary assets: never normalize.
 *.png   binary
 *.jpg   binary

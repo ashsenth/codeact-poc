@@ -23,6 +23,20 @@ public static class Aggregator
             present.Count == 0 ? null : present.Max(),
             complete);
 
+        var costValues = modeTrials.Select(t => t.EstimatedCostUsd).ToList();
+        bool costComplete = costValues.Count > 0 && costValues.All(v => v is not null);
+        var presentCosts = costValues.Where(v => v is not null).Select(v => v!.Value).ToList();
+        var cost = new CostStats(
+            presentCosts.Count == 0 ? null : MedianDecimal(presentCosts),
+            presentCosts.Count == 0 ? null : presentCosts.Min(),
+            presentCosts.Count == 0 ? null : presentCosts.Max(),
+            costComplete);
+
+        var roundTrips = new RoundTripStats(
+            Median(modeTrials.Select(t => (double)t.ToolCallCount).ToList()),
+            Median(modeTrials.Select(t => (double)t.ModelTurnCount).ToList()),
+            Median(modeTrials.Select(t => (double)t.ExecuteCodeCallCount).ToList()));
+
         var scores = modeTrials.Select(t => t.Score).ToList();
         var correctness = new CorrectnessStats(
             Mean(scores.Select(s => s.FlaggedPrecision)),
@@ -40,8 +54,33 @@ public static class Aggregator
                 or CorrectnessScorer.Match.TimedOut
                 or CorrectnessScorer.Match.Capped));
 
-        return new ModeSummary(mode, modeTrials.Count, duration, tokens, correctness);
+        return new ModeSummary(mode, modeTrials.Count, duration, tokens, cost, roundTrips, correctness);
     }
+
+    /// <summary>Computes CodeAct-relative-to-Classic deltas; ratios are null when a baseline is zero or a value is missing.</summary>
+    public static ComparisonDelta ComputeDelta(ModeSummary classic, ModeSummary codeact)
+    {
+        ArgumentNullException.ThrowIfNull(classic);
+        ArgumentNullException.ThrowIfNull(codeact);
+
+        double? speedup = codeact.DurationMs.Median > 0
+            ? classic.DurationMs.Median / codeact.DurationMs.Median
+            : null;
+
+        return new ComparisonDelta(
+            Fraction(classic.DurationMs.Median, codeact.DurationMs.Median),
+            speedup,
+            Fraction(classic.TotalTokens.Median, codeact.TotalTokens.Median),
+            Fraction((double?)classic.Cost?.Median, (double?)codeact.Cost?.Median),
+            Fraction(classic.RoundTrips?.MedianToolCalls, codeact.RoundTrips?.MedianToolCalls),
+            Fraction(classic.RoundTrips?.MedianModelTurns, codeact.RoundTrips?.MedianModelTurns),
+            codeact.Correctness.ExactCount - classic.Correctness.ExactCount,
+            codeact.Correctness.MeanAllocationMae - classic.Correctness.MeanAllocationMae);
+    }
+
+    // Fraction of change from baseline; null when the baseline is not a positive number or the value is missing.
+    private static double? Fraction(double? baseline, double? value) =>
+        baseline is > 0 && value is not null ? (value.Value - baseline.Value) / baseline.Value : null;
 
     private static double Median(IReadOnlyList<double> values)
     {
@@ -53,6 +92,13 @@ public static class Aggregator
         var sorted = values.OrderBy(v => v).ToList();
         int mid = sorted.Count / 2;
         return sorted.Count % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2d;
+    }
+
+    private static decimal MedianDecimal(IReadOnlyList<decimal> values)
+    {
+        var sorted = values.OrderBy(v => v).ToList();
+        int mid = sorted.Count / 2;
+        return sorted.Count % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2m;
     }
 
     private static double MinOrZero(IReadOnlyList<double> values) => values.Count == 0 ? 0d : values.Min();

@@ -70,6 +70,8 @@ public sealed class CodeActAgentFactory : IAgentFactory
                 ModelId = model.DeploymentName,
                 Instructions = Prompt.CodeAct,
                 Temperature = model.Temperature,
+                MaxOutputTokens = 16384,
+                ResponseFormat = ChatResponseFormat.Json,
             },
             AIContextProviders = [provider],
         });
@@ -88,6 +90,7 @@ public sealed class CodeActAgentFactory : IAgentFactory
                 ModelId = model.DeploymentName,
                 Instructions = Prompt.CodeAct,
                 Temperature = model.Temperature,
+                ResponseFormat = ChatResponseFormat.Json,
                 Tools = [executeCode],
             },
         });

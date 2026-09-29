@@ -34,6 +34,8 @@ public sealed class ClassicAgentFactory : IAgentFactory
                 ModelId = model.DeploymentName,
                 Instructions = Prompt.Classic,
                 Temperature = model.Temperature,
+                MaxOutputTokens = 16384,
+                ResponseFormat = ChatResponseFormat.Json,
                 Tools = tools,
             },
         });
