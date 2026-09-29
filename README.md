@@ -148,14 +148,15 @@ with **what actually happened** rather than raw numbers:
 - **"How each mode runs"** — a short panel contrasting Classic (model calls each tool itself, one
   network round-trip per call) with CodeAct (model writes one program that loops and calls tools
   *inside* the sandbox).
-- **"What happened & why"** — a data-driven diagnosis. When Classic returns an empty report it
-  explains the cause (context bloat, the service's per-message tool-call cap, and gpt-4o
-  under-iterating), and why CodeAct completed instead.
+- **"What happened & why"** — a data-driven observation. When Classic returns an empty report it
+  reports what the data actually shows (Classic gathered the data but failed to emit a schema-valid
+  report; it was not stopped by a tool-call cap or the context window) and notes that, because
+  Classic did not complete, the efficiency numbers are not a like-for-like comparison.
 - **Delta cards + charts** for duration / tokens / tool calls / cost — shown **only when both modes
   completed**, so you never compare against a run that produced nothing. When a mode failed, the
   affected cells read `n/a`.
-- **"Every trial" table** with a *"What the run produced"* column (e.g. "priced 120/120 households",
-  "returned empty households", "hit tool-call cap") and colour-coded status.
+- **"Every trial" table** with a *"What the run produced"* column (e.g. "exact match to the
+  reference report", "gathered data but returned an empty / invalid report") and colour-coded status.
 
 Add `--open` to launch it automatically:
 
@@ -176,27 +177,41 @@ per-dataset deltas follow, with deltas marked `n/a` wherever a mode never produc
 > profile, on an x64 Linux VM with the real Hyperlight sandbox). Reproduce them with the scripts in
 > [`scripts/vm/`](scripts/vm/).
 
-| Profile | Households | Classic completed | CodeAct completed |
-| --- | --- | --- | --- |
-| small | 10 | flaky (occasionally an empty stub) | completes |
-| medium | 40 | **fails** | completes |
-| large | 120 | **fails** | completes |
+| Profile | Households | Classic | CodeAct | Classic median tokens / cost | CodeAct median tokens / cost |
+| --- | --- | --- | --- | --- | --- |
+| small | 10 | **Failed** 0/3 | Completed 2/3 | ~40.7k / $0.11 | ~55.8k / $0.23 |
+| medium | 40 | **Failed** 0/3 | Completed 3/3 | ~33.3k / $0.09 | ~62.0k / $0.24 |
+| large | 120 | **Failed** 0/3 | Completed 3/3 | ~60.5k / $0.16 | ~65.8k / $0.28 |
 
-**Why Classic fails as the dataset grows.** Classic asks the model to drive every tool call itself.
-Each call is a separate model→service round-trip, and the model must hold every household's data in
-its context to decide the next step. At medium/large this hits two hard ceilings at once: the
-service caps tool calls *per message* (so a "gather everything now" turn is rejected), and gpt-4o's
-context fills up — so the model under-iterates and stops early, emitting an empty
-`{"households":[]}` report that scores as **Failed**.
+**What the Classic failure actually is — and what it is *not*.** In these runs Classic gathered the
+data successfully (54–81 tool calls over 4–5 turns) but then returned an empty / schema-invalid
+report instead of the final `ExposureReport` — at **every** size, including the smallest (10
+households). It was **not** stopped by a per-message tool-call cap or the context window: it used
+33–60k tokens, well under gpt-4o's 128k limit. With this model and prompt it simply failed to emit
+the final structured output. Because Classic fails even at trivial scale, **this is an
+output-emission failure, not a scaling result.**
 
-**Why CodeAct scales.** CodeAct asks the model to write **one program**. The looping over households,
-the tool calls, and the aggregation all happen *inside* the Hyperlight sandbox, so there are no
-per-tool round-trips and the model's context stays small. The one remaining limit is the sandbox's
-fixed ~16 KB guest→host output buffer, which CodeAct works around by returning the report in
-several small `execute_code` chunks that the model reassembles.
+**Honest caveat — this is not yet a fair head-to-head.** Because Classic never produced a report, the
+two modes cannot be compared on tokens, cost, latency, or tool calls: Classic's *lower* token/cost
+numbers reflect that it stopped early without doing the work, and its 54–81 tool calls are
+model-visible calls whereas CodeAct's real tool calls happen inside the sandbox and are not counted.
+The only defensible claim from this run is that **CodeAct emitted a correct report where this Classic
+setup did not.** Establishing a genuine efficiency comparison requires first getting Classic to
+complete (see the open work below).
 
-The generated HTML dashboards explain all of this inline, per dataset, so a first-time reader
-understands *why* a Classic run reads "Failed" and what CodeAct did differently.
+**How CodeAct produced its reports.** CodeAct asks the model to write **one program**; the looping,
+tool calls, and aggregation happen *inside* the Hyperlight sandbox, so the model's context stays
+small and the report is assembled by code. The one wrinkle is the sandbox's fixed ~16 KB guest→host
+output buffer, which CodeAct works around by returning the report in several small `execute_code`
+chunks that the model reassembles (hence its higher token count).
+
+**Open work.** The interesting architectural claim — that CodeAct's model-visible interaction is
+roughly O(1) in dataset size while direct tool-calling is O(n) — can only be *measured* once Classic
+also completes. Making the Classic agent reliably emit a schema-valid report (a prompt/harness fix,
+not a fundamental limit) is the next step toward a fair comparison.
+
+The generated HTML dashboards state this inline, per dataset, including the caveat that the
+efficiency charts are not a like-for-like comparison while one mode fails.
 
 ### Reproducing the live run on an x64 VM
 

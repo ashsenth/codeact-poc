@@ -136,7 +136,7 @@ public static class ComparisonWriter
         sb.Append($"<p><span class=\"tag codeact\">CodeAct</span> ran <b>{Num(a.RoundTrips?.MedianExecuteCodeCalls)}</b> <code>execute_code</code> program(s) across <b>{Num(a.RoundTrips?.MedianModelTurns)}</b> model turns and {Enc(Outcome(aDone, aN))}.</p>");
         if (classicStruggled && aDone > 0)
         {
-            sb.Append("<p class=\"why\"><b>Why Classic falls behind as the dataset grows.</b> It must pull every household's policy, accounts, positions, prices and FX rates into the model's own context and decide each of the hundreds of tool calls itself. Two limits break this at scale: requesting too many tool calls in a single step exceeds the service's per-message cap, and the growing pile of tool results overruns the model's context &mdash; so the model tends to stop early and return an empty report. CodeAct avoids both: the loop and the tool calls run inside the sandbox, so the model never handles the intermediate data and makes no per-tool round-trips. That is why CodeAct still completes where Classic cannot.</p>");
+            sb.Append("<p class=\"why\"><b>What actually happened.</b> Classic gathered the data successfully &mdash; its tool calls ran &mdash; but then returned an empty / schema-invalid report instead of the final ExposureReport. It was <i>not</i> stopped by a tool-call cap or the context window (it stayed well under the model's limits); with this model and prompt it simply failed to emit the final structured output. CodeAct assembles the report in sandboxed code, so it produced a valid one. Because Classic never completed, the token, cost and tool-call figures below are <b>not a like-for-like comparison</b> &mdash; they show the cost of a failed attempt beside a completed one, not relative efficiency.</p>");
         }
 
         sb.Append("</div>");
@@ -149,7 +149,7 @@ public static class ComparisonWriter
         sb.Append(SvgBars("Tool calls median", c.RoundTrips?.MedianToolCalls, a.RoundTrips?.MedianToolCalls, v => v.ToString("0.#", Invariant)));
         sb.Append(SvgBars("Cost median (USD)", (double?)c.Cost?.Median, (double?)a.Cost?.Median, v => v.ToString("0.######", Invariant)));
         sb.Append("</section>");
-        sb.Append("<p class=\"disc\">A bar shown as <b>n/a</b> means that mode produced no valid measurement for that metric &mdash; usually because it failed before returning usable output.</p>");
+        sb.Append("<p class=\"disc\">A bar shown as <b>n/a</b> means no valid measurement. When one mode failed, these are <b>not</b> a fair comparison: a failed mode's lower tokens/cost reflect that it stopped early without producing a report, and the tool-call bar undercounts CodeAct (its tool calls run inside the sandbox and are not counted as model tool calls).</p>");
 
         sb.Append("<h2>Per-trial duration (ms)</h2>");
         sb.Append(SvgStrip(report));
@@ -225,8 +225,7 @@ public static class ComparisonWriter
 
         if (classicAllFailed && codeActAny)
         {
-            return "CodeAct completed the analysis wherever it ran; Classic failed on every dataset size. "
-                 + "As the number of households grows, direct tool-calling cannot keep up, while CodeAct's in-sandbox loop does.";
+            return "CodeAct produced a correct report at every dataset size; Classic failed to emit a valid report at any size &mdash; even the smallest (10 households). Because Classic failed even at trivial scale, this is an output-emission failure, not a scaling result, and the two are not yet comparable on cost or speed.";
         }
 
         if (codeActAll && classicFailed.Count > 0)
@@ -274,7 +273,7 @@ public static class ComparisonWriter
 
         if (t.ToolCallCount == 0 && t.ExecuteCodeCallCount == 0)
         {
-            return "no usable output \u2014 the step exceeded the service's parallel tool-call limit";
+            return "no usable output \u2014 the model returned nothing before failing";
         }
 
         return string.Equals(t.Score.MatchClass, "InvalidSchema", StringComparison.Ordinal)
@@ -322,15 +321,16 @@ public static class ComparisonWriter
         sb.Append($"<div class=\"takeaway\">{Enc(ScalingTakeaway(ordered))}</div>");
 
         // 2. Why it happens (mechanism), always shown.
-        sb.Append("<h2>Why the two modes diverge as data grows</h2>");
+        sb.Append("<h2>Why Classic failed and CodeAct completed</h2>");
         sb.Append("<div class=\"panel\">");
-        sb.Append("<p><span class=\"tag classic\">Classic</span> lets the model call each tool itself. Every household's data flows back into the model's context and it decides the next of hundreds of tool calls. At larger sizes this hits two hard limits at once &mdash; the service's per-message tool-call cap and the model's context window &mdash; so it tends to stop early and return an empty report, which scores as <b>failed</b>.</p>");
-        sb.Append("<p><span class=\"tag codeact\">CodeAct</span> lets the model write one program that loops over the households and calls the tools <i>inside</i> the sandbox. The model never handles the intermediate data and makes no per-tool round-trips, so it keeps finishing at every size tested.</p>");
+        sb.Append("<p><span class=\"tag classic\">Classic</span> lets the model call each tool itself and then assemble the final report from what it gathered. In these runs it made its tool calls and pulled the data successfully, but then returned an empty / schema-invalid report instead of the ExposureReport &mdash; at <b>every</b> size, including the smallest (10 households). It was not stopped by a tool-call cap or the context window; with this model and prompt it simply failed to emit the final structured output. This is therefore an output-emission failure, not a scaling limit.</p>");
+        sb.Append("<p><span class=\"tag codeact\">CodeAct</span> lets the model write one program that loops over the households and calls the tools inside the sandbox, then returns the finished report. Because the report is assembled by code, it produced a valid report at every size tested.</p>");
+        sb.Append("<p class=\"why\">Because Classic never produced output, this run is <b>not yet a fair head-to-head</b>: the charts below compare the cost of a failed attempt against a completed one, so they do not measure relative efficiency.</p>");
         sb.Append("</div>");
 
         // 3. Charts (secondary) with an explicit caption so partial-then-failed bars aren't mistaken for successes.
         sb.Append("<h2>Median measurements by dataset</h2>");
-        sb.Append("<p class=\"disc\">A bar reflects only measured medians. If a mode did <b>not</b> finish a dataset (see the matrix above), its bar shows the partial work it did before giving up &mdash; it is <b>not</b> a successful run. Compare the two modes only where both are green above.</p>");
+        sb.Append("<p class=\"disc\">These are <b>not</b> a like-for-like comparison here: Classic did not complete any dataset (see the matrix above), so its lower tokens/cost reflect stopping early without a report, not efficiency. The tool-call chart also undercounts CodeAct &mdash; its tool calls run inside the sandbox and are not counted as model tool calls. Efficiency can only be compared once both modes complete.</p>");
         sb.Append("<section class=\"charts\">");
         sb.Append(SvgGroupedBars("Duration median (ms) by dataset", labels, durC, durA, v => v.ToString("0.#", Invariant)));
         sb.Append(SvgGroupedBars("Total tokens median by dataset", labels, tokC, tokA, v => v.ToString("0", Invariant)));
