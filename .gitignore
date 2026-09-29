@@ -3,7 +3,9 @@ bin/
 obj/
 [Dd]ebug/
 [Rr]elease/
-artifacts/
+# Anchored to repo root so it does not also match the src/**/Artifacts source folder
+# (git is case-insensitive on Windows/macOS, so an unanchored "artifacts/" matched it).
+/artifacts/
 *.user
 *.suo
 .vs/
