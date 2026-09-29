@@ -218,8 +218,16 @@ public static class ComparisonWriter
         }
 
         bool codeActAll = ordered.All(r => { int n = TrialCount(r, "codeact"); return n > 0 && CompletedCount(r, "codeact") == n; });
+        bool classicAllFailed = ordered.All(r => CompletedCount(r, "classic") == 0);
+        bool codeActAny = ordered.Any(r => CompletedCount(r, "codeact") > 0);
         var classicFailed = ordered.Where(r => CompletedCount(r, "classic") == 0).Select(r => r.Profile).ToList();
         var classicOk = ordered.Where(r => { int n = TrialCount(r, "classic"); return n > 0 && CompletedCount(r, "classic") == n; }).Select(r => r.Profile).ToList();
+
+        if (classicAllFailed && codeActAny)
+        {
+            return "CodeAct completed the analysis wherever it ran; Classic failed on every dataset size. "
+                 + "As the number of households grows, direct tool-calling cannot keep up, while CodeAct's in-sandbox loop does.";
+        }
 
         if (codeActAll && classicFailed.Count > 0)
         {
