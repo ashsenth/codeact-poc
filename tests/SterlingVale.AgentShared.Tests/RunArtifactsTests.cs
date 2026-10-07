@@ -2,6 +2,7 @@ using SterlingVale.AgentShared.Analysis;
 using SterlingVale.AgentShared.Artifacts;
 using SterlingVale.AgentShared.Configuration;
 using SterlingVale.Domain.Analysis;
+using SterlingVale.Tools.Observability;
 using Xunit;
 
 namespace SterlingVale.AgentShared.Tests;
@@ -57,6 +58,17 @@ public sealed class RunArtifactsTests
             Mode = "classic",
             RawModelOutput = "{\"households\":[]}",
             GeneratedCode = generatedCode,
+            ToolCalls =
+            [
+                new ToolCallRecord(0, "get_policy", "{\"householdId\":\"H0001\"}", "{\"driftToleranceFraction\":0.05}", 1.2, "ok", DateTimeOffset.UnixEpoch),
+            ],
+            Transcript =
+            [
+                new TranscriptMessage(0, "assistant", null,
+                    [new TranscriptCall("c1", "get_policy", "{\"householdId\":\"H0001\"}")],
+                    []),
+                new TranscriptMessage(1, "tool", null, [], [new TranscriptResult("c1", null, "{\"driftToleranceFraction\":0.05}")]),
+            ],
             Fingerprints = fingerprints,
         };
     }
@@ -110,5 +122,27 @@ public sealed class RunArtifactsTests
         var files = RunArtifacts.Build(Record(null), Model, Pricing);
         Assert.Contains(RunArtifacts.Files.RawOutput, files.Keys);
         Assert.Equal("{\"households\":[]}", files[RunArtifacts.Files.RawOutput]);
+    }
+
+    [Fact]
+    public void Tool_calls_jsonl_stamps_runid_and_nests_json()
+    {
+        var jsonl = RunArtifacts.Build(Record(null), Model, Pricing)[RunArtifacts.Files.ToolCalls];
+        Assert.Contains("\"runId\":\"run-1\"", jsonl, StringComparison.Ordinal);
+        Assert.Contains("\"name\":\"get_policy\"", jsonl, StringComparison.Ordinal);
+        // Arguments/results are embedded as nested JSON, not re-stringified.
+        Assert.Contains("\"arguments\":{\"householdId\":\"H0001\"}", jsonl, StringComparison.Ordinal);
+        Assert.Contains("\"result\":{\"driftToleranceFraction\":0.05}", jsonl, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Transcript_jsonl_records_each_message_with_runid()
+    {
+        var jsonl = RunArtifacts.Build(Record(null), Model, Pricing)[RunArtifacts.Files.Transcript];
+        var lines = jsonl.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(2, lines.Length);
+        Assert.All(lines, l => Assert.Contains("\"runId\":\"run-1\"", l, StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.Contains("\"role\":\"assistant\"", StringComparison.Ordinal) && l.Contains("get_policy", StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.Contains("\"role\":\"tool\"", StringComparison.Ordinal));
     }
 }

@@ -44,7 +44,7 @@ switch (command)
 
 static async Task<int> RunAsync(string profile, int? trials, bool open)
 {
-    var composition = new Composition();
+    using var composition = new Composition();
     if (!composition.Snapshots.AvailableProfiles.Contains(profile, StringComparer.OrdinalIgnoreCase))
     {
         Console.Error.WriteLine($"Dataset profile '{profile}' is not available under '{composition.DataRoot}'. Run the data generator first.");
@@ -65,7 +65,7 @@ static async Task<int> RunAsync(string profile, int? trials, bool open)
 
 static async Task<int> CompareAsync(int? trials)
 {
-    var composition = new Composition();
+    using var composition = new Composition();
     var harness = new BenchmarkHarness(composition);
     int exit = 0;
     foreach (var profile in composition.Snapshots.AvailableProfiles)
@@ -90,7 +90,7 @@ static int Report(string? comparisonId, bool open)
         return 2;
     }
 
-    var composition = new Composition();
+    using var composition = new Composition();
     string jsonPath = Path.Combine(composition.ArtifactsRoot, "comparisons", comparisonId + ".json");
     if (!File.Exists(jsonPath))
     {
@@ -131,7 +131,7 @@ static void OpenInBrowser(string path)
 
 static int Visualize(IReadOnlyDictionary<string, string> options, bool open)
 {
-    var composition = new Composition();
+    using var composition = new Composition();
     string dir = Path.Combine(composition.ArtifactsRoot, "comparisons");
     if (!Directory.Exists(dir))
     {

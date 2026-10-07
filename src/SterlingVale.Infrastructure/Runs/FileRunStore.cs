@@ -8,9 +8,10 @@ using SterlingVale.Infrastructure.Configuration;
 namespace SterlingVale.Infrastructure.Runs;
 
 /// <summary>
-/// A run store that persists per-run artifacts to <c>{Root}/runs/{runId}/</c> (result.json,
-/// metrics.json, events.jsonl, metadata.json, generated-code.txt) and keeps an in-memory index for
-/// fast retrieval. Raw output and generated code are written verbatim, never repaired.
+/// A run store that persists the full set of per-run artifacts to <c>{Root}/runs/{runId}/</c> (see
+/// <see cref="SterlingVale.AgentShared.Artifacts.RunArtifacts"/> for the file set, including the
+/// transcript and tool-call logs) and keeps an in-memory index for fast retrieval. Raw output and
+/// generated code are written verbatim, never repaired.
 /// </summary>
 public sealed class FileRunStore : IRunStore
 {

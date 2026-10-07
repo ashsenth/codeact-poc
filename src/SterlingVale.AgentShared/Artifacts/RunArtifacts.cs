@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using SterlingVale.AgentShared.Analysis;
 using SterlingVale.AgentShared.Configuration;
@@ -34,6 +35,8 @@ public static class RunArtifacts
         public const string GeneratedCode = "generated-code.txt";
         public const string RawOutput = "raw-output.txt";
         public const string ToolResults = "tool-results.txt";
+        public const string ToolCalls = "tool-calls.jsonl";
+        public const string Transcript = "transcript.jsonl";
     }
 
     /// <summary>Marker written to tool-results.txt when no tool results were captured.</summary>
@@ -60,7 +63,83 @@ public static class RunArtifacts
             [Files.GeneratedCode] = record.GeneratedCode ?? GeneratedCodeUnavailable,
             [Files.RawOutput] = string.IsNullOrEmpty(record.RawModelOutput) ? RawOutputUnavailable : record.RawModelOutput,
             [Files.ToolResults] = string.IsNullOrEmpty(record.ToolResults) ? ToolResultsUnavailable : record.ToolResults,
+            [Files.ToolCalls] = BuildToolCalls(record),
+            [Files.Transcript] = BuildTranscript(record),
         };
+    }
+
+    // One JSON object per line; arguments/results are nested JSON (not re-stringified). Every line
+    // carries runId so a single run's host-side tool calls can be grepped as a correlated log.
+    private static string BuildToolCalls(RunRecord record)
+    {
+        string runId = record.Response.RunId;
+        var builder = new StringBuilder();
+        foreach (var call in record.ToolCalls)
+        {
+            AppendJsonLine(builder, new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["runId"] = runId,
+                ["seq"] = call.Seq,
+                ["name"] = call.Name,
+                ["arguments"] = AsJson(call.ArgumentsJson),
+                ["result"] = AsJson(call.ResultJson),
+                ["durationMs"] = call.DurationMs,
+                ["status"] = call.Status,
+                ["timestamp"] = call.Timestamp,
+            });
+        }
+
+        return builder.ToString();
+    }
+
+    // Full model conversation: one message per line (role, text, tool calls, tool results), runId-stamped.
+    private static string BuildTranscript(RunRecord record)
+    {
+        string runId = record.Response.RunId;
+        var builder = new StringBuilder();
+        foreach (var message in record.Transcript)
+        {
+            AppendJsonLine(builder, new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["runId"] = runId,
+                ["index"] = message.Index,
+                ["role"] = message.Role,
+                ["text"] = message.Text,
+                ["calls"] = message.Calls.Select(c => new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["id"] = c.Id,
+                    ["name"] = c.Name,
+                    ["arguments"] = AsJson(c.ArgumentsJson),
+                }).ToList(),
+                ["results"] = message.Results.Select(r => new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["callId"] = r.CallId,
+                    ["result"] = AsJson(r.ResultJson),
+                }).ToList(),
+            });
+        }
+
+        return builder.ToString();
+    }
+
+    private static void AppendJsonLine(StringBuilder builder, object payload) =>
+        builder.Append(JsonSerializer.Serialize(payload, CompactJson)).Append('\n');
+
+    private static object? AsJson(string? json)
+    {
+        if (string.IsNullOrEmpty(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonNode.Parse(json);
+        }
+        catch (JsonException)
+        {
+            return json;
+        }
     }
 
     private static RunMetadataDto BuildMetadata(RunRecord record, ModelConfiguration model, PricingConfiguration pricing)

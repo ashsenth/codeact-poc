@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SterlingVale.AgentShared.Analysis;
 using SterlingVale.AgentShared.Configuration;
@@ -16,7 +17,7 @@ namespace SterlingVale.Benchmark;
 /// APIs. Both modes use the SAME snapshot provider, chat-client provider, runner, model, and pricing
 /// — only the agent factory differs.
 /// </summary>
-public sealed class Composition
+public sealed class Composition : IDisposable
 {
     public Composition()
     {
@@ -52,7 +53,14 @@ public sealed class Composition
         ChatClientProvider = azure.IsConfigured
             ? new AzureOpenAIChatClientProvider(azure)
             : new FakeChatClientProvider();
-        Runner = new AnalysisRunner();
+        LoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => builder
+            .SetMinimumLevel(ParseLogLevel(Environment.GetEnvironmentVariable("BENCHMARK_LOG_LEVEL")))
+            .AddSimpleConsole(o =>
+            {
+                o.SingleLine = true;
+                o.TimestampFormat = "HH:mm:ss ";
+            }));
+        Runner = new AnalysisRunner(LoggerFactory.CreateLogger<AnalysisRunner>());
         ToolMetrics = new ToolMetrics();
         RunStore = new FileRunStore(new ArtifactsOptions { Root = ArtifactsRoot }, Model, Pricing);
         Live = azure.IsConfigured;
@@ -71,6 +79,8 @@ public sealed class Composition
     public IChatClientProvider ChatClientProvider { get; }
 
     public AnalysisRunner Runner { get; }
+
+    public ILoggerFactory LoggerFactory { get; }
 
     public ToolMetrics ToolMetrics { get; }
 
@@ -91,4 +101,10 @@ public sealed class Composition
 
     private static decimal ParseDecimal(string? value, decimal fallback) =>
         decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) ? parsed : fallback;
+
+    private static LogLevel ParseLogLevel(string? value) =>
+        Enum.TryParse<LogLevel>(value, ignoreCase: true, out var level) ? level : LogLevel.Information;
+
+    /// <summary>Flushes and disposes the console logger factory.</summary>
+    public void Dispose() => LoggerFactory.Dispose();
 }

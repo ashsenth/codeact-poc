@@ -1,4 +1,5 @@
 using SterlingVale.Domain.Analysis;
+using SterlingVale.Tools.Observability;
 
 namespace SterlingVale.AgentShared.Analysis;
 
@@ -29,6 +30,16 @@ public sealed record RunRecord
     /// <c>execute_code</c> call), preserved verbatim for diagnostics; null when none were captured.
     /// </summary>
     public string? ToolResults { get; init; }
+
+    /// <summary>
+    /// Every host-side tool invocation captured during the run (name, argument JSON, result JSON,
+    /// duration, status) — including CodeAct's in-sandbox <c>call_tool</c> calls, which do not appear
+    /// in <see cref="Transcript"/>. Empty when none were captured.
+    /// </summary>
+    public IReadOnlyList<ToolCallRecord> ToolCalls { get; init; } = [];
+
+    /// <summary>The model conversation (per-message role, text, tool calls, and tool results). Empty on timeout.</summary>
+    public IReadOnlyList<TranscriptMessage> Transcript { get; init; } = [];
 
     /// <summary>Fairness fingerprints recorded for this run.</summary>
     public required FairnessFingerprints Fingerprints { get; init; }

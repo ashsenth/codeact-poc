@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using SterlingVale.Tools.Observability;
 
 namespace SterlingVale.Tools;
 
@@ -14,18 +15,24 @@ namespace SterlingVale.Tools;
 public sealed class ToolCatalog
 {
     /// <summary>Creates the seven canonical <see cref="AIFunction"/> tools over the given service.</summary>
+    /// <remarks>
+    /// Each tool is wrapped in a <see cref="RecordingAIFunction"/> so every invocation (including
+    /// CodeAct's in-sandbox <c>call_tool</c>, which never surfaces in the model messages) is captured
+    /// by the ambient <see cref="ToolCallRecorder"/>. The wrapper delegates name/description/schema, so
+    /// the fairness fingerprint is unaffected.
+    /// </remarks>
     public IReadOnlyList<AIFunction> CreateTools(PortfolioToolService service)
     {
         ArgumentNullException.ThrowIfNull(service);
         return
         [
-            AIFunctionFactory.Create(service.ListHouseholds, ToolNames.ListHouseholds),
-            AIFunctionFactory.Create(service.GetPolicy, ToolNames.GetPolicy),
-            AIFunctionFactory.Create(service.ListAccounts, ToolNames.ListAccounts),
-            AIFunctionFactory.Create(service.ListPositions, ToolNames.ListPositions),
-            AIFunctionFactory.Create(service.GetPrice, ToolNames.GetPrice),
-            AIFunctionFactory.Create(service.GetFx, ToolNames.GetFx),
-            AIFunctionFactory.Create(service.AssetClass, ToolNames.AssetClass),
+            new RecordingAIFunction(AIFunctionFactory.Create(service.ListHouseholds, ToolNames.ListHouseholds)),
+            new RecordingAIFunction(AIFunctionFactory.Create(service.GetPolicy, ToolNames.GetPolicy)),
+            new RecordingAIFunction(AIFunctionFactory.Create(service.ListAccounts, ToolNames.ListAccounts)),
+            new RecordingAIFunction(AIFunctionFactory.Create(service.ListPositions, ToolNames.ListPositions)),
+            new RecordingAIFunction(AIFunctionFactory.Create(service.GetPrice, ToolNames.GetPrice)),
+            new RecordingAIFunction(AIFunctionFactory.Create(service.GetFx, ToolNames.GetFx)),
+            new RecordingAIFunction(AIFunctionFactory.Create(service.AssetClass, ToolNames.AssetClass)),
         ];
     }
 
