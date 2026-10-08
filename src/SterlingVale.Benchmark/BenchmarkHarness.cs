@@ -8,6 +8,7 @@ using SterlingVale.Benchmark.Model;
 using SterlingVale.Benchmark.Scoring;
 using SterlingVale.CodeAct;
 using SterlingVale.Domain.Analysis;
+using SterlingVale.Domain.Model;
 using SterlingVale.Tools;
 
 namespace SterlingVale.Benchmark;
@@ -29,6 +30,7 @@ public sealed class BenchmarkHarness(Composition composition)
         var snapshot = composition.Snapshots.GetSnapshot(profile);
         string datasetHash = composition.Snapshots.GetDatasetHash(profile);
         var request = new AnalysisRequest { DatasetProfile = profile };
+        var householdIds = snapshot.Households.Select(h => h.Id.Value).ToList();
 
         var oracleDto = ReportJson.ToDto(new ExposureOracle().Analyze(snapshot, request, "oracle", OracleAsOf));
 
@@ -66,7 +68,7 @@ public sealed class BenchmarkHarness(Composition composition)
                 RunRecord record;
                 try
                 {
-                    record = await service.AnalyzeAsync(request, cancellationToken).ConfigureAwait(false);
+                    record = await RunModeAsync(mode, service, request, householdIds, cancellationToken).ConfigureAwait(false);
                 }
                 catch (ClientResultException ex)
                 {
@@ -108,7 +110,103 @@ public sealed class BenchmarkHarness(Composition composition)
             classicSummary,
             codeactSummary,
             Aggregator.ComputeDelta(classicSummary, codeactSummary),
-            results);
+            results,
+            composition.ClassicBatchSize);
+    }
+
+    // Classic cannot emit a correct report over many households in one model run (it skips pricing and
+    // returns an empty array at scale). When a batch size is set, run Classic once per batch of
+    // households and merge, so direct tool-calling can complete; metrics are summed across the batches.
+    private async Task<RunRecord> RunModeAsync(
+        string mode, AnalysisService service, AnalysisRequest request, IReadOnlyList<string> householdIds, CancellationToken cancellationToken)
+    {
+        int batchSize = composition.ClassicBatchSize;
+        if (mode != "classic" || batchSize <= 0 || householdIds.Count <= batchSize)
+        {
+            return await service.AnalyzeAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+
+        var batches = new List<RunRecord>();
+        for (int i = 0; i < householdIds.Count; i += batchSize)
+        {
+            var ids = householdIds.Skip(i).Take(batchSize).ToList();
+            batches.Add(await service.AnalyzeAsync(request with { HouseholdIds = ids }, cancellationToken).ConfigureAwait(false));
+        }
+
+        return MergeBatches(batches);
+    }
+
+    private static RunRecord MergeBatches(IReadOnlyList<RunRecord> batches)
+    {
+        var first = batches[0];
+        var households = new List<HouseholdExposure>();
+        bool allCompleted = true;
+        foreach (var b in batches)
+        {
+            if (b.Response.Report is { } report)
+            {
+                households.AddRange(report.Households);
+            }
+
+            if (b.Response.Status != RunStatus.Completed || b.Response.Report is null || b.Response.Report.Households.Count == 0)
+            {
+                allCompleted = false;
+            }
+        }
+
+        var merged = households.Count > 0
+            ? new ExposureReport($"classic-batched-{Guid.NewGuid().ToString("N")[..8]}", DateTimeOffset.UtcNow, households)
+            : null;
+        bool valid = allCompleted && merged is not null;
+        var metrics = MergeMetrics(batches.Select(b => b.Response.Metrics).ToList(), valid);
+
+        return new RunRecord
+        {
+            Response = new AnalysisResponse
+            {
+                RunId = first.Response.RunId,
+                Mode = first.Mode,
+                Status = valid ? RunStatus.Completed : RunStatus.Failed,
+                Report = merged,
+                Metrics = metrics,
+            },
+            Mode = first.Mode,
+            RawModelOutput = merged is not null ? ReportJson.Serialize(merged, indented: true) : string.Empty,
+            ToolCalls = batches.SelectMany(b => b.ToolCalls).ToList(),
+            Transcript = batches.SelectMany(b => b.Transcript).ToList(),
+            Fingerprints = first.Fingerprints,
+        };
+    }
+
+    private static RunMetrics MergeMetrics(IReadOnlyList<RunMetrics> parts, bool valid)
+    {
+        var byName = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var part in parts)
+        {
+            foreach (var (name, count) in part.ToolCallsByName)
+            {
+                byName[name] = byName.GetValueOrDefault(name) + count;
+            }
+        }
+
+        long? SumTokens(Func<RunMetrics, long?> select) =>
+            parts.Any(p => select(p) is not null) ? parts.Sum(p => select(p) ?? 0L) : null;
+
+        return new RunMetrics
+        {
+            Duration = TimeSpan.FromMilliseconds(parts.Sum(p => p.Duration.TotalMilliseconds)),
+            ModelRequestCount = parts.Sum(p => p.ModelRequestCount),
+            ModelTurnCount = parts.Sum(p => p.ModelTurnCount),
+            ToolCallCount = parts.Sum(p => p.ToolCallCount),
+            ToolCallsByName = byName,
+            ExecuteCodeCallCount = 0,
+            InputTokens = SumTokens(p => p.InputTokens),
+            OutputTokens = SumTokens(p => p.OutputTokens),
+            TotalTokens = SumTokens(p => p.TotalTokens),
+            EstimatedCostUsd = parts.Any(p => p.EstimatedCostUsd is not null) ? parts.Sum(p => p.EstimatedCostUsd ?? 0m) : null,
+            RetryCount = parts.Sum(p => p.RetryCount),
+            SchemaValid = valid,
+        };
     }
 
     private static async Task WarmUpAsync(AnalysisService service, AnalysisRequest request, CancellationToken cancellationToken)

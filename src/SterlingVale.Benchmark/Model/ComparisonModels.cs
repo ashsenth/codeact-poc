@@ -90,4 +90,5 @@ public sealed record ComparisonReport(
     ModeSummary Classic,
     ModeSummary CodeAct,
     ComparisonDelta? Delta,
-    IReadOnlyList<TrialResult> RawTrials);
+    IReadOnlyList<TrialResult> RawTrials,
+    int ClassicBatchSize = 0);

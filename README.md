@@ -263,6 +263,25 @@ Common setup gotchas:
   policy.
 - Environment variables are per-shell — set them in the same terminal you run the benchmark from.
 
+### Making Classic completable at scale (`CLASSIC_BATCH_SIZE`)
+
+With a live model, direct tool-calling (Classic) reliably fails to emit a report once the dataset is
+large — the model gathers data but returns an empty `households` array (an output-emission failure;
+the turn-by-turn evidence is in each run's `transcript.jsonl` / `tool-calls.jsonl`). To get a
+*both-complete* comparison, set `CLASSIC_BATCH_SIZE` to run Classic over **small batches of
+households** (one model invocation per batch, results merged); each batch is small enough that the
+model emits a report, and the harness sums Classic's metrics across the batches. CodeAct is
+unaffected (it always runs all households in one invocation).
+
+```bash
+export CLASSIC_BATCH_SIZE=5    # 0 / unset = single run (default); >0 = batch Classic
+dotnet run --project src/SterlingVale.Benchmark -- run --profile large --trials 1 --open
+```
+
+The dashboards and the comparison JSON record the batch size, so the extra model invocations Classic
+needed to keep up are explicit. Vary it to find where Classic breaks (e.g. completes at small batch
+sizes, fails as the batch grows).
+
 ## Testing
 
 ```bash

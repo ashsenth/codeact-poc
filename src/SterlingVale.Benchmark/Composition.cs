@@ -24,6 +24,7 @@ public sealed class Composition : IDisposable
         DataRoot = Environment.GetEnvironmentVariable("DATASET_ROOT") ?? "data";
         ArtifactsRoot = Environment.GetEnvironmentVariable("ARTIFACTS_ROOT") ?? "artifacts";
         Trials = ParseInt(Environment.GetEnvironmentVariable("BENCHMARK_TRIALS"), 3);
+        ClassicBatchSize = ParseInt(Environment.GetEnvironmentVariable("CLASSIC_BATCH_SIZE"), 0);
 
         var azure = new AzureOpenAIOptions
         {
@@ -71,6 +72,11 @@ public sealed class Composition : IDisposable
     public string ArtifactsRoot { get; }
 
     public int Trials { get; }
+
+    /// <summary>When &gt; 0, Classic analyzes households in batches of this size (one model run per
+    /// batch, results merged) so direct tool-calling can complete at scale; 0 = single run. CodeAct
+    /// is unaffected.</summary>
+    public int ClassicBatchSize { get; }
 
     public bool Live { get; }
 

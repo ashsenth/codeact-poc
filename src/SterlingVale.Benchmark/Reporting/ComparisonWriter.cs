@@ -101,6 +101,11 @@ public static class ComparisonWriter
             ? "<p><span class=\"fair ok\">fairness: MATCHED</span> <span class=\"hint\">identical task, tools, model and data &mdash; only the orchestration differs</span></p>"
             : $"<p><span class=\"fair bad\">fairness: FAILED ({Enc(string.Join(", ", report.Fairness.Mismatches))})</span></p>");
 
+        if (report.ClassicBatchSize > 0)
+        {
+            sb.Append($"<p class=\"hint\">Classic was run in batches of <b>{report.ClassicBatchSize}</b> household(s) per model invocation &mdash; decomposed so direct tool-calling can complete at scale &mdash; while CodeAct ran all households in one invocation. Classic's metrics are summed across its batches.</p>");
+        }
+
         // Outcome first: how many trials each mode actually completed, plus a plain-language takeaway.
         sb.Append("<section class=\"outcome\">");
         AppendOutcome(sb, "Classic", cDone, cN);
@@ -304,6 +309,12 @@ public static class ComparisonWriter
         AppendHtmlHead(sb, "Sterling Vale \u2014 scaling");
         sb.Append("<h1>Sterling Vale &mdash; scaling (Classic vs CodeAct)</h1>");
         sb.Append("<p class=\"disc\">SYNTHETIC analysis only &mdash; not investment advice. The same task is run against increasingly large datasets to show how each orchestration holds up as the number of households grows.</p>");
+
+        int classicBatch = ordered.Select(r => r.ClassicBatchSize).FirstOrDefault(b => b > 0);
+        if (classicBatch > 0)
+        {
+            sb.Append($"<p class=\"hint\">Classic was run in batches of <b>{classicBatch}</b> household(s) per model invocation (decomposed so direct tool-calling can complete); CodeAct ran all households in one invocation. Classic's metrics are summed across its batches.</p>");
+        }
 
         // 1. Completion matrix FIRST — the clearest possible answer to "did each mode finish, per dataset size?"
         sb.Append("<h2>Did each mode finish the analysis?</h2>");

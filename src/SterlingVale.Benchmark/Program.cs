@@ -179,6 +179,11 @@ static void PrintSummary(ComparisonReport report, string path, bool live)
 {
     Console.WriteLine($"Comparison {report.ComparisonId} ({report.Profile}) — {(live ? "LIVE model" : "offline fake model")}");
     Console.WriteLine($"  fairness: {(report.Fairness.Matched ? "MATCHED" : "FAILED: " + string.Join(",", report.Fairness.Mismatches))}");
+    if (report.ClassicBatchSize > 0)
+    {
+        Console.WriteLine($"  classic batched: {report.ClassicBatchSize} household(s) per model invocation (metrics summed across batches)");
+    }
+
     Console.WriteLine($"  classic  duration median {report.Classic.DurationMs.Median:0.###} ms; codeact duration median {report.CodeAct.DurationMs.Median:0.###} ms");
     if (report.Delta is not null)
     {

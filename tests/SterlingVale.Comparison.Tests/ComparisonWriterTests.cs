@@ -156,6 +156,15 @@ public sealed class ComparisonWriterTests
     }
 
     [Fact]
+    public void Html_notes_classic_batching_only_when_configured()
+    {
+        Assert.DoesNotContain("batches of", ComparisonWriter.RenderHtml(SampleReport()), StringComparison.Ordinal);
+
+        var batched = SampleReport() with { ClassicBatchSize = 5 };
+        Assert.Contains("batches of <b>5</b>", ComparisonWriter.RenderHtml(batched), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Write_emits_html_alongside_json_and_md()
     {
         var report = SampleReport();
