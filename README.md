@@ -105,10 +105,13 @@ The scripts are Bash scripts; use an existing Bash environment for planning. App
 also requires Azure CLI and `jq` in that environment. No Azure resource is created by default.
 Review the printed commands and cost before approving creation:
 
+Set `RESOURCE_GROUP` and `VM_NAME` to your explicitly approved, dedicated resource names.
+These variables are placeholders; no environment-specific resource names are recorded here.
+
 ```bash
 bash scripts/provision-vm.sh --subscription "$SUBSCRIPTION_ID" \
-  --ssh-public-key "$HOME/.ssh/id_ed25519.pub" --resource-group codeact-validation \
-  --location westus2 --name codeact-validation --size Standard_D4s_v5
+  --ssh-public-key "$HOME/.ssh/id_ed25519.pub" --resource-group "${RESOURCE_GROUP:?Set RESOURCE_GROUP}" \
+  --location westus2 --name "${VM_NAME:?Set VM_NAME}" --size Standard_D4s_v5
 ```
 
 Defaults: Ubuntu 24.04 x64, SSH public-key authentication only, 64 GiB Standard SSD, Standard public
@@ -131,7 +134,7 @@ If provisioning fails, stop and inventory the dedicated resource group; no autom
 After creation, obtain the public IP with the read-only command:
 
 ```bash
-az vm show --subscription "$SUBSCRIPTION_ID" -g codeact-validation -n codeact-validation \
+az vm show --subscription "$SUBSCRIPTION_ID" -g "$RESOURCE_GROUP" -n "$VM_NAME" \
   --show-details --query publicIps -o tsv
 ssh -i "$HOME/.ssh/id_ed25519" codeact@VM_PUBLIC_IP
 ```
@@ -233,12 +236,12 @@ This deletes **everything** in the dedicated resource group, including disks, IP
 needed evidence privately first. Never execute teardown without approval:
 
 ```bash
-az group delete --subscription "$SUBSCRIPTION_ID" --name codeact-validation --yes --no-wait
+az group delete --subscription "$SUBSCRIPTION_ID" --name "$RESOURCE_GROUP" --yes --no-wait
 ```
 
 Deleting the dedicated group removes its ongoing VM/disk/IP charges. Deallocation alone retains
 billable disks/public IP. Verify deletion with `az group exists --subscription "$SUBSCRIPTION_ID"
---name codeact-validation`.
+--name "$RESOURCE_GROUP"`.
 
 ## Local setup
 
@@ -386,7 +389,7 @@ VM's managed identity):
 | Script | Purpose |
 | --- | --- |
 | `setup-vm.sh` | Install the toolchain (.NET 9, Rust, `just`, `uv`) — run once. |
-| `download-guest.sh` | Download the version-matched Hyperlight Python guest and record its path in `/root/guest_path.txt`. |
+| `download-guest.sh` | Download the version-matched Hyperlight Python guest and record its path in `<GUEST_PATH_FILE>` (the location reported by the script). |
 | `run-benchmark.sh` | Generate data and run the benchmark for the given profiles, detached (`bash run-benchmark.sh "medium large"`). |
 | `wait-for-run.sh` | Block until the detached run finishes, then print the tail and newest artifacts. |
 | `summarize.sh` | Print a compact human-readable summary of the newest comparison per profile. |

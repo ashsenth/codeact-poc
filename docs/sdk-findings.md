@@ -18,7 +18,7 @@ Last verified: 2026-08-31.
 | Pre-existing runtime | `Microsoft.NETCore.App 8.0.30` (runtime only, **no SDK**) | `dotnet --list-sdks` returned empty |
 | Installed SDK | `.NET SDK 9.0.317` (user-local `%USERPROFILE%\.dotnet`, no admin) | `dotnet-install.ps1` |
 | App target framework | `net9.0` | probe restore + build succeeded |
-| NuGet feed | internal proxy `packagefeedproxy.microsoft.io` (`api.nuget.org` blocked on this host) | `dotnet package search` |
+| NuGet feed | internal proxy `<NUGET_FEED_HOST>` (`api.nuget.org` blocked on this host; private hostname redacted) | `dotnet package search` |
 
 The samples in `microsoft/agent-framework` target `net10.0`, but the **published packages
 restore and compile cleanly on `net9.0`**, which is the newest SDK installable here without

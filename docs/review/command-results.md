@@ -1,4 +1,8 @@
 ﻿# Command results (audit)
+
+Historical output below preserves original results, including skips. Local paths and package-feed
+URLs have been replaced with placeholders; this output is not current validation evidence.
+
 ```
 == dotnet --info ==
 .NET SDK:
@@ -12,7 +16,7 @@ Runtime Environment:
  OS Version:  10.0.26200
  OS Platform: Windows
  RID:         win-arm64
- Base Path:   C:\Users\ashwinse\.dotnet\sdk\9.0.317\
+ Base Path:   <DOTNET_ROOT>\sdk\9.0.317\
 
 .NET workloads installed:
 There are no installed workloads to display.
@@ -24,21 +28,21 @@ Host:
   Commit:       8381bdb01f
 
 .NET SDKs installed:
-  9.0.317 [C:\Users\ashwinse\.dotnet\sdk]
+   9.0.317 [<DOTNET_ROOT>\sdk]
 
 .NET runtimes installed:
-  Microsoft.AspNetCore.App 9.0.19 [C:\Users\ashwinse\.dotnet\shared\Microsoft.AspNetCore.App]
-  Microsoft.NETCore.App 9.0.19 [C:\Users\ashwinse\.dotnet\shared\Microsoft.NETCore.App]
-  Microsoft.WindowsDesktop.App 9.0.19 [C:\Users\ashwinse\.dotnet\shared\Microsoft.WindowsDesktop.App]
+   Microsoft.AspNetCore.App 9.0.19 [<DOTNET_ROOT>\shared\Microsoft.AspNetCore.App]
+   Microsoft.NETCore.App 9.0.19 [<DOTNET_ROOT>\shared\Microsoft.NETCore.App]
+   Microsoft.WindowsDesktop.App 9.0.19 [<DOTNET_ROOT>\shared\Microsoft.WindowsDesktop.App]
 
 Other architectures found:
   None
 
 Environment variables:
-  DOTNET_ROOT       [C:\Users\ashwinse\.dotnet]
+   DOTNET_ROOT       [<DOTNET_ROOT>]
 
 global.json file:
-  C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\global.json
+   <REPO_ROOT>\global.json
 
 Learn more:
   https://aka.ms/dotnet/info
@@ -49,28 +53,28 @@ Download .NET:
   Determining projects to restore...
   All projects are up-to-date for restore.
 == dotnet build -c Release --no-restore ==
-  SterlingVale.Telemetry -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\src\SterlingVale.Telemetry\bin\Release\net9.0\SterlingVale.Telemetry.dll
-  SterlingVale.Domain -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\src\SterlingVale.Domain\bin\Release\net9.0\SterlingVale.Domain.dll
-  SterlingVale.Application -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\src\SterlingVale.Application\bin\Release\net9.0\SterlingVale.Application.dll
-  SterlingVale.Domain.Tests -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Domain.Tests\bin\Release\net9.0\SterlingVale.Domain.Tests.dll
-  SterlingVale.DataGenerator -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\src\SterlingVale.DataGenerator\bin\Release\net9.0\SterlingVale.DataGenerator.dll
-  SterlingVale.Tools -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\src\SterlingVale.Tools\bin\Release\net9.0\SterlingVale.Tools.dll
-  SterlingVale.Data.Tests -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Data.Tests\bin\Release\net9.0\SterlingVale.Data.Tests.dll
-  SterlingVale.Application.Tests -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Application.Tests\bin\Release\net9.0\SterlingVale.Application.Tests.dll
-  SterlingVale.AgentShared -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\src\SterlingVale.AgentShared\bin\Release\net9.0\SterlingVale.AgentShared.dll
-  SterlingVale.Tools.Tests -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Tools.Tests\bin\Release\net9.0\SterlingVale.Tools.Tests.dll
-  SterlingVale.Api.Shared -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\src\SterlingVale.Api.Shared\bin\Release\net9.0\SterlingVale.Api.Shared.dll
-  SterlingVale.Infrastructure -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\src\SterlingVale.Infrastructure\bin\Release\net9.0\SterlingVale.Infrastructure.dll
-  SterlingVale.CodeAct -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\src\SterlingVale.CodeAct\bin\Release\net9.0\SterlingVale.CodeAct.dll
-  SterlingVale.AgentShared.Tests -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.AgentShared.Tests\bin\Release\net9.0\SterlingVale.AgentShared.Tests.dll
-  SterlingVale.Benchmark -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\src\SterlingVale.Benchmark\bin\Release\net9.0\SterlingVale.Benchmark.dll
-  SterlingVale.Architecture.Tests -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Architecture.Tests\bin\Release\net9.0\SterlingVale.Architecture.Tests.dll
-  SterlingVale.Classic.Api -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\src\SterlingVale.Classic.Api\bin\Release\net9.0\SterlingVale.Classic.Api.dll
-  SterlingVale.Contract.Tests -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Contract.Tests\bin\Release\net9.0\SterlingVale.Contract.Tests.dll
-  SterlingVale.CodeAct.Api -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\src\SterlingVale.CodeAct.Api\bin\Release\net9.0\SterlingVale.CodeAct.Api.dll
-  SterlingVale.Comparison.Tests -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Comparison.Tests\bin\Release\net9.0\SterlingVale.Comparison.Tests.dll
-  SterlingVale.Classic.IntegrationTests -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Classic.IntegrationTests\bin\Release\net9.0\SterlingVale.Classic.IntegrationTests.dll
-  SterlingVale.CodeAct.IntegrationTests -> C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.CodeAct.IntegrationTests\bin\Release\net9.0\SterlingVale.CodeAct.IntegrationTests.dll
+   SterlingVale.Telemetry -> <REPO_ROOT>\src\SterlingVale.Telemetry\bin\Release\net9.0\SterlingVale.Telemetry.dll
+   SterlingVale.Domain -> <REPO_ROOT>\src\SterlingVale.Domain\bin\Release\net9.0\SterlingVale.Domain.dll
+   SterlingVale.Application -> <REPO_ROOT>\src\SterlingVale.Application\bin\Release\net9.0\SterlingVale.Application.dll
+   SterlingVale.Domain.Tests -> <REPO_ROOT>\tests\SterlingVale.Domain.Tests\bin\Release\net9.0\SterlingVale.Domain.Tests.dll
+   SterlingVale.DataGenerator -> <REPO_ROOT>\src\SterlingVale.DataGenerator\bin\Release\net9.0\SterlingVale.DataGenerator.dll
+   SterlingVale.Tools -> <REPO_ROOT>\src\SterlingVale.Tools\bin\Release\net9.0\SterlingVale.Tools.dll
+   SterlingVale.Data.Tests -> <REPO_ROOT>\tests\SterlingVale.Data.Tests\bin\Release\net9.0\SterlingVale.Data.Tests.dll
+   SterlingVale.Application.Tests -> <REPO_ROOT>\tests\SterlingVale.Application.Tests\bin\Release\net9.0\SterlingVale.Application.Tests.dll
+   SterlingVale.AgentShared -> <REPO_ROOT>\src\SterlingVale.AgentShared\bin\Release\net9.0\SterlingVale.AgentShared.dll
+   SterlingVale.Tools.Tests -> <REPO_ROOT>\tests\SterlingVale.Tools.Tests\bin\Release\net9.0\SterlingVale.Tools.Tests.dll
+   SterlingVale.Api.Shared -> <REPO_ROOT>\src\SterlingVale.Api.Shared\bin\Release\net9.0\SterlingVale.Api.Shared.dll
+   SterlingVale.Infrastructure -> <REPO_ROOT>\src\SterlingVale.Infrastructure\bin\Release\net9.0\SterlingVale.Infrastructure.dll
+   SterlingVale.CodeAct -> <REPO_ROOT>\src\SterlingVale.CodeAct\bin\Release\net9.0\SterlingVale.CodeAct.dll
+   SterlingVale.AgentShared.Tests -> <REPO_ROOT>\tests\SterlingVale.AgentShared.Tests\bin\Release\net9.0\SterlingVale.AgentShared.Tests.dll
+   SterlingVale.Benchmark -> <REPO_ROOT>\src\SterlingVale.Benchmark\bin\Release\net9.0\SterlingVale.Benchmark.dll
+   SterlingVale.Architecture.Tests -> <REPO_ROOT>\tests\SterlingVale.Architecture.Tests\bin\Release\net9.0\SterlingVale.Architecture.Tests.dll
+   SterlingVale.Classic.Api -> <REPO_ROOT>\src\SterlingVale.Classic.Api\bin\Release\net9.0\SterlingVale.Classic.Api.dll
+   SterlingVale.Contract.Tests -> <REPO_ROOT>\tests\SterlingVale.Contract.Tests\bin\Release\net9.0\SterlingVale.Contract.Tests.dll
+   SterlingVale.CodeAct.Api -> <REPO_ROOT>\src\SterlingVale.CodeAct.Api\bin\Release\net9.0\SterlingVale.CodeAct.Api.dll
+   SterlingVale.Comparison.Tests -> <REPO_ROOT>\tests\SterlingVale.Comparison.Tests\bin\Release\net9.0\SterlingVale.Comparison.Tests.dll
+   SterlingVale.Classic.IntegrationTests -> <REPO_ROOT>\tests\SterlingVale.Classic.IntegrationTests\bin\Release\net9.0\SterlingVale.Classic.IntegrationTests.dll
+   SterlingVale.CodeAct.IntegrationTests -> <REPO_ROOT>\tests\SterlingVale.CodeAct.IntegrationTests\bin\Release\net9.0\SterlingVale.CodeAct.IntegrationTests.dll
 
 Build succeeded.
     0 Warning(s)
@@ -79,16 +83,16 @@ Build succeeded.
 Time Elapsed 00:00:03.46
 == dotnet format --verify-no-changes ==
 == dotnet test -c Release --no-build ==
-Test run for C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Classic.IntegrationTests\bin\Release\net9.0\SterlingVale.Classic.IntegrationTests.dll (.NETCoreApp,Version=v9.0)
-Test run for C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Domain.Tests\bin\Release\net9.0\SterlingVale.Domain.Tests.dll (.NETCoreApp,Version=v9.0)
-Test run for C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Data.Tests\bin\Release\net9.0\SterlingVale.Data.Tests.dll (.NETCoreApp,Version=v9.0)
-Test run for C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Tools.Tests\bin\Release\net9.0\SterlingVale.Tools.Tests.dll (.NETCoreApp,Version=v9.0)
-Test run for C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Application.Tests\bin\Release\net9.0\SterlingVale.Application.Tests.dll (.NETCoreApp,Version=v9.0)
-Test run for C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.CodeAct.IntegrationTests\bin\Release\net9.0\SterlingVale.CodeAct.IntegrationTests.dll (.NETCoreApp,Version=v9.0)
-Test run for C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.AgentShared.Tests\bin\Release\net9.0\SterlingVale.AgentShared.Tests.dll (.NETCoreApp,Version=v9.0)
-Test run for C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Contract.Tests\bin\Release\net9.0\SterlingVale.Contract.Tests.dll (.NETCoreApp,Version=v9.0)
-Test run for C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Comparison.Tests\bin\Release\net9.0\SterlingVale.Comparison.Tests.dll (.NETCoreApp,Version=v9.0)
-Test run for C:\Users\ashwinse\OneDrive - Microsoft\Desktop\CodeAct\codeact-poc\tests\SterlingVale.Architecture.Tests\bin\Release\net9.0\SterlingVale.Architecture.Tests.dll (.NETCoreApp,Version=v9.0)
+Test run for <REPO_ROOT>\tests\SterlingVale.Classic.IntegrationTests\bin\Release\net9.0\SterlingVale.Classic.IntegrationTests.dll (.NETCoreApp,Version=v9.0)
+Test run for <REPO_ROOT>\tests\SterlingVale.Domain.Tests\bin\Release\net9.0\SterlingVale.Domain.Tests.dll (.NETCoreApp,Version=v9.0)
+Test run for <REPO_ROOT>\tests\SterlingVale.Data.Tests\bin\Release\net9.0\SterlingVale.Data.Tests.dll (.NETCoreApp,Version=v9.0)
+Test run for <REPO_ROOT>\tests\SterlingVale.Tools.Tests\bin\Release\net9.0\SterlingVale.Tools.Tests.dll (.NETCoreApp,Version=v9.0)
+Test run for <REPO_ROOT>\tests\SterlingVale.Application.Tests\bin\Release\net9.0\SterlingVale.Application.Tests.dll (.NETCoreApp,Version=v9.0)
+Test run for <REPO_ROOT>\tests\SterlingVale.CodeAct.IntegrationTests\bin\Release\net9.0\SterlingVale.CodeAct.IntegrationTests.dll (.NETCoreApp,Version=v9.0)
+Test run for <REPO_ROOT>\tests\SterlingVale.AgentShared.Tests\bin\Release\net9.0\SterlingVale.AgentShared.Tests.dll (.NETCoreApp,Version=v9.0)
+Test run for <REPO_ROOT>\tests\SterlingVale.Contract.Tests\bin\Release\net9.0\SterlingVale.Contract.Tests.dll (.NETCoreApp,Version=v9.0)
+Test run for <REPO_ROOT>\tests\SterlingVale.Comparison.Tests\bin\Release\net9.0\SterlingVale.Comparison.Tests.dll (.NETCoreApp,Version=v9.0)
+Test run for <REPO_ROOT>\tests\SterlingVale.Architecture.Tests\bin\Release\net9.0\SterlingVale.Architecture.Tests.dll (.NETCoreApp,Version=v9.0)
 A total of 1 test files matched the specified pattern.
 A total of 1 test files matched the specified pattern.
 A total of 1 test files matched the specified pattern.
@@ -132,7 +136,7 @@ Passed!  - Failed:     0, Passed:     7, Skipped:     4, Total:    11, Duration:
 == dotnet list package --vulnerable --include-transitive ==
 
 The following sources were used:
-   https://packagefeedproxy.microsoft.io/nuget/v3/index.json
+   <NUGET_FEED_URL>
 
 The given project `SterlingVale.Domain` has no vulnerable packages given the current sources.
 The given project `SterlingVale.DataGenerator` has no vulnerable packages given the current sources.
@@ -159,7 +163,7 @@ The given project `SterlingVale.Contract.Tests` has no vulnerable packages given
 == dotnet list package --outdated ==
 
 The following sources were used:
-   https://packagefeedproxy.microsoft.io/nuget/v3/index.json
+   <NUGET_FEED_URL>
 
 The given project `SterlingVale.Domain` has no updates given the current sources.
 The given project `SterlingVale.DataGenerator` has no updates given the current sources.

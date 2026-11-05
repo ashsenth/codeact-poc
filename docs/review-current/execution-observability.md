@@ -149,7 +149,8 @@ terminating reads and a cleared document variable.
 ### Original per-file evidence
 
 Directory: `artifacts/phase-a-validation/non-live-tests/`. All rows are OFFLINE-CONTROL.
-Names below share the prefix `ashwinse_LAPTOP-E60TB2S4_2026-11-03_`; append the shown suffix.
+Names below share the sanitized prefix `<USER>_<HOST>_2026-11-03_`; append the shown suffix.
+Only the user/host prefix is redacted; filename suffixes, timestamps and counters are unchanged.
 The timestamp is each file's UTC last-write time. Total/executed/passed are equal in every row;
 failed and notExecuted are individually zero in every row.
 
