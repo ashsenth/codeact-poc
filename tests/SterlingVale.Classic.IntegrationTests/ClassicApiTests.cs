@@ -75,7 +75,11 @@ public sealed class ClassicApiTests(ClassicApiFactory factory) : IClassFixture<C
         Assert.True(File.Exists(Path.Combine(runDir, "metrics.json")));
         Assert.True(File.Exists(Path.Combine(runDir, "events.jsonl")));
         Assert.True(File.Exists(Path.Combine(runDir, "metadata.json")));
-        Assert.True(File.Exists(Path.Combine(runDir, "generated-code.txt")));
+        Assert.False(File.Exists(Path.Combine(runDir, "generated-code.txt")));
+        Assert.True(File.Exists(Path.Combine(runDir, "classic/model-turn-001.json")));
+        Assert.True(File.Exists(Path.Combine(runDir, "classic/final-response.json")));
+        Assert.True(File.Exists(Path.Combine(runDir, "timeline.json")));
+        Assert.True(File.Exists(Path.Combine(runDir, "timeline.md")));
     }
 
     [Fact]

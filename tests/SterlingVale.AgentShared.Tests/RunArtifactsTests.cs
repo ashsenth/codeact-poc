@@ -99,12 +99,10 @@ public sealed class RunArtifactsTests
     }
 
     [Fact]
-    public void Events_contain_start_and_completion()
+    public void Events_are_not_fabricated_when_no_execution_was_recorded()
     {
         var files = RunArtifacts.Build(Record(null), Model, Pricing);
-        var lines = files[RunArtifacts.Files.Events].Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        Assert.Contains(lines, l => l.Contains("run_started", StringComparison.Ordinal));
-        Assert.Contains(lines, l => l.Contains("run_completed", StringComparison.Ordinal));
+        Assert.Empty(files[RunArtifacts.Files.Events]);
     }
 
     [Fact]

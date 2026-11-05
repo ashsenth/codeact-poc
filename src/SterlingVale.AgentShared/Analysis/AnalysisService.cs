@@ -19,22 +19,32 @@ public sealed class AnalysisService(
     AnalysisRunner runner,
     ModelConfiguration model,
     PricingConfiguration pricing,
-    ToolMetrics toolMetrics)
+    ToolMetrics toolMetrics,
+    ExecutionOptions? executionOptions = null)
 {
     /// <summary>Runs an analysis and returns the complete run record.</summary>
-    public async Task<RunRecord> AnalyzeAsync(AnalysisRequest request, CancellationToken cancellationToken)
+    public async Task<RunRecord> AnalyzeAsync(AnalysisRequest request, CancellationToken cancellationToken,
+        string? comparisonId = null, string? trialId = null)
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        using var execution = new ExecutionSession(executionOptions?.ArtifactsRoot ?? Environment.GetEnvironmentVariable("ARTIFACTS_ROOT") ?? "artifacts",
+            agentFactory.Mode, request.DatasetProfile, comparisonId, trialId);
+        execution.Emit("RUN_STARTED");
+        execution.Emit("EXECUTION_CONFIGURATION", data: new { model = chatClientProvider.IsLive ? "live" : "deterministic-fake",
+            transport = "direct-aifunction", payloadCapture = execution.Payloads.Mode.ToString() });
+        try
+        {
         var snapshot = snapshots.GetSnapshot(request.DatasetProfile);
         string datasetHash = snapshots.GetDatasetHash(request.DatasetProfile);
         var toolService = new PortfolioToolService(snapshot, toolMetrics);
-        string runId = Guid.NewGuid().ToString("N");
+        string runId = execution.Context.RunId;
 
         string toolFingerprint = agentFactory.ComputeToolFingerprint(toolService);
         var fingerprints = FairnessFingerprints.Create(toolFingerprint, datasetHash, model, pricing);
 
-        using var chatClient = chatClientProvider.CreateChatClient(new ChatClientRequest(snapshot, request, runId, agentFactory.Mode));
+        using var chatClient = new ObservedFunctionClient(new ObservedChatClient(
+            chatClientProvider.CreateChatClient(new ChatClientRequest(snapshot, request, runId, agentFactory.Mode))));
         using var bundle = agentFactory.Create(chatClient, toolService, model);
 
         var context = new RunContext
@@ -47,7 +57,37 @@ public sealed class AnalysisService(
             Fingerprints = fingerprints,
         };
 
-        return await runner.RunAsync(bundle.Agent, context, cancellationToken).ConfigureAwait(false);
+        var record = await runner.RunAsync(bundle.Agent, context, cancellationToken).ConfigureAwait(false);
+        execution.WriteArtifact("metrics.json", System.Text.Json.JsonSerializer.Serialize(record.Response.Metrics));
+        execution.WriteArtifact("result.json", System.Text.Json.JsonSerializer.Serialize(record.Response));
+        if (agentFactory.Mode == "classic")
+        {
+            var captured = execution.Payloads.Capture(record.RawModelOutput);
+            execution.WriteArtifact("classic/final-response.json", System.Text.Json.JsonSerializer.Serialize(new
+            {
+                source = "model", available = !string.IsNullOrEmpty(record.RawModelOutput), payload = captured,
+            }));
+            if (!string.IsNullOrEmpty(record.RawModelOutput))
+            {
+                execution.Emit("JSON_GENERATED", data: captured);
+            }
+        }
+
+        execution.Emit("JSON_VALIDATION_COMPLETED", record.Response.Metrics.SchemaValid ? "ok" : "failed");
+        execution.Emit(record.Response.Status == RunStatus.Completed ? "RUN_COMPLETED" : "RUN_FAILED",
+            record.Response.Status.ToString(), record.Response.Metrics.Duration.TotalMilliseconds);
+        return record with { Execution = execution.Context, Events = execution.Snapshot(), PayloadCaptureMode = execution.Payloads.Mode };
+        }
+        catch (Exception exception)
+        {
+            execution.Emit("RUN_FAILED", "error", errorCategory: exception.GetType().Name);
+            execution.WriteArtifact("result.json", System.Text.Json.JsonSerializer.Serialize(new
+            {
+                execution.Context, status = "Failed", errorCategory = exception.GetType().Name,
+                callerCancelled = cancellationToken.IsCancellationRequested,
+            }));
+            throw;
+        }
     }
 
     private static string BuildUserMessage(AnalysisRequest request)

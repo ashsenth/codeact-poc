@@ -17,6 +17,11 @@ public sealed record RunMetrics
 
     /// <summary>Total number of tool calls across all turns.</summary>
     public int ToolCallCount { get; init; }
+    public int ModelFacingToolCallCount { get; init; }
+    public int GranularToolCallCount { get; init; }
+    public int SandboxCallbackCount { get; init; }
+    public bool TelemetryValid { get; init; }
+    public IReadOnlyList<string> TelemetryErrors { get; init; } = [];
 
     /// <summary>Tool-call counts keyed by tool name.</summary>
     public IReadOnlyDictionary<string, int> ToolCallsByName { get; init; } =

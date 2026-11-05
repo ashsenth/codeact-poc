@@ -35,13 +35,25 @@ public sealed class FileRunStore : IRunStore
     public void Save(RunRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
+        foreach (var child in record.ChildRuns)
+        {
+            Save(child);
+        }
         _index[record.Response.RunId] = record;
 
         string runDir = Path.Combine(_runsRoot, record.Response.RunId);
         Directory.CreateDirectory(runDir);
         foreach (var (fileName, content) in RunArtifacts.Build(record, _model, _pricing))
         {
-            File.WriteAllText(Path.Combine(runDir, fileName), content, Utf8);
+            string path = Path.Combine(runDir, fileName);
+            if (fileName == RunArtifacts.Files.Events && File.Exists(path))
+            {
+                continue;
+            }
+
+            string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            File.WriteAllText(temporary, content, Utf8);
+            File.Move(temporary, path, overwrite: true);
         }
     }
 

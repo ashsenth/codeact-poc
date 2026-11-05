@@ -78,6 +78,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton(pricing);
         services.AddSingleton(hyperlight);
         services.AddSingleton(artifacts);
+        services.AddSingleton(new ExecutionOptions { ArtifactsRoot = artifacts.Root });
         services.AddSingleton<ToolMetrics>();
 
         services.AddSingleton<DatasetLoader>();

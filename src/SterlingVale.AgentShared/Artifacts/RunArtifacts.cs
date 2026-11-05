@@ -54,18 +54,36 @@ public static class RunArtifacts
         ArgumentNullException.ThrowIfNull(pricing);
 
         var response = record.Response;
-        return new Dictionary<string, string>(StringComparer.Ordinal)
+        var files = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [Files.Result] = JsonSerializer.Serialize(RunRecordMapper.ToResponseDto(record), Json),
-            [Files.Metrics] = JsonSerializer.Serialize(RunRecordMapper.ToMetricsDto(response.Metrics), Json),
+            [Files.Metrics] = JsonSerializer.Serialize(response.Metrics, Json),
             [Files.Events] = BuildEvents(record),
-            [Files.Metadata] = JsonSerializer.Serialize(BuildMetadata(record, model, pricing), Json),
+            [Files.Metadata] = JsonSerializer.Serialize(new { execution = record.Execution, configuration = BuildMetadata(record, model, pricing),
+                outputSource = record.ChildRuns.Count > 0 ? "application-merged" : "model",
+                childRunIds = record.ChildRuns.Select(child => child.Response.RunId).ToArray() }, Json),
             [Files.GeneratedCode] = record.GeneratedCode ?? GeneratedCodeUnavailable,
             [Files.RawOutput] = string.IsNullOrEmpty(record.RawModelOutput) ? RawOutputUnavailable : record.RawModelOutput,
             [Files.ToolResults] = string.IsNullOrEmpty(record.ToolResults) ? ToolResultsUnavailable : record.ToolResults,
             [Files.ToolCalls] = BuildToolCalls(record),
             [Files.Transcript] = BuildTranscript(record),
         };
+
+        if (record.Execution is not null)
+        {
+            var policy = new SterlingVale.Telemetry.PayloadPolicy(record.PayloadCaptureMode);
+            string[] payloadFiles = [Files.GeneratedCode, Files.RawOutput, Files.ToolResults, Files.Transcript];
+            foreach (string name in payloadFiles)
+            {
+                var captured = policy.Capture(files[name]);
+                files[name] = captured.Content ?? JsonSerializer.Serialize(captured, Json);
+            }
+
+            files.Remove(Files.GeneratedCode);
+            files.Remove(Files.ToolResults);
+        }
+
+        return files;
     }
 
     // One JSON object per line; arguments/results are nested JSON (not re-stringified). Every line
@@ -166,26 +184,11 @@ public static class RunArtifacts
 
     private static string BuildEvents(RunRecord record)
     {
-        var response = record.Response;
-        var metrics = response.Metrics;
         var builder = new StringBuilder();
-
-        AppendEvent(builder, new { @event = "run_started", runId = response.RunId, mode = record.Mode });
-        foreach (var (tool, count) in metrics.ToolCallsByName.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        foreach (var entry in record.Events)
         {
-            AppendEvent(builder, new { @event = "tool_calls", tool, count });
+            AppendEvent(builder, entry);
         }
-
-        AppendEvent(builder, new { @event = "model_turns", count = metrics.ModelTurnCount });
-        AppendEvent(builder, new
-        {
-            @event = "run_completed",
-            status = response.Status.ToString(),
-            schemaValid = metrics.SchemaValid,
-            totalTokens = metrics.TotalTokens,
-            executeCodeCalls = metrics.ExecuteCodeCallCount,
-        });
-
         return builder.ToString();
     }
 

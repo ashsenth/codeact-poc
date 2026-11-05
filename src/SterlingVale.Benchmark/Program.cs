@@ -2,6 +2,7 @@ using SterlingVale.Benchmark;
 using SterlingVale.Benchmark.Commands;
 using SterlingVale.Benchmark.Model;
 using SterlingVale.Benchmark.Reporting;
+using SterlingVale.Telemetry;
 
 // Sterling Vale benchmark CLI.
 //   benchmark validate-data
@@ -18,6 +19,27 @@ if (args.Length == 0)
 
 string command = args[0];
 var options = ParseOptions(args);
+if (options.TryGetValue("log-level", out var logLevel))
+{
+    if (!Enum.TryParse<ExecutionLogLevel>(logLevel, true, out var parsedLevel) || !Enum.IsDefined(parsedLevel))
+    {
+        Console.Error.WriteLine("--log-level must be minimal, normal, verbose, or debug.");
+        return 2;
+    }
+
+    Environment.SetEnvironmentVariable("EXECUTION_LOG_LEVEL", parsedLevel.ToString());
+}
+
+if (options.TryGetValue("payload-capture", out var capture))
+{
+    if (!Enum.TryParse<PayloadCaptureMode>(capture, true, out var parsedCapture) || !Enum.IsDefined(parsedCapture))
+    {
+        Console.Error.WriteLine("--payload-capture must be none, metadata, or full.");
+        return 2;
+    }
+
+    Environment.SetEnvironmentVariable("EXECUTION_PAYLOAD_CAPTURE", parsedCapture.ToString());
+}
 bool open = args.Contains("--open", StringComparer.OrdinalIgnoreCase);
 
 switch (command)
@@ -45,6 +67,11 @@ switch (command)
 static async Task<int> RunAsync(string profile, int? trials, bool open)
 {
     using var composition = new Composition();
+    if (Environment.GetEnvironmentVariable("BENCHMARK_REQUIRE_LIVE") == "true" && (!composition.Live || !composition.Hyperlight.HasGuest))
+    {
+        Console.Error.WriteLine("Live comparison blocked: configure Azure OpenAI and HYPERLIGHT_PYTHON_GUEST_PATH on an x64 virtualization-capable host. No offline substitution permitted.");
+        return 1;
+    }
     if (!composition.Snapshots.AvailableProfiles.Contains(profile, StringComparer.OrdinalIgnoreCase))
     {
         Console.Error.WriteLine($"Dataset profile '{profile}' is not available under '{composition.DataRoot}'. Run the data generator first.");
@@ -60,12 +87,17 @@ static async Task<int> RunAsync(string profile, int? trials, bool open)
         OpenInBrowser(Path.ChangeExtension(path, ".html"));
     }
 
-    return report.Fairness.Matched ? 0 : 1;
+    return report.Fairness.Matched && report.RawTrials.All(trial => trial.TelemetryValid) ? 0 : 1;
 }
 
 static async Task<int> CompareAsync(int? trials)
 {
     using var composition = new Composition();
+    if (Environment.GetEnvironmentVariable("BENCHMARK_REQUIRE_LIVE") == "true" && (!composition.Live || !composition.Hyperlight.HasGuest))
+    {
+        Console.Error.WriteLine("Live comparison blocked: Azure OpenAI and a real Hyperlight guest are required. No offline substitution permitted.");
+        return 1;
+    }
     var harness = new BenchmarkHarness(composition);
     int exit = 0;
     foreach (var profile in composition.Snapshots.AvailableProfiles)
@@ -73,7 +105,7 @@ static async Task<int> CompareAsync(int? trials)
         var report = await harness.RunAsync(profile, trials ?? composition.Trials, CancellationToken.None);
         string path = ComparisonWriter.Write(report, composition.ArtifactsRoot);
         PrintSummary(report, path, composition.Live);
-        if (!report.Fairness.Matched)
+        if (!report.Fairness.Matched || report.RawTrials.Any(trial => !trial.TelemetryValid))
         {
             exit = 1;
         }
@@ -179,6 +211,7 @@ static void PrintSummary(ComparisonReport report, string path, bool live)
 {
     Console.WriteLine($"Comparison {report.ComparisonId} ({report.Profile}) — {(live ? "LIVE model" : "offline fake model")}");
     Console.WriteLine($"  fairness: {(report.Fairness.Matched ? "MATCHED" : "FAILED: " + string.Join(",", report.Fairness.Mismatches))}");
+    Console.WriteLine($"  telemetry: {(report.RawTrials.All(trial => trial.TelemetryValid) ? "VALID" : "FAILED")}");
     if (report.ClassicBatchSize > 0)
     {
         Console.WriteLine($"  classic batched: {report.ClassicBatchSize} household(s) per model invocation (metrics summed across batches)");
@@ -219,4 +252,5 @@ static void PrintUsage()
     Console.WriteLine("  benchmark compare [--trials N]");
     Console.WriteLine("  benchmark report --comparison-id <id> [--open]");
     Console.WriteLine("  benchmark visualize [--profiles small,medium,large] [--open]");
+    Console.WriteLine("  execution options: --log-level minimal|normal|verbose|debug --payload-capture none|metadata|full");
 }

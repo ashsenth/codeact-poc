@@ -100,7 +100,8 @@ public sealed class Composition : IDisposable
 
     /// <summary>Builds an analysis service bound to a specific mode factory.</summary>
     public AnalysisService ServiceFor(IAgentFactory factory) =>
-        new(Snapshots, ChatClientProvider, factory, Runner, Model, Pricing, ToolMetrics);
+        new(Snapshots, ChatClientProvider, factory, Runner, Model, Pricing, ToolMetrics,
+            new ExecutionOptions { ArtifactsRoot = ArtifactsRoot });
 
     private static int ParseInt(string? value, int fallback) =>
         int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : fallback;

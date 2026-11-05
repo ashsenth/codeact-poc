@@ -15,7 +15,16 @@ public sealed record TrialResult(
     long? TotalTokens,
     decimal? EstimatedCostUsd,
     string RunId,
-    RunScore Score);
+    RunScore Score)
+{
+    public string? TrialId { get; init; }
+    public string? CorrelationId { get; init; }
+    public bool TelemetryValid { get; init; }
+    public int ModelFacingToolCalls { get; init; }
+    public int GranularToolCalls { get; init; }
+    public int SandboxCallbacks { get; init; }
+    public IReadOnlyList<string> ChildRunIds { get; init; } = [];
+}
 
 /// <summary>Median/min/max of a measured quantity (no trials removed).</summary>
 public sealed record DurationStats(double Median, double Min, double Max);
@@ -91,4 +100,9 @@ public sealed record ComparisonReport(
     ModeSummary CodeAct,
     ComparisonDelta? Delta,
     IReadOnlyList<TrialResult> RawTrials,
-    int ClassicBatchSize = 0);
+    int ClassicBatchSize = 0)
+{
+    public string ExecutionKind { get; init; } = "unavailable";
+    public int? DatasetAccountCount { get; init; }
+    public int? DatasetPositionCount { get; init; }
+}

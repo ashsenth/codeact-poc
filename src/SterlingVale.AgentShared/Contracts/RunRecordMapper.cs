@@ -27,7 +27,8 @@ public static class RunRecordMapper
         return new ArtifactsDto(
             record.Response.RunId,
             record.Mode,
-            record.RawModelOutput,
+            record.Execution is null ? record.RawModelOutput :
+                System.Text.Json.JsonSerializer.Serialize(new SterlingVale.Telemetry.PayloadPolicy(record.PayloadCaptureMode).Capture(record.RawModelOutput)),
             record.Fingerprints.ToDictionary());
     }
 

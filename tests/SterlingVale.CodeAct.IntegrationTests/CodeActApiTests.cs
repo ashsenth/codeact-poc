@@ -51,13 +51,18 @@ public sealed class CodeActApiTests(CodeActApiFactory factory) : IClassFixture<C
     }
 
     [Fact]
-    public async Task Generated_code_artifact_captures_execute_code_program()
+    public async Task Metadata_mode_records_code_execution_without_persisting_program_payload()
     {
         var created = await PostAnalysisAsync("small");
-        string codeFile = Path.Combine(factory.ArtifactsRoot, "runs", created.RunId, "generated-code.txt");
-        Assert.True(File.Exists(codeFile));
-        // Offline CodeAct captures the execute_code 'code' argument, not the unavailable marker.
-        Assert.DoesNotContain("UNAVAILABLE", await File.ReadAllTextAsync(codeFile), StringComparison.Ordinal);
+        string directory = Path.Combine(factory.ArtifactsRoot, "runs", created.RunId);
+        Assert.False(File.Exists(Path.Combine(directory, "codeact/generated-code-001.py")));
+        Assert.True(File.Exists(Path.Combine(directory, "codeact/execution-001.json")));
+        Assert.True(File.Exists(Path.Combine(directory, "timeline.json")));
+        string events = await File.ReadAllTextAsync(Path.Combine(directory, "events.jsonl"));
+        Assert.Contains("CODE_GENERATED", events, StringComparison.Ordinal);
+        Assert.Contains("OFFLINE_CODE_TOOL_STARTED", events, StringComparison.Ordinal);
+        Assert.Contains("OFFLINE_CODE_TOOL_COMPLETED", events, StringComparison.Ordinal);
+        Assert.DoesNotContain("CODE_EXECUTION_STARTED", events, StringComparison.Ordinal);
     }
 
     [Fact]

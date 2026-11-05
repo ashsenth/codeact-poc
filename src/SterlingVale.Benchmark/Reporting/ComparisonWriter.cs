@@ -28,7 +28,20 @@ public static class ComparisonWriter
         File.WriteAllText(Path.Combine(dir, report.ComparisonId + ".md"), RenderMarkdown(report), Utf8);
         File.WriteAllText(Path.Combine(dir, report.ComparisonId + ".csv"), RenderCsv(report), Utf8);
         File.WriteAllText(Path.Combine(dir, report.ComparisonId + ".html"), RenderHtml(report), Utf8);
+        string comparisonDirectory = Path.Combine(dir, report.ComparisonId);
+        Directory.CreateDirectory(comparisonDirectory);
+        WriteAtomic(Path.Combine(comparisonDirectory, "summary.json"), JsonSerializer.Serialize(report, Json));
+        WriteAtomic(Path.Combine(comparisonDirectory, "summary.md"),
+            "Execution kind: " + report.ExecutionKind + "\n\nTelemetry validity: " +
+            (report.RawTrials.All(trial => trial.TelemetryValid) ? "VALID" : "FAILED") + "\n\n" + RenderMarkdown(report));
         return jsonPath;
+    }
+
+    private static void WriteAtomic(string path, string content)
+    {
+        string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        File.WriteAllText(temporary, content, Utf8);
+        File.Move(temporary, path, overwrite: true);
     }
 
     /// <summary>Reads a comparison report from its JSON file.</summary>

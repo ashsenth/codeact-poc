@@ -44,6 +44,7 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
 
         AgentResponse? run = null;
         bool timedOut = false;
+        bool failed = false;
         try
         {
             using (ToolCallRecorder.Activate(recorder))
@@ -61,16 +62,32 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
 
             timedOut = true; // our per-run timeout fired
         }
+        catch (Exception exception)
+        {
+            failed = true;
+            SterlingVale.Telemetry.ExecutionSession.Current?.Emit("AGENT_EXECUTION_FAILED", "error", errorCategory: exception.GetType().Name);
+        }
 
         stopwatch.Stop();
         var toolCalls = recorder.Snapshot();
 
         if (timedOut || run is null)
         {
-            LogTimedOut(context.RunId, context.Mode, context.Model.Timeout.TotalSeconds, toolCalls.Count);
-            return BuildRecord(context, RunStatus.TimedOut, rawOutput: string.Empty, report: null,
+            if (timedOut)
+            {
+                LogTimedOut(context.RunId, context.Mode, context.Model.Timeout.TotalSeconds, toolCalls.Count);
+            }
+
+            var incompleteMetrics = SterlingVale.Telemetry.ExecutionSession.Current is { } incompleteSession
+                ? TelemetryReconciler.FromEvidence(incompleteSession, stopwatch.Elapsed, false, null)
+                : EmptyMetrics(stopwatch.Elapsed);
+            incompleteMetrics = incompleteMetrics with
+            {
+                EstimatedCostUsd = context.Pricing.EstimateCost(incompleteMetrics.InputTokens, incompleteMetrics.OutputTokens),
+            };
+            return BuildRecord(context, failed ? RunStatus.Failed : RunStatus.TimedOut, rawOutput: string.Empty, report: null,
                 generatedCode: null, toolResults: null, toolCalls: toolCalls, transcript: [],
-                metrics: EmptyMetrics(stopwatch.Elapsed));
+                metrics: incompleteMetrics);
         }
 
         var messages = run.Messages;
@@ -121,6 +138,40 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
             RetryCount = 0,
             SchemaValid = valid,
         };
+
+        if (SterlingVale.Telemetry.ExecutionSession.Current is { } execution)
+        {
+            metrics = TelemetryReconciler.FromEvidence(execution, stopwatch.Elapsed, valid, cost) with { ToolCallsByName = byName };
+            var reconciliationErrors = metrics.TelemetryErrors.ToList();
+            if (metrics.ModelFacingToolCallCount != calls.Count || metrics.ExecuteCodeCallCount != byName.GetValueOrDefault("execute_code"))
+            {
+                reconciliationErrors.Add("Agent transcript invocation count differs from execution events");
+            }
+
+            if (metrics.ModelTurnCount != turns)
+            {
+                reconciliationErrors.Add("Agent transcript response count differs from model responses");
+            }
+            if (metrics.GranularToolCallCount != toolCalls.Count)
+            {
+                reconciliationErrors.Add("Granular invocation recorder mismatch");
+            }
+
+            if (metrics.InputTokens is not null && input != metrics.InputTokens ||
+                metrics.OutputTokens is not null && output != metrics.OutputTokens ||
+                metrics.TotalTokens is not null && total != metrics.TotalTokens)
+            {
+                reconciliationErrors.Add("Agent aggregate usage differs from per-response usage");
+            }
+
+            metrics = metrics with { TelemetryErrors = reconciliationErrors, TelemetryValid = reconciliationErrors.Count == 0,
+                EstimatedCostUsd = context.Pricing.EstimateCost(metrics.InputTokens, metrics.OutputTokens) };
+            execution.Emit("TELEMETRY_RECONCILIATION_COMPLETED", metrics.TelemetryValid ? "ok" : "failed", data: new { metrics.TelemetryErrors });
+            if (!metrics.TelemetryValid)
+            {
+                status = RunStatus.Failed;
+            }
+        }
 
         LogRunDetail(context, status, turns, toolCalls, byName.GetValueOrDefault("execute_code"), total);
         return BuildRecord(context, status, raw, report, generatedCode, toolResults, toolCalls, transcript, metrics);

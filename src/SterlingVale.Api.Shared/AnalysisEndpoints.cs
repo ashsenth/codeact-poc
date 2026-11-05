@@ -39,6 +39,7 @@ public static class AnalysisEndpoints
             ISnapshotProvider snapshots,
             AnalysisService analysisService,
             IRunStore runStore,
+            HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
             // Validate the raw body against the versioned request schema (rejects unknown/invalid fields).
@@ -62,6 +63,9 @@ public static class AnalysisEndpoints
             }
 
             var record = await analysisService.AnalyzeAsync(request, cancellationToken);
+            httpContext.Response.Headers["X-Correlation-ID"] = record.Execution?.CorrelationId;
+            httpContext.Response.Headers["X-Run-ID"] = record.Response.RunId;
+            httpContext.Response.Headers["traceparent"] = $"00-{record.Execution?.TraceId}-{record.Execution?.SpanId}-01";
             runStore.Save(record);
             return Results.Ok(RunRecordMapper.ToResponseDto(record));
         });

@@ -27,6 +27,7 @@ public sealed class BenchmarkHarness(Composition composition)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profile);
 
+        string comparisonId = $"{profile}-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
         var snapshot = composition.Snapshots.GetSnapshot(profile);
         string datasetHash = composition.Snapshots.GetDatasetHash(profile);
         var request = new AnalysisRequest { DatasetProfile = profile };
@@ -56,6 +57,7 @@ public sealed class BenchmarkHarness(Composition composition)
         var results = new List<TrialResult>();
         for (int pair = 1; pair <= trials; pair++)
         {
+            string trialId = Guid.NewGuid().ToString("N");
             bool classicFirst = random.Next(2) == 0;
             (string Mode, AnalysisService Service)[] order = classicFirst
                 ? [("classic", classicService), ("codeact", codeactService)]
@@ -68,7 +70,7 @@ public sealed class BenchmarkHarness(Composition composition)
                 RunRecord record;
                 try
                 {
-                    record = await RunModeAsync(mode, service, request, householdIds, cancellationToken).ConfigureAwait(false);
+                    record = await RunModeAsync(mode, service, request, householdIds, comparisonId, trialId, cancellationToken).ConfigureAwait(false);
                 }
                 catch (ClientResultException ex)
                 {
@@ -90,11 +92,16 @@ public sealed class BenchmarkHarness(Composition composition)
                 var m = record.Response.Metrics;
                 results.Add(new TrialResult(
                     pair, orderIndex, mode, stopwatch.Elapsed.TotalMilliseconds, record.Response.Status.ToString(),
-                    m.ToolCallCount, m.ModelTurnCount, m.ExecuteCodeCallCount, m.TotalTokens, m.EstimatedCostUsd, record.Response.RunId, score));
+                    m.ToolCallCount, m.ModelTurnCount, m.ExecuteCodeCallCount, m.TotalTokens, m.EstimatedCostUsd, record.Response.RunId, score)
+                {
+                    TrialId = trialId, CorrelationId = record.Execution?.CorrelationId,
+                    TelemetryValid = m.TelemetryValid, ModelFacingToolCalls = m.ModelFacingToolCallCount,
+                    GranularToolCalls = m.GranularToolCallCount, SandboxCallbacks = m.SandboxCallbackCount,
+                    ChildRunIds = record.ChildRuns.Select(child => child.Response.RunId).ToArray(),
+                });
             }
         }
 
-        string comparisonId = $"{profile}-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..8]}";
         var classicSummary = Aggregator.Summarize("classic", results);
         var codeactSummary = Aggregator.Summarize("codeact", results);
         return new ComparisonReport(
@@ -111,32 +118,38 @@ public sealed class BenchmarkHarness(Composition composition)
             codeactSummary,
             Aggregator.ComputeDelta(classicSummary, codeactSummary),
             results,
-            composition.ClassicBatchSize);
+            composition.ClassicBatchSize)
+        {
+            ExecutionKind = !composition.Live ? "offline-fake-control" : composition.Hyperlight.HasGuest ? "live-model-hyperlight" : "live-model-offline-code-stand-in",
+            DatasetAccountCount = snapshot.Accounts.Count,
+            DatasetPositionCount = snapshot.Positions.Count,
+        };
     }
 
     // Classic cannot emit a correct report over many households in one model run (it skips pricing and
     // returns an empty array at scale). When a batch size is set, run Classic once per batch of
     // households and merge, so direct tool-calling can complete; metrics are summed across the batches.
     private async Task<RunRecord> RunModeAsync(
-        string mode, AnalysisService service, AnalysisRequest request, IReadOnlyList<string> householdIds, CancellationToken cancellationToken)
+        string mode, AnalysisService service, AnalysisRequest request, IReadOnlyList<string> householdIds,
+        string comparisonId, string trialId, CancellationToken cancellationToken)
     {
         int batchSize = composition.ClassicBatchSize;
         if (mode != "classic" || batchSize <= 0 || householdIds.Count <= batchSize)
         {
-            return await service.AnalyzeAsync(request, cancellationToken).ConfigureAwait(false);
+            return await service.AnalyzeAsync(request, cancellationToken, comparisonId, trialId).ConfigureAwait(false);
         }
 
         var batches = new List<RunRecord>();
         for (int i = 0; i < householdIds.Count; i += batchSize)
         {
             var ids = householdIds.Skip(i).Take(batchSize).ToList();
-            batches.Add(await service.AnalyzeAsync(request with { HouseholdIds = ids }, cancellationToken).ConfigureAwait(false));
+            batches.Add(await service.AnalyzeAsync(request with { HouseholdIds = ids }, cancellationToken, comparisonId, trialId).ConfigureAwait(false));
         }
 
         return MergeBatches(batches);
     }
 
-    private static RunRecord MergeBatches(IReadOnlyList<RunRecord> batches)
+    private RunRecord MergeBatches(IReadOnlyList<RunRecord> batches)
     {
         var first = batches[0];
         var households = new List<HouseholdExposure>();
@@ -160,20 +173,25 @@ public sealed class BenchmarkHarness(Composition composition)
         bool valid = allCompleted && merged is not null;
         var metrics = MergeMetrics(batches.Select(b => b.Response.Metrics).ToList(), valid);
 
+        using var aggregate = new SterlingVale.Telemetry.ExecutionSession(composition.ArtifactsRoot, "classic", "aggregate",
+            first.Execution?.ComparisonId, first.Execution?.TrialId);
+        aggregate.Emit("BATCH_AGGREGATION_STARTED", data: new { childRunIds = batches.Select(batch => batch.Response.RunId).ToArray() });
+        aggregate.Emit("BATCH_AGGREGATION_COMPLETED", valid ? "ok" : "failed");
         return new RunRecord
         {
             Response = new AnalysisResponse
             {
-                RunId = first.Response.RunId,
+                RunId = aggregate.Context.RunId,
                 Mode = first.Mode,
                 Status = valid ? RunStatus.Completed : RunStatus.Failed,
                 Report = merged,
                 Metrics = metrics,
             },
             Mode = first.Mode,
-            RawModelOutput = merged is not null ? ReportJson.Serialize(merged, indented: true) : string.Empty,
-            ToolCalls = batches.SelectMany(b => b.ToolCalls).ToList(),
-            Transcript = batches.SelectMany(b => b.Transcript).ToList(),
+            RawModelOutput = string.Empty,
+            Execution = aggregate.Context,
+            Events = aggregate.Snapshot(),
+            ChildRuns = batches,
             Fingerprints = first.Fingerprints,
         };
     }
@@ -190,7 +208,7 @@ public sealed class BenchmarkHarness(Composition composition)
         }
 
         long? SumTokens(Func<RunMetrics, long?> select) =>
-            parts.Any(p => select(p) is not null) ? parts.Sum(p => select(p) ?? 0L) : null;
+            parts.All(p => select(p) is not null) ? parts.Sum(p => select(p)!.Value) : null;
 
         return new RunMetrics
         {
@@ -198,12 +216,16 @@ public sealed class BenchmarkHarness(Composition composition)
             ModelRequestCount = parts.Sum(p => p.ModelRequestCount),
             ModelTurnCount = parts.Sum(p => p.ModelTurnCount),
             ToolCallCount = parts.Sum(p => p.ToolCallCount),
+            ModelFacingToolCallCount = parts.Sum(p => p.ModelFacingToolCallCount),
+            GranularToolCallCount = parts.Sum(p => p.GranularToolCallCount),
+            TelemetryValid = parts.All(p => p.TelemetryValid),
+            TelemetryErrors = parts.SelectMany(p => p.TelemetryErrors).ToArray(),
             ToolCallsByName = byName,
             ExecuteCodeCallCount = 0,
             InputTokens = SumTokens(p => p.InputTokens),
             OutputTokens = SumTokens(p => p.OutputTokens),
             TotalTokens = SumTokens(p => p.TotalTokens),
-            EstimatedCostUsd = parts.Any(p => p.EstimatedCostUsd is not null) ? parts.Sum(p => p.EstimatedCostUsd ?? 0m) : null,
+            EstimatedCostUsd = parts.All(p => p.EstimatedCostUsd is not null) ? parts.Sum(p => p.EstimatedCostUsd!.Value) : null,
             RetryCount = parts.Sum(p => p.RetryCount),
             SchemaValid = valid,
         };

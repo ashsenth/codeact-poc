@@ -6,6 +6,7 @@ using SterlingVale.AgentShared.Configuration;
 using SterlingVale.AgentShared.Fakes;
 using SterlingVale.AgentShared.Prompting;
 using SterlingVale.Tools;
+using SterlingVale.Telemetry;
 
 namespace SterlingVale.CodeAct;
 
@@ -43,6 +44,16 @@ public sealed class CodeActAgentFactory : IAgentFactory
         ArgumentNullException.ThrowIfNull(toolService);
         ArgumentNullException.ThrowIfNull(model);
 
+        if (ExecutionSession.Current is { } session)
+        {
+            session.SandboxRuntime = _hyperlight.HasGuest ? "hyperlight" : "offline-stand-in";
+        }
+
+        ExecutionSession.Current?.Emit("SANDBOX_CONFIGURATION", data: new
+        {
+            runtime = _hyperlight.HasGuest ? "hyperlight" : "offline-stand-in-no-code-executed",
+            initializationMetrics = "unavailable", cleanupMetrics = "unavailable",
+        });
         return _hyperlight.HasGuest
             ? CreateHyperlight(chatClient, toolService, model, _hyperlight.GuestPath!)
             : CreateOffline(chatClient, model);
@@ -64,6 +75,7 @@ public sealed class CodeActAgentFactory : IAgentFactory
         var provider = new HyperlightCodeActProvider(options);
         var agent = chatClient.AsAIAgent(new ChatClientAgentOptions
         {
+            UseProvidedChatClientAsIs = chatClient is ObservedFunctionClient,
             Name = "sterling-vale-codeact",
             ChatOptions = new ChatOptions
             {
@@ -84,6 +96,7 @@ public sealed class CodeActAgentFactory : IAgentFactory
         var executeCode = FakeExecuteCodeFunction.Create();
         var agent = chatClient.AsAIAgent(new ChatClientAgentOptions
         {
+            UseProvidedChatClientAsIs = chatClient is ObservedFunctionClient,
             Name = "sterling-vale-codeact",
             ChatOptions = new ChatOptions
             {

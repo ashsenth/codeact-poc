@@ -28,6 +28,7 @@ public sealed class ClassicAgentFactory : IAgentFactory
         var tools = _catalog.CreateTools(toolService).Cast<AITool>().ToList();
         var agent = chatClient.AsAIAgent(new ChatClientAgentOptions
         {
+            UseProvidedChatClientAsIs = chatClient is ObservedFunctionClient,
             Name = "sterling-vale-classic",
             ChatOptions = new ChatOptions
             {
