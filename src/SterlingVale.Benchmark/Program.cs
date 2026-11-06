@@ -210,6 +210,11 @@ static int Visualize(IReadOnlyDictionary<string, string> options, bool open)
 static void PrintSummary(ComparisonReport report, string path, bool live)
 {
     Console.WriteLine($"Comparison {report.ComparisonId} ({report.Profile}) — {(live ? "LIVE model" : "offline fake model")}");
+    Console.WriteLine($"  execution kind: {report.ExecutionKind}");
+    if (!live)
+    {
+        Console.WriteLine("  FAKE-MODEL CONTROL: synthetic tokens and formula cost; NOT live performance. The no-guest stand-in executes no Python.");
+    }
     Console.WriteLine($"  fairness: {(report.Fairness.Matched ? "MATCHED" : "FAILED: " + string.Join(",", report.Fairness.Mismatches))}");
     Console.WriteLine($"  telemetry: {(report.RawTrials.All(trial => trial.TelemetryValid) ? "VALID" : "FAILED")}");
     if (report.ClassicBatchSize > 0)
@@ -218,7 +223,7 @@ static void PrintSummary(ComparisonReport report, string path, bool live)
     }
 
     Console.WriteLine($"  classic  duration median {report.Classic.DurationMs.Median:0.###} ms; codeact duration median {report.CodeAct.DurationMs.Median:0.###} ms");
-    if (report.Delta is not null)
+    if (report.ExecutionKind == "live-model-hyperlight" && report.Delta is not null)
     {
         Console.WriteLine($"  delta (codeact vs classic): {ComparisonWriter.FormatDeltaSummary(report.Delta)}");
     }

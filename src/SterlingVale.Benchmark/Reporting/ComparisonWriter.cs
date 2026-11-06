@@ -56,7 +56,7 @@ public static class ComparisonWriter
         var sb = new StringBuilder();
         sb.Append("comparison_id,profile,dataset_hash,pair_id,order_in_pair,mode,duration_ms,status,");
         sb.Append("tool_calls,model_turns,execute_code_calls,total_tokens,estimated_cost_usd,match_class,");
-        sb.Append("flagged_precision,flagged_recall,breach_precision,breach_recall,allocation_mae,trade_notional_mae,max_allocation_error\n");
+        sb.Append("flagged_precision,flagged_recall,breach_precision,breach_recall,allocation_mae,trade_notional_mae,max_allocation_error,execution_kind\n");
         foreach (var t in report.RawTrials)
         {
             var s = t.Score;
@@ -80,7 +80,8 @@ public static class ComparisonWriter
             sb.Append(s.BreachRecall.ToString(Invariant)).Append(',');
             sb.Append(s.AllocationMae.ToString(Invariant)).Append(',');
             sb.Append(s.TradeNotionalMaeFraction.ToString(Invariant)).Append(',');
-            sb.Append(s.MaxAllocationError.ToString(Invariant)).Append('\n');
+            sb.Append(s.MaxAllocationError.ToString(Invariant)).Append(',');
+            sb.Append(Csv(report.ExecutionKind)).Append('\n');
         }
 
         return sb.ToString();
@@ -103,12 +104,12 @@ public static class ComparisonWriter
         var a = report.CodeAct;
         int cN = TrialCount(report, "classic"), cDone = CompletedCount(report, "classic");
         int aN = TrialCount(report, "codeact"), aDone = CompletedCount(report, "codeact");
-        bool classicStruggled = cDone < aDone;
 
         var sb = new StringBuilder();
         AppendHtmlHead(sb, $"Sterling Vale \u2014 {report.ComparisonId}");
         sb.Append("<h1>Sterling Vale &mdash; Classic vs CodeAct</h1>");
         sb.Append("<p class=\"disc\">SYNTHETIC analysis only &mdash; not investment advice. Measured numbers for a controlled A/B of orchestration only; no performance outcome is guaranteed.</p>");
+        sb.Append($"<p class=\"panel\"><b>{Enc(ExecutionNotice(report))}</b></p>");
         sb.Append($"<p class=\"meta\">Comparison <code>{Enc(report.ComparisonId)}</code> &middot; profile <b>{Enc(report.Profile)}</b>{HouseholdsMeta(report)} &middot; {Enc(report.GeneratedAtUtc)}</p>");
         sb.Append(report.Fairness.Matched
             ? "<p><span class=\"fair ok\">fairness: MATCHED</span> <span class=\"hint\">identical task, tools, model and data &mdash; only the orchestration differs</span></p>"
@@ -128,7 +129,7 @@ public static class ComparisonWriter
 
         // Head-to-head deltas are only meaningful when BOTH modes completed at least one trial;
         // comparing against a mode that never finished would be misleading.
-        if (report.Delta is { } d && cDone > 0 && aDone > 0)
+        if (report.ExecutionKind == "live-model-hyperlight" && report.Delta is { } d && cDone > 0 && aDone > 0)
         {
             sb.Append("<h2>CodeAct vs Classic (both completed)</h2>");
             sb.Append("<section class=\"cards\">");
@@ -141,7 +142,7 @@ public static class ComparisonWriter
         }
 
         // How each mode runs (educational, always shown so a first-time reader has context).
-        sb.Append("<h2>How each mode runs</h2>");
+        sb.Append("<h2>Intended live architecture (not evidence of execution)</h2>");
         sb.Append("<div class=\"how\">");
         sb.Append("<div class=\"col classic\"><h3>Classic &mdash; direct tool-calling</h3><p>The model calls the seven data tools itself, one decision at a time, and assembles the report from the results it accumulates in its own context.</p></div>");
         sb.Append("<div class=\"col codeact\"><h3>CodeAct &mdash; sandboxed code</h3><p>The model writes one Python program and runs it with <code>execute_code</code>; the program loops over the data and calls the same tools in-process, returning only the finished report.</p></div>");
@@ -152,10 +153,7 @@ public static class ComparisonWriter
         sb.Append("<div class=\"panel\">");
         sb.Append($"<p><span class=\"tag classic\">Classic</span> made a median of <b>{Num(c.RoundTrips?.MedianToolCalls)}</b> tool calls across <b>{Num(c.RoundTrips?.MedianModelTurns)}</b> model turns and {Enc(Outcome(cDone, cN))}.</p>");
         sb.Append($"<p><span class=\"tag codeact\">CodeAct</span> ran <b>{Num(a.RoundTrips?.MedianExecuteCodeCalls)}</b> <code>execute_code</code> program(s) across <b>{Num(a.RoundTrips?.MedianModelTurns)}</b> model turns and {Enc(Outcome(aDone, aN))}.</p>");
-        if (classicStruggled && aDone > 0)
-        {
-            sb.Append("<p class=\"why\"><b>What actually happened.</b> Classic gathered the data successfully &mdash; its tool calls ran &mdash; but then returned an empty / schema-invalid report instead of the final ExposureReport. It was <i>not</i> stopped by a tool-call cap or the context window (it stayed well under the model's limits); with this model and prompt it simply failed to emit the final structured output. CodeAct assembles the report in sandboxed code, so it produced a valid one. Because Classic never completed, the token, cost and tool-call figures below are <b>not a like-for-like comparison</b> &mdash; they show the cost of a failed attempt beside a completed one, not relative efficiency.</p>");
-        }
+        sb.Append("<p>Completion, oracle correctness and telemetry validity are separate checks. Inspect each trial and its event journal before attributing a failure to the model, context limits or sandbox.</p>");
 
         sb.Append("</div>");
 
@@ -167,7 +165,7 @@ public static class ComparisonWriter
         sb.Append(SvgBars("Tool calls median", c.RoundTrips?.MedianToolCalls, a.RoundTrips?.MedianToolCalls, v => v.ToString("0.#", Invariant)));
         sb.Append(SvgBars("Cost median (USD)", (double?)c.Cost?.Median, (double?)a.Cost?.Median, v => v.ToString("0.######", Invariant)));
         sb.Append("</section>");
-        sb.Append("<p class=\"disc\">A bar shown as <b>n/a</b> means no valid measurement. When one mode failed, these are <b>not</b> a fair comparison: a failed mode's lower tokens/cost reflect that it stopped early without producing a report, and the tool-call bar undercounts CodeAct (its tool calls run inside the sandbox and are not counted as model tool calls).</p>");
+        sb.Append("<p class=\"disc\">A bar shown as <b>n/a</b> means no valid measurement. Failed attempts are not efficiency baselines. Tool calls count granular host invocations, including real sandbox callbacks; execute_code calls are separate. Offline control measurements are not agent performance.</p>");
 
         sb.Append("<h2>Per-trial duration (ms)</h2>");
         sb.Append(SvgStrip(report));
@@ -208,9 +206,9 @@ public static class ComparisonWriter
 
     private static string Takeaway(int cDone, int cN, int aDone, int aN) =>
         aDone > 0 && cDone == 0
-            ? "CodeAct completed the analysis; Classic could not complete it at all at this dataset size. The sections below explain why."
+            ? "CodeAct completed at least one trial; Classic completed none. Inspect oracle scores and journals before diagnosing the difference."
             : cDone > 0 && aDone > 0 && aDone >= cDone
-                ? "Both modes completed. CodeAct reaches the same answer with far fewer model\u2013tool round-trips \u2014 see the deltas below."
+                ? "Both modes completed at least one trial. Check oracle scores separately; completion alone does not establish accuracy or an efficiency advantage."
                 : cDone > aDone
                     ? "Classic completed more trials than CodeAct in this run."
                     : "Neither mode completed reliably in this run.";
@@ -235,31 +233,7 @@ public static class ComparisonWriter
             return "No comparisons to summarise yet.";
         }
 
-        bool codeActAll = ordered.All(r => { int n = TrialCount(r, "codeact"); return n > 0 && CompletedCount(r, "codeact") == n; });
-        bool classicAllFailed = ordered.All(r => CompletedCount(r, "classic") == 0);
-        bool codeActAny = ordered.Any(r => CompletedCount(r, "codeact") > 0);
-        var classicFailed = ordered.Where(r => CompletedCount(r, "classic") == 0).Select(r => r.Profile).ToList();
-        var classicOk = ordered.Where(r => { int n = TrialCount(r, "classic"); return n > 0 && CompletedCount(r, "classic") == n; }).Select(r => r.Profile).ToList();
-
-        if (classicAllFailed && codeActAny)
-        {
-            return "CodeAct produced a correct report at every dataset size; Classic failed to emit a valid report at any size &mdash; even the smallest (10 households). Because Classic failed even at trivial scale, this is an output-emission failure, not a scaling result, and the two are not yet comparable on cost or speed.";
-        }
-
-        if (codeActAll && classicFailed.Count > 0)
-        {
-            string classicPart = classicOk.Count > 0
-                ? $"Classic only finished the smaller set(s) ({string.Join(", ", classicOk)}) and failed on {string.Join(", ", classicFailed)}"
-                : $"Classic failed on every size ({string.Join(", ", classicFailed)})";
-            return $"CodeAct completed every dataset size tested. {classicPart} \u2014 direct tool-calling cannot keep up as the number of households grows.";
-        }
-
-        if (codeActAll && classicFailed.Count == 0)
-        {
-            return "Both modes completed every dataset size. Compare the per-dataset deltas below to see the cost of each approach.";
-        }
-
-        return "Completion varied by dataset size \u2014 read the matrix above per row; deltas are only meaningful where both modes are green.";
+        return "Read completion per dataset below and oracle scores in the individual reports. Completion counts alone do not explain failures or establish relative efficiency.";
     }
 
     private static string Num(double? value) => value is { } v ? v.ToString("0.#", Invariant) : "n/a";
@@ -322,6 +296,10 @@ public static class ComparisonWriter
         AppendHtmlHead(sb, "Sterling Vale \u2014 scaling");
         sb.Append("<h1>Sterling Vale &mdash; scaling (Classic vs CodeAct)</h1>");
         sb.Append("<p class=\"disc\">SYNTHETIC analysis only &mdash; not investment advice. The same task is run against increasingly large datasets to show how each orchestration holds up as the number of households grows.</p>");
+        foreach (var report in ordered.DistinctBy(report => report.ExecutionKind))
+        {
+            sb.Append($"<p class=\"panel\"><b>{Enc(ExecutionNotice(report))}</b></p>");
+        }
 
         int classicBatch = ordered.Select(r => r.ClassicBatchSize).FirstOrDefault(b => b > 0);
         if (classicBatch > 0)
@@ -345,16 +323,14 @@ public static class ComparisonWriter
         sb.Append($"<div class=\"takeaway\">{Enc(ScalingTakeaway(ordered))}</div>");
 
         // 2. Why it happens (mechanism), always shown.
-        sb.Append("<h2>Why Classic failed and CodeAct completed</h2>");
+        sb.Append("<h2>Interpreting these runs</h2>");
         sb.Append("<div class=\"panel\">");
-        sb.Append("<p><span class=\"tag classic\">Classic</span> lets the model call each tool itself and then assemble the final report from what it gathered. In these runs it made its tool calls and pulled the data successfully, but then returned an empty / schema-invalid report instead of the ExposureReport &mdash; at <b>every</b> size, including the smallest (10 households). It was not stopped by a tool-call cap or the context window; with this model and prompt it simply failed to emit the final structured output. This is therefore an output-emission failure, not a scaling limit.</p>");
-        sb.Append("<p><span class=\"tag codeact\">CodeAct</span> lets the model write one program that loops over the households and calls the tools inside the sandbox, then returns the finished report. Because the report is assembled by code, it produced a valid report at every size tested.</p>");
-        sb.Append("<p class=\"why\">Because Classic never produced output, this run is <b>not yet a fair head-to-head</b>: the charts below compare the cost of a failed attempt against a completed one, so they do not measure relative efficiency.</p>");
+        sb.Append("<p>The matrix reports observed completion, not a diagnosis. Compare oracle scores, telemetry validity and execution kinds in the individual reports. Do not mix offline controls, historical runs and live sandbox runs as performance evidence.</p>");
         sb.Append("</div>");
 
         // 3. Charts (secondary) with an explicit caption so partial-then-failed bars aren't mistaken for successes.
         sb.Append("<h2>Median measurements by dataset</h2>");
-        sb.Append("<p class=\"disc\">These are <b>not</b> a like-for-like comparison here: Classic did not complete any dataset (see the matrix above), so its lower tokens/cost reflect stopping early without a report, not efficiency. The tool-call chart also undercounts CodeAct &mdash; its tool calls run inside the sandbox and are not counted as model tool calls. Efficiency can only be compared once both modes complete.</p>");
+        sb.Append("<p class=\"disc\">Offline control measurements are not agent performance. Failed attempts are not efficiency baselines. Tool calls count granular host invocations, including real sandbox callbacks; execute_code calls are separate.</p>");
         sb.Append("<section class=\"charts\">");
         sb.Append(SvgGroupedBars("Duration median (ms) by dataset", labels, durC, durA, v => v.ToString("0.#", Invariant)));
         sb.Append(SvgGroupedBars("Total tokens median by dataset", labels, tokC, tokA, v => v.ToString("0", Invariant)));
@@ -363,14 +339,14 @@ public static class ComparisonWriter
 
         // 4. Per-dataset detail table.
         sb.Append("<h2>Per-dataset detail</h2>");
-        sb.Append("<p class=\"disc\">Deltas are CodeAct vs Classic and are shown only where both modes completed at least one trial &mdash; otherwise there is no working Classic run to compare against, so they read <b>n/a</b>.</p>");
+        sb.Append("<p class=\"disc\">Deltas are CodeAct vs Classic and are shown only for live-model/Hyperlight reports where both modes completed at least one trial; otherwise they read <b>n/a</b>. Oracle correctness and telemetry still need checking.</p>");
         sb.Append("<table><thead><tr><th>Profile</th><th>Households</th><th>Classic completed</th><th>CodeAct completed</th><th>Duration</th><th>Tokens</th><th>Cost</th><th>Tool calls</th><th>Exact &Delta;</th></tr></thead><tbody>");
         foreach (var r in ordered)
         {
             var dd = r.Delta;
             int cN = TrialCount(r, "classic"), cDone = CompletedCount(r, "classic");
             int aN = TrialCount(r, "codeact"), aDone = CompletedCount(r, "codeact");
-            bool comparable = cDone > 0 && aDone > 0;
+            bool comparable = r.ExecutionKind == "live-model-hyperlight" && cDone > 0 && aDone > 0;
             sb.Append($"<tr><td>{Enc(r.Profile)}</td><td>{r.DatasetHouseholdCount?.ToString(Invariant) ?? "n/a"}</td>");
             sb.Append($"<td class=\"{(cDone == 0 ? "st-bad" : cDone == cN ? "st-ok" : string.Empty)}\">{cDone}/{cN}</td>");
             sb.Append($"<td class=\"{(aDone == 0 ? "st-bad" : aDone == aN ? "st-ok" : string.Empty)}\">{aDone}/{aN}</td>");
@@ -538,6 +514,7 @@ public static class ComparisonWriter
         sb.Append($"- **Randomization seed:** {report.RandomizationSeed}\n");
         sb.Append($"- **Warm-ups per mode:** {report.WarmupsPerMode}  •  **Measured trials:** {report.MeasuredTrials}\n\n");
 
+        sb.Append($"> {ExecutionNotice(report)}\n\n");
         AppendHeadline(sb, report);
 
         sb.Append("## Fairness\n\n");
@@ -594,6 +571,12 @@ public static class ComparisonWriter
     private static void AppendHeadline(StringBuilder sb, ComparisonReport report)
     {
         sb.Append("## Headline — CodeAct vs Classic\n\n");
+        if (report.ExecutionKind != "live-model-hyperlight")
+        {
+            sb.Append("Efficiency deltas are not presented as live performance for this execution kind.\n\n");
+            return;
+        }
+
         if (report.Delta is null)
         {
             sb.Append("_Delta metrics unavailable for this comparison (generated before delta support); re-run to populate._\n\n");
@@ -622,10 +605,9 @@ public static class ComparisonWriter
 
         var c = report.Classic.RoundTrips;
         var a = report.CodeAct.RoundTrips;
-        sb.Append("## Why — compute reduction\n\n");
-        sb.Append("CodeAct issues a single `execute_code` block that gathers and computes over the data in one\n");
-        sb.Append("pass, whereas Classic makes many sequential model-tool round-trips. Fewer round-trips are the\n");
-        sb.Append("mechanism behind the token, latency, and cost differences above.\n\n");
+        sb.Append("## Calls and turns\n\n");
+        sb.Append("Granular tool invocations, model turns and execute_code invocations are distinct counts.\n");
+        sb.Append("These counts alone do not establish compute reduction or explain latency and cost.\n\n");
         sb.Append("| Round-trips (median) | Classic | CodeAct |\n|---|---|---|\n");
         sb.Append($"| Tool calls | {Rt(c.MedianToolCalls)} | {Rt(a.MedianToolCalls)} |\n");
         sb.Append($"| Model turns | {Rt(c.MedianModelTurns)} | {Rt(a.MedianModelTurns)} |\n");
@@ -634,6 +616,14 @@ public static class ComparisonWriter
 
     private static string Pct(double? fraction) =>
         fraction is null ? "n/a" : (fraction.Value * 100d).ToString("0.#", Invariant) + "%";
+
+    private static string ExecutionNotice(ComparisonReport report) => report.ExecutionKind switch
+    {
+        "offline-fake-control" => "OFFLINE FAKE-MODEL CONTROL - NOT live performance. Answers come from the oracle; no Python is executed in the no-guest stand-in. Tokens are synthetic and cost is a formula, not Azure spending.",
+        "live-model-offline-code-stand-in" => "LIVE MODEL WITH OFFLINE CODE STAND-IN - NOT a real CodeAct comparison. No Python is executed.",
+        "live-model-hyperlight" => "LIVE MODEL / HYPERLIGHT CONFIGURED - inspect runtime events, oracle scores and telemetry before treating this as validated performance.",
+        _ => "EXECUTION KIND UNAVAILABLE - historical or unclassified results; not verified live performance.",
+    };
 
     private static string Speedup(double? factor)
     {

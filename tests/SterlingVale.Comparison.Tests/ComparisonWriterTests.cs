@@ -90,7 +90,7 @@ public sealed class ComparisonWriterTests
     {
         string md = ComparisonWriter.RenderMarkdown(SampleReport());
         Assert.Contains("## Headline", md, StringComparison.Ordinal);
-        Assert.Contains("compute reduction", md, StringComparison.Ordinal);
+        Assert.Contains("## Calls and turns", md, StringComparison.Ordinal);
         Assert.Contains("Cost median (USD)", md, StringComparison.Ordinal);
         Assert.Contains("Model turns median", md, StringComparison.Ordinal);
     }
@@ -203,5 +203,32 @@ public sealed class ComparisonWriterTests
         Assert.Contains("large (n=120)", html, StringComparison.Ordinal);
         Assert.DoesNotContain("http://", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("https://", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Reports_label_controls_and_do_not_invent_performance_or_failures()
+    {
+        var report = SampleReport() with { ExecutionKind = "offline-fake-control" };
+        string html = ComparisonWriter.RenderHtml(report);
+        string scaling = ComparisonWriter.RenderScalingHtml([report]);
+        string markdown = ComparisonWriter.RenderMarkdown(report);
+        foreach (string output in new[] { html, scaling, markdown })
+        {
+            Assert.Contains("OFFLINE FAKE-MODEL CONTROL", output, StringComparison.Ordinal);
+            Assert.Contains("NOT live performance", output, StringComparison.Ordinal);
+            Assert.DoesNotContain("far fewer", output, StringComparison.Ordinal);
+            Assert.DoesNotContain("Why Classic failed", output, StringComparison.Ordinal);
+            Assert.DoesNotContain("Classic did not complete any dataset", output, StringComparison.Ordinal);
+            Assert.DoesNotContain("undercounts CodeAct", output, StringComparison.Ordinal);
+        }
+
+        Assert.DoesNotContain("CodeAct vs Classic (both completed)", html, StringComparison.Ordinal);
+        Assert.EndsWith(",execution_kind", ComparisonWriter.RenderCsv(report).Split('\n')[0], StringComparison.Ordinal);
+        Assert.Contains(",offline-fake-control\n", ComparisonWriter.RenderCsv(report), StringComparison.Ordinal);
+        Assert.Contains("EXECUTION KIND UNAVAILABLE", ComparisonWriter.RenderHtml(SampleReport()), StringComparison.Ordinal);
+        Assert.Contains("LIVE MODEL WITH OFFLINE CODE STAND-IN",
+            ComparisonWriter.RenderHtml(report with { ExecutionKind = "live-model-offline-code-stand-in" }), StringComparison.Ordinal);
+        Assert.Contains("CodeAct vs Classic (both completed)",
+            ComparisonWriter.RenderHtml(report with { ExecutionKind = "live-model-hyperlight" }), StringComparison.Ordinal);
     }
 }
