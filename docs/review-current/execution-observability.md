@@ -1,6 +1,9 @@
 # Execution Observability Remediation
 
-Status: NOT COMPLETE / NOT DEMO-READY. Live correctness and performance have not been
+Historical acceptance status: NOT COMPLETE / NOT DEMO-READY under the original full-live criteria.
+The project is now scoped as a demoable POC: those criteria are future work, not an offline-demo
+release gate. See the [current POC review](poc-demo-review.md) for fresh evidence and open issues.
+Live correctness and performance have not been
 recertified by this change. Historical artifacts are not acceptance evidence for the new pipeline.
 
 ## Confirmed findings and implementation

@@ -62,26 +62,35 @@ turn cap, schema validation, raw-output capture) → `FileRunStore` persists art
 
 ## Observability
 
-Every run is identified by a `runId` (a GUID) that is the correlation ID across all output. It names
-the artifact folder `artifacts/runs/{runId}/`, appears on every structured log line (`AnalysisRunner`
-logs run start/completion at Information and each tool call at Debug — the console app wires a console
-logger; the APIs use the host logger), and is stamped on every record in the JSONL artifacts below.
+Each run has distinct immutable run/correlation IDs, paired comparison/trial IDs and W3C trace/span
+IDs. The run ID names `artifacts/runs/{runId}/`. `ExecutionSession` synchronously flushes boundary
+events to an append-only journal and renders that same event stream at the requested verbosity.
+The API response and outgoing model HTTP requests also carry correlation headers.
 
 `FileRunStore` writes these per-run artifacts (built by the pure `RunArtifacts`):
 
 | File | Contents |
 | --- | --- |
 | `result.json` / `metrics.json` / `metadata.json` | response DTO, metrics, and run/config metadata |
-| `events.jsonl` | run timeline (start, per-tool counts, turns, completion) |
-| `raw-output.txt` | the final model text, verbatim (never repaired) |
-| `generated-code.txt` | **every** `execute_code` program the model emitted (CodeAct; delimited when chunked) |
-| `transcript.jsonl` | the full model conversation — one line per message (role, text, tool calls, tool results) |
-| `tool-calls.jsonl` | one line per host-side tool invocation (name, argument JSON, result JSON, duration, status) |
+| `events.jsonl` | actual ordered run/model/function/tool boundary events, retained on failure |
+| `timeline.json` / `timeline.md` | ordered views with journal references |
+| `model/requests.jsonl`, `model/responses.jsonl` | per-request/per-response capture envelopes and usage |
+| `tools/invocations.jsonl` | granular host invocations, including real CodeAct callbacks |
+| `classic/model-turn-NNN.json`, `classic/final-response.json` | model captures, distinct from normalized application output |
+| `codeact/generated-code-NNN.py` | individual exact programs when full capture is safe and complete; otherwise a `.capture.json` envelope |
+| `codeact/execution-NNN.json`, available stream logs | supported public execution-result fields; unavailable streams are not invented |
+| `raw-output.txt`, `transcript.jsonl`, `tool-calls.jsonl` | legacy convenience captures, subject to payload policy and bounds |
 
-`tool-calls.jsonl` is the only place CodeAct's **in-sandbox** `call_tool` invocations are visible —
-they never appear in the model messages. Capture happens in `RecordingAIFunction`, a transparent
+CodeAct's **in-sandbox** `call_tool` invocations do not appear in model messages. They are captured
+in the tool journal and events by `RecordingAIFunction`, a transparent
 decorator applied by `ToolCatalog` that records to an ambient (AsyncLocal) `ToolCallRecorder` the
 runner activates per run. It delegates name/description/schema to the inner tool, so the fairness
-fingerprint is unchanged. Detailed arguments/results appear only in these local, synthetic-data
-artifacts and logs; the OpenTelemetry metric/trace tags remain redacted to `tool.name`/`tool.status`.
+fingerprint is unchanged. Metadata capture is the default; explicit full capture redacts and bounds
+payloads to 65,536 characters. Model-facing calls, granular calls and sandbox callbacks are separate
+metrics, reconciled against actual events and per-response usage. A batch aggregate references
+independently persisted children and labels its output as application-merged, not model-generated.
 
+The legacy combined transcript can truncate mid-record on Medium/Large; use structured model
+capture envelopes and result JSON instead. The no-guest CodeAct stand-in executes no Python and
+emits explicit offline events, not real sandbox-completion events.
+See the [current POC review](review-current/poc-demo-review.md) for verified scope and open issues.

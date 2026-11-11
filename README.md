@@ -1,600 +1,364 @@
-# Sterling Vale CodeAct
+# Sterling Vale: Classic tool-calling vs. CodeAct
 
-> **Readiness: NOT COMPLETE.** Live Small/Medium/Large acceptance must be established on an x64
-> virtualization-capable host. Passing offline tests does not establish Hyperlight execution or
-> model correctness. See [the observability review](docs/review-current/execution-observability.md).
+A .NET proof of concept comparing two ways an AI agent can analyze the same synthetic
+wealth-management portfolio: call data tools directly, or write Python that calls those tools
+inside a Hyperlight sandbox. The project includes reproducible datasets, a reference calculation,
+paired comparisons, and inspectable execution artifacts. **The offline demo works on ARM64
+without Azure or a sandbox; real model and Hyperlight results remain unverified on this branch.**
+This is a POC, not a production service or investment advice.
 
-A production-quality .NET reference application that runs a **controlled A/B comparison** between two
-agent orchestrations over an identical application:
+## 1. Goal
 
-- **Classic** — Microsoft Agent Framework direct tool-calling.
-- **CodeAct** — Microsoft Agent Framework CodeAct via `HyperlightCodeActProvider` and `execute_code`.
+Does CodeAct-style code execution improve **accuracy, tokens, latency, estimated cost, or
+number of calls** compared with classic tool-calling as the dataset grows?
 
-Both apps share the same HTTP contract, prompts, model configuration, datasets, tools, limits, and
-output schema. **The only intentional variable is orchestration.**
+The intended comparison holds data, seven underlying tools, task instructions, output schema,
+model configuration, and pricing constant. The orchestration changes.
+The shared prompt body is fingerprinted; each mode also has a different mechanism addendum.
+Matching fingerprints checks configuration consistency, not scientific equivalence by itself.
 
-> **Disclaimer.** All data is **synthetic** and reproducible from a seed. The application produces
-> **synthetic analysis, not investment advice**, and proposes asset-class notionals only — never
-> named securities.
+**No winner is assumed.** Offline controls answer a narrower question: does the comparison
+harness produce correct reports and internally consistent telemetry?
 
-## Scenario
+## 2. Premise & background
 
-"Sterling Vale" is a synthetic wealth manager. For each household, the agent values positions in the
-household base currency, computes asset-class allocations, evaluates drift and risk limits, and
-proposes rebalancing notionals — emitting a schema-valid `ExposureReport`. A deterministic
-**oracle** computes the same result independently and is used only to score correctness (it is never
-an agent tool).
-
-## Architecture
-
-```
-Classic.Api ─┐                             ┌─ CodeAct.Api
-             │   (identical contract via   │
-             ├─  Api.Hosting endpoints) ───┤
-             │                             │
-        AnalysisService ── AnalysisRunner ── AgentShared (prompt, schema, fake model, fingerprints)
-             │                 │
-        IAgentFactory ◄── the ONLY seam ──► ClassicAgentFactory | CodeActAgentFactory (Hyperlight)
-             │
-        Tools (7 read-only tools) ── Application (oracle, FX) ── Domain (pure)
-             │
-        Infrastructure (dataset load, chat client, FileRunStore)
-```
-
-See [docs/architecture.md](docs/architecture.md) for detail.
-
-## Prerequisites
-
-- **.NET SDK 9.0** (pinned in `global.json`).
-- For **live** runs: an Azure OpenAI deployment (prefer `DefaultAzureCredential`).
-- For **CodeAct runtime**: an **x64 host with hardware virtualization** — see below.
-
-### CodeAct runtime (Hyperlight) — host requirements and setup
-
-CodeAct's `execute_code` runs model-generated code inside a **Hyperlight micro-VM**, which requires
-an **x64 host with hardware virtualization**:
-
-| Host | Hypervisor backend | Notes |
-| --- | --- | --- |
-| Linux x64 | KVM (`/dev/kvm`) or MSHV | recommended; simplest guest build/run |
-| Windows x64 | Windows Hypervisor Platform (WHP) | enable the "Windows Hypervisor Platform" optional feature |
-
-> **Not supported: Windows on ARM64.** Hyperlight's backends (WHP / KVM / MSHV) are x64-oriented, so
-> the CodeAct sandbox cannot run on an ARM64 Windows machine. Use an x64 Linux or Windows host, an
-> x64 cloud VM, or GitHub Codespaces for CodeAct runtime and the gated Hyperlight tests. On an
-> unsupported host, leave `HYPERLIGHT_PYTHON_GUEST_PATH` **unset** — the CodeAct API and benchmark
-> fall back to an offline `execute_code` stand-in (deterministic, but **not** a real CodeAct
-> measurement: the sandbox and `call_tool(...)` are not exercised, so CodeAct produces no real data).
-
-**Setup on a supported x64 host:**
-
-1. **Enable virtualization.** Linux: ensure `/dev/kvm` exists and your user can access it. Windows
-   x64: enable the *Windows Hypervisor Platform* feature, then reboot.
-2. **Obtain the Hyperlight Python guest module.** This is a preview artifact — build or download it by
-   following the official Microsoft Agent Framework Hyperlight CodeAct sample
-   (`microsoft/agent-framework`) together with the `hyperlight-dev/hyperlight-wasm` project. The
-   factory calls `HyperlightCodeActProviderOptions.CreateForWasm(<guest>)`, so the guest is the
-   Python-on-WASM module those samples produce. On Linux x64,
-   [`scripts/vm/download-guest.sh`](scripts/vm/download-guest.sh) fetches the version-matched guest
-   package and records its path for you.
-3. **Point the app at the guest:**
-   - Linux/macOS: `export HYPERLIGHT_PYTHON_GUEST_PATH=/abs/path/to/guest`
-   - Windows x64: `$env:HYPERLIGHT_PYTHON_GUEST_PATH = "C:\abs\path\to\guest"`
-4. **Verify the runtime** before benchmarking — this should now **pass**, not skip:
-   ```bash
-   dotnet test --filter "Category=Hyperlight"
-   ```
-5. Run the live benchmark as usual; CodeAct will execute for real and its `households` will be
-   populated.
-
-When `HYPERLIGHT_PYTHON_GUEST_PATH` is unset the CodeAct API and benchmark use the offline
-`execute_code` stand-in and the Hyperlight runtime tests **skip** with an explicit reason. No Docker
-image is provided because Hyperlight needs host virtualization that isn't portable across containers.
-
-## Live validation on x64
-
-Readiness remains **NOT COMPLETE** until the clean-clone, real-runtime and live oracle evidence
-has been recorded in the [observability review](docs/review-current/execution-observability.md).
-Phase A is laptop preparation only. Phase B starts only after connecting to the approved VM.
-Never change execution policy or global git configuration. Never commit endpoints, credentials,
-generated datasets or `artifacts/`. Do not push without approval.
-
-### Provision and connect (explicit approval required)
-
-The scripts are Bash scripts; use an existing Bash environment for planning. Approved creation
-also requires Azure CLI and `jq` in that environment. No Azure resource is created by default.
-Review the printed commands and cost before approving creation:
-
-Set `RESOURCE_GROUP` and `VM_NAME` to your explicitly approved, dedicated resource names.
-These variables are placeholders; no environment-specific resource names are recorded here.
-
-```bash
-bash scripts/provision-vm.sh --subscription "$SUBSCRIPTION_ID" \
-  --ssh-public-key "$HOME/.ssh/id_ed25519.pub" --resource-group "${RESOURCE_GROUP:?Set RESOURCE_GROUP}" \
-  --location westus2 --name "${VM_NAME:?Set VM_NAME}" --size Standard_D4s_v5
-```
-
-Defaults: Ubuntu 24.04 x64, SSH public-key authentication only, 64 GiB Standard SSD, Standard public
-IPv4, SSH allowed only from the detected current IPv4 `/32`, all other inbound traffic denied.
-Use `--ssh-ip YOUR_CURRENT_IPV4` if outbound IP detection is unavailable. The resource group must
-be new and dedicated. Dsv5 supports nested virtualization; actual KVM access must still be verified.
-The SKU API can omit `NestedVirtualization`: the script checks x64/V2 metadata, honors explicit
-negative capability values and permits an absent field only for the documented `Standard_D4s_v5`
-default. Other sizes with an absent field require separate review, not an automatic fallback.
-Standard security avoids Trusted Launch restrictions on nested virtualization.
-The [retail price API](https://prices.azure.com/api/retail/prices) lists **USD 0.192/hour compute** for
-Linux D4s v5 in westus2 (checked 2026-11-03), about USD 4.61/day if left running, **plus** disk,
-public IP, egress and Azure OpenAI charges. Other sizes/regions require a reviewed estimate.
-Quota, regional capacity, public-IP policy and current prices must be checked before approval.
-
-Only after explicit approval, repeat the plan command with
-`--estimated-hourly-usd 0.192 --approved-create`. This is not authorization for the assistant to run it.
-If provisioning fails, stop and inventory the dedicated resource group; no automatic deletion occurs.
-
-After creation, obtain the public IP with the read-only command:
-
-```bash
-az vm show --subscription "$SUBSCRIPTION_ID" -g "$RESOURCE_GROUP" -n "$VM_NAME" \
-  --show-details --query publicIps -o tsv
-ssh -i "$HOME/.ssh/id_ed25519" codeact@VM_PUBLIC_IP
-```
-
-In VS Code, use **Remote-SSH: Connect to Host**, select `codeact@VM_PUBLIC_IP`, then open the
-repository on the VM. Do not copy private keys or secrets into the repository. No application ports
-need to be exposed. A changed client public IP requires a separately approved NSG update.
-
-### Bootstrap and clean clone (on the VM only)
-
-Approve the push before these steps. Ubuntu already provides git; if it is absent, installing it
-with `sudo apt-get update` and `sudo apt-get install -y git` requires approval for host changes.
-Bootstrap needs a checkout to read `global.json`. Its default invocation only describes changes.
-The explicit install option authorizes packages, Microsoft apt configuration, system SDK installation,
-KVM module loading and user group membership on this VM, not on the laptop.
-
-```bash
-git clone --branch feature/observability-validation --single-branch \
-  https://github.com/ashsenth/codeact-poc.git codeact-bootstrap
-cd codeact-bootstrap
-bash scripts/bootstrap-vm.sh
-# Only after approving the printed host changes:
-bash scripts/bootstrap-vm.sh --approved-install
-```
-
-The script installs SDK **9.0.317** from `global.json`, PowerShell 7, Azure CLI, git, KVM/native
-prerequisites and the provider-matched **Hyperlight Python guest 0.4.0** from NuGet. It uses the
-prebuilt `runtimes/linux-x64/native/python-sandbox.aot`; no Rust/source build is needed.
-Downloads remain in ignored `artifacts/guest/`. No shell profiles are modified.
-Disconnect all SSH/Remote-SSH sessions and reconnect to activate `kvm` group membership.
-Then perform an independent fresh clone, record its SHA and run the locked gates:
-
-```bash
-git clone --branch feature/observability-validation --single-branch \
-  https://github.com/ashsenth/codeact-poc.git codeact-clean
-cd codeact-clean
-RESULTS_DIR="artifacts/validation-evidence/$(date -u +%Y%m%dT%H%M%SZ)-$(cat /proc/sys/kernel/random/uuid)"
-mkdir -p "$RESULTS_DIR"
-git rev-parse HEAD | tee "$RESULTS_DIR/commit-sha.txt"
-git status --porcelain
-dotnet restore --locked-mode
-dotnet build -c Release --no-restore
-dotnet test -c Release --no-build --filter 'Category!=LiveModel&Category!=Hyperlight' \
-  --logger trx --results-directory "$RESULTS_DIR/non-live-tests"
-```
-
-Run each command separately and **stop on any failure**. Expected **197 actually executed/passed**,
-labeled **OFFLINE-CONTROL**, zero skips. Record the SHA, OS, SDK, VM size and command outputs.
-This evidence, not the bootstrap checkout, closes clean-clone reproduction.
-
-### Run the validation modes
-
-Use the guest path printed by bootstrap (an absolute path in the bootstrap checkout):
-
-```bash
-export HYPERLIGHT_PYTHON_GUEST_PATH="$HOME/codeact-bootstrap/artifacts/guest/0.4.0/runtimes/linux-x64/native/python-sandbox.aot"
-pwsh -NoProfile -File scripts/verify-observability.ps1 -Mode Offline
-pwsh -NoProfile -File scripts/verify-observability.ps1 -Mode Hyperlight -PreflightOnly
-pwsh -NoProfile -File scripts/verify-observability.ps1 -Mode Hyperlight
-az login --use-device-code
-read -r -p 'Azure OpenAI endpoint: ' AZURE_OPENAI_ENDPOINT
-read -r -p 'Azure OpenAI deployment: ' AZURE_OPENAI_DEPLOYMENT_NAME
-export AZURE_OPENAI_ENDPOINT AZURE_OPENAI_DEPLOYMENT_NAME
-pwsh -NoProfile -File scripts/verify-observability.ps1 -Mode Live -Trials 1
-```
-
-Authentication uses Azure CLI/DefaultAzureCredential with the appropriate Azure OpenAI data-plane
-role; remove unrelated credential environment variables to ensure the application uses the same
-identity. An optional `AZURE_OPENAI_API_KEY` must be entered privately, never as a literal in shell
-history, docs or commits. The Live preflight performs **one minimal billable model call** to verify
-auth and current request capacity, not sustained quota. `-Mode Live -PreflightOnly` also performs
-that call; do not run it separately unless another call is intended. API/model compatibility errors
-stop validation rather than trigger retries or configuration changes.
-
-- **OFFLINE-CONTROL**: deterministic fake model, no real Python execution, unchanged workloads.
-- **LIVE / Hyperlight**: real KVM guest with scripted model inputs, all **6** runtime tests must
-  actually run and pass. It does not certify live model correctness.
-- **LIVE / Live**: preflight, locked build, 197 non-live passes, 6 actual runtime passes, then paired
-  Small, Medium and Large comparisons sequentially. Every profile must complete with exact oracle
-  matches, valid reconciliation and real `CODE_EXECUTION_COMPLETED` events without stand-in events
-  before the next profile starts. Trials default to 1; full payload capture is explicit and sensitive.
-- **SKIPPED**: missing prerequisites or skipped tests are never acceptance passes. Stop on failure,
-  report the root cause and propose a fix before changing code. Never weaken a test or validity gate.
-
-The script uses PATH-resolved dotnet and portable paths, preserves/restores its environment, keeps
-the existing Windows WHP path and legacy `-Live` alias, and never changes execution policy.
-Use a unique `-OutputRoot` under ignored `artifacts/` for every run. Each test gate also creates a
-fresh timestamp/GUID results directory, even if OutputRoot is reused. It requires one TRX per
-explicitly invoked project (ten non-live, one Hyperlight), reads files with literal paths and rejects
-any failed/notExecuted tests or unexpected file counts. Results include TRX, per-file `counts.json`,
-per-run journals and incremental `validation-summary.json`. Record latency, tokens, estimated cost,
-model-facing/granular/sandbox counts, comparison IDs, commit SHA and VM size beside the existing
-offline controls. Reassess all 15 review criteria as **MET**, **NOT MET**, or **BLOCKED** with
-evidence. Only mark **COMPLETE** when all are MET with live evidence.
-
-### Tear down (separate explicit approval required)
-
-This deletes **everything** in the dedicated resource group, including disks, IP and logs. Retrieve
-needed evidence privately first. Never execute teardown without approval:
-
-```bash
-az group delete --subscription "$SUBSCRIPTION_ID" --name "$RESOURCE_GROUP" --yes --no-wait
-```
-
-Deleting the dedicated group removes its ongoing VM/disk/IP charges. Deallocation alone retains
-billable disks/public IP. Verify deletion with `az group exists --subscription "$SUBSCRIPTION_ID"
---name "$RESOURCE_GROUP"`.
-
-## Local setup
-
-```bash
-cp .env.example .env          # optional; fill in only for live/Hyperlight runs
-dotnet restore --locked-mode
-dotnet build -c Release
-dotnet run --project src/SterlingVale.DataGenerator -- data   # generate small/medium/large
-```
-
-By default (no `AZURE_OPENAI_ENDPOINT`) the apps use a **deterministic fake model** and run fully
-offline.
-
-## Run the APIs
-
-```bash
-dotnet run --project src/SterlingVale.Classic.Api      # Classic
-dotnet run --project src/SterlingVale.CodeAct.Api      # CodeAct
-```
-
-Endpoints (identical for both):
-
-| Method | Route |
+| Term | Plain-English meaning |
 | --- | --- |
-| GET | `/health/live`, `/health/ready` |
-| POST | `/api/v1/analyses` |
-| GET | `/api/v1/analyses/{runId}` |
-| GET | `/api/v1/analyses/{runId}/metrics` |
-| GET | `/api/v1/analyses/{runId}/artifacts` |
+| Classic tool-calling | The model requests named functions with structured arguments, receives results, and decides what to do next. A response can contain multiple tool calls; one call does not necessarily mean one network round-trip. |
+| CodeAct | The model writes and runs code that calls tools, loops, and computes intermediate results. This can move work out of repeated model interactions. |
+| Hyperlight | An embedded, hypervisor-isolated micro-VM for untrusted code. Here it hosts the Python guest; it needs supported x64 hardware and virtualization. |
+| Microsoft Agent Framework | The .NET agent layer managing model interactions and function invocation. Both modes use it; CodeAct additionally uses its Hyperlight provider. |
 
-```bash
-curl -X POST localhost:5000/api/v1/analyses -H "content-type: application/json" \
-  -d '{ "datasetProfile": "small" }'
+Why compare them? Larger portfolios require repeated retrieval, arithmetic, and structured
+output. Code may make that work easier to express, but generated code, sandbox overhead,
+output limits, and model errors can offset the benefit. Measure correctness before efficiency.
+The current CodeAct prompt requests multiple small code executions to accommodate guest output
+limits; this implementation does **not** promise one program or constant model calls.
+
+Background sources:
+[function calling](https://platform.openai.com/docs/guides/function-calling),
+[CodeAct paper](https://arxiv.org/abs/2402.01030),
+[Hyperlight](https://github.com/hyperlight-dev/hyperlight), and
+[Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework/overview/).
+The pinned preview APIs are recorded in [SDK findings](docs/sdk-findings.md).
+
+## 3. The scenario
+
+**Sterling Vale** is a fictional wealth manager. Its synthetic households own accounts and
+positions across asset classes and currencies. Seeded generation produces these sizes:
+
+| Profile | Households | Accounts | Positions |
+| --- | ---: | ---: | ---: |
+| Small | 10 | 33 | 370 |
+| Medium | 40 | 156 | 2,201 |
+| Large | 120 | 485 | 7,198 |
+
+For each household, the agent should:
+
+1. Retrieve its policy, accounts, positions, prices, FX rates, and classifications.
+2. Value positions in the household's base currency and compute allocations.
+3. Flag drift, concentration, foreign-currency, and crypto policy breaches.
+4. Propose asset-class buy/sell notionals, not named securities.
+5. Return a schema-valid `ExposureReport`.
+
+The deterministic **oracle** independently calculates the reference report for live scoring.
+It checks flagged households, breaches, allocations, and trade notionals using documented
+rounding and tolerances. It is not exposed as an agent tool.
+**Offline only:** the fake model's answer is deliberately generated from this same oracle,
+so an exact match validates plumbing, not independent model reasoning.
+See [calculation rules](docs/metrics.md) and [comparison methodology](docs/benchmark-methodology.md).
+
+## 4. How it works
+
+```mermaid
+flowchart TD
+    Data["Seeded datasets"] --> Snapshot["Shared portfolio snapshot"]
+    CLI["Benchmark CLI: paired trials"] --> Shared["AnalysisService / AnalysisRunner"]
+    APIs["Classic.Api / CodeAct.Api"] --> Shared
+    Shared --> Classic["Classic: model calls functions"]
+    Shared --> Code["CodeAct: model requests execute_code"]
+    Code --> Sandbox["Live x64: Hyperlight Python guest"]
+    Sandbox --> Tools["Seven read-only host tools"]
+    Classic --> Tools
+    Snapshot --> Tools
+    Code -. "No guest: no-code stand-in" .-> Fake["Offline fake-model control"]
+    Shared --> Evidence["Events, timelines, results, metrics"]
+    Snapshot --> Oracle["Deterministic oracle"]
+    CLI --> Score["Correctness + fairness + telemetry"]
+    Oracle --> Score
+    Evidence --> Score
+    Score --> Reports["JSON / Markdown / CSV / HTML"]
 ```
 
-## Benchmark
+The CLI generates one oracle reference per profile, warms up each mode once, randomizes paired
+execution order, runs both modes, scores their reports, and writes artifacts. Warm-ups are
+excluded from measured comparisons. Both APIs expose the same analysis and run-retrieval contract.
+Tools use direct `AIFunction` callbacks, **not MCP**.
 
-```bash
-dotnet run --project src/SterlingVale.Benchmark -- validate-data
-dotnet run --project src/SterlingVale.Benchmark -- run --profile small --trials 10 [--open]
-dotnet run --project src/SterlingVale.Benchmark -- compare
-dotnet run --project src/SterlingVale.Benchmark -- report --comparison-id <id> [--open]
-dotnet run --project src/SterlingVale.Benchmark -- visualize [--profiles small,medium,large] [--open]
-```
+### Source projects
 
-Each `run`/`report` writes `artifacts/comparisons/{id}.{json,md,csv,html}`; per-run artifacts land in
-`artifacts/runs/{runId}/`. `visualize` stitches the latest comparison per profile into
-`artifacts/comparisons/scaling-{timestamp}.html`.
+All names below live under [src/](src/), with the `SterlingVale.` prefix.
 
-### View the results
-
-Open the generated `.html` in any browser — it is fully self-contained (inline SVG, no internet, no
-JavaScript). Each dashboard is written for someone seeing the benchmark for the first time and leads
-with **what actually happened** rather than raw numbers:
-
-- **Completion badges** — how many trials each mode *finished with a valid report* (e.g. `Classic
-  0/3` vs `CodeAct 3/3`), colour-coded, so a total Classic failure reads as "0/3 completed", not a
-  misleading "0 ms".
-- **Plain-language takeaway** — one sentence summarising the outcome for this dataset.
-- **"How each mode runs"** — a short panel contrasting Classic (model calls each tool itself, one
-  network round-trip per call) with CodeAct (model writes one program that loops and calls tools
-  *inside* the sandbox).
-- **"What happened & why"** — a data-driven observation. When Classic returns an empty report it
-  reports what the data actually shows (Classic gathered the data but failed to emit a schema-valid
-  report; it was not stopped by a tool-call cap or the context window) and notes that, because
-  Classic did not complete, the efficiency numbers are not a like-for-like comparison.
-- **Delta cards + charts** for duration / tokens / tool calls / cost — shown **only when both modes
-  completed**, so you never compare against a run that produced nothing. When a mode failed, the
-  affected cells read `n/a`.
-- **"Every trial" table** with a *"What the run produced"* column (e.g. "exact match to the
-  reference report", "gathered data but returned an empty / invalid report") and colour-coded status.
-
-Add `--open` to launch it automatically:
-
-```bash
-dotnet run --project src/SterlingVale.Benchmark -- run --profile small --trials 10 --open
-```
-
-The `.csv` beside it has one row per trial for your own plots. Run all three profiles, then
-`visualize`, to see the gap widen with dataset size. The scaling dashboard leads with a **completion
-matrix** — one row per dataset (smallest → largest) with a colour-coded **Completed / Partial /
-Failed** badge for each mode — so you can tell at a glance which sizes each mode finished. Charts and
-per-dataset deltas follow, with deltas marked `n/a` wherever a mode never produced a comparable run.
-
-## What we observed (live, x64 VM)
-
-> Outcomes depend on the model, dataset, and environment — nothing below is hard-coded or
-> guaranteed. These are the results from our own live runs (Azure OpenAI `gpt-4o`, 3 trials per
-> profile, on an x64 Linux VM with the real Hyperlight sandbox). Reproduce them with the scripts in
-> [`scripts/vm/`](scripts/vm/).
-
-| Profile | Households | Classic | CodeAct | Classic median tokens / cost | CodeAct median tokens / cost |
-| --- | --- | --- | --- | --- | --- |
-| small | 10 | **Failed** 0/3 | Completed 2/3 | ~40.7k / $0.11 | ~55.8k / $0.23 |
-| medium | 40 | **Failed** 0/3 | Completed 3/3 | ~33.3k / $0.09 | ~62.0k / $0.24 |
-| large | 120 | **Failed** 0/3 | Completed 3/3 | ~60.5k / $0.16 | ~65.8k / $0.28 |
-
-**What the Classic failure actually is — and what it is *not*.** In these runs Classic gathered the
-data successfully (54–81 tool calls over 4–5 turns) but then returned an empty report instead of the
-final `ExposureReport` — at **every** size, including the smallest (10 households). The final message
-was a canned 88-byte placeholder: `{ "runId": "run_20231010_001", "generatedAt":
-"2023-10-10T00:00:00Z", "households": [] }`. It was **not** stopped by a per-message tool-call cap or
-the context window — it used 33–60k tokens, well under gpt-4o's 128k limit. With this model it simply
-did not synthesize the gathered data into the report. Because Classic fails even at trivial scale,
-**this is an output-emission failure, not a scaling result.**
-
-**It is robust to prompting.** We added explicit anti-stub instructions to the Classic prompt —
-"never emit a placeholder," "synthesize household by household," and even forbidding that exact
-`run_20231010_001` runId. On a fresh live run gpt-4o produced the **identical** placeholder,
-reproducing verbatim the runId it was told not to use. So this is not a prompt bug: with gpt-4o,
-direct tool-calling reliably gathers data but will not assemble the final structured output, and
-prompt engineering does not change it. (The ineffective prompt change was reverted.)
-
-**Honest caveat — this is not yet a fair head-to-head.** Because Classic never produced a report, the
-two modes cannot be compared on tokens, cost, latency, or tool calls: Classic's *lower* token/cost
-numbers reflect that it stopped early without doing the work, and its 54–81 tool calls are
-model-visible calls whereas CodeAct's real tool calls happen inside the sandbox and are not counted.
-The only defensible claim from this run is that **CodeAct emitted a correct report where this Classic
-setup did not.** Establishing a genuine efficiency comparison requires first getting Classic to
-complete (see the open work below).
-
-**How CodeAct produced its reports.** CodeAct asks the model to write **one program**; the looping,
-tool calls, and aggregation happen *inside* the Hyperlight sandbox, so the model's context stays
-small and the report is assembled by code. The one wrinkle is the sandbox's fixed ~16 KB guest→host
-output buffer, which CodeAct works around by returning the report in several small `execute_code`
-chunks that the model reassembles (hence its higher token count).
-
-**Open work.** The interesting architectural claim — that CodeAct's model-visible interaction is
-roughly O(1) in dataset size while direct tool-calling is O(n) — can only be *measured* once Classic
-also completes. Prompt engineering does **not** get Classic there (see above), so a fair head-to-head
-would require an architectural change to how Classic emits its result — e.g. a `submit_report` tool
-whose parameters are the report (models fill function-call arguments far more reliably than a final
-free-form JSON message), Azure **Structured Outputs** (strict `json_schema`), or incremental
-per-household emission. That is deliberately left as future work.
-
-The generated HTML dashboards state this inline, per dataset, including the caveat that the
-efficiency charts are not a like-for-like comparison while one mode fails.
-
-### Reproducing the live run on an x64 VM
-
-The real (non-offline) numbers require an x64 host with the Hyperlight sandbox. The helper scripts in
-[`scripts/vm/`](scripts/vm/) automate a run on a fresh Linux x64 VM (they assume Azure OpenAI via the
-VM's managed identity):
-
-| Script | Purpose |
+| Project suffix | Responsibility |
 | --- | --- |
-| `setup-vm.sh` | Install the toolchain (.NET 9, Rust, `just`, `uv`) — run once. |
-| `download-guest.sh` | Download the version-matched Hyperlight Python guest and record its path in `<GUEST_PATH_FILE>` (the location reported by the script). |
-| `run-benchmark.sh` | Generate data and run the benchmark for the given profiles, detached (`bash run-benchmark.sh "medium large"`). |
-| `wait-for-run.sh` | Block until the detached run finishes, then print the tail and newest artifacts. |
-| `summarize.sh` | Print a compact human-readable summary of the newest comparison per profile. |
+| Domain | Portfolio model, money, financial math, reports, and metrics. |
+| Application | Portfolio snapshots, FX conversion, and the reference oracle. |
+| Tools | Seven read-only retrieval/classification functions and invocation recording. |
+| AgentShared | Prompts, schemas, shared runner/service, Classic factory, and fake model. |
+| CodeAct | Hyperlight agent factory and explicit no-guest stand-in. |
+| Infrastructure | Dataset loading, Azure/fake client selection, DI, and file run storage. |
+| Telemetry | Correlation, ordered event journals, payload policy, timelines, and console output. |
+| Api.Shared | Shared HTTP endpoints, validation, and response mapping. |
+| Classic.Api | Thin ASP.NET host for the Classic factory. |
+| CodeAct.Api | Thin ASP.NET host for the CodeAct factory. |
+| DataGenerator | Seeded Small/Medium/Large data and hash manifests. |
+| Benchmark | Paired execution, scoring, aggregation, CLI, and report rendering. |
 
+### Test projects
 
+All names below live under [tests/](tests/), also prefixed `SterlingVale.`.
 
-### Live comparison against Azure OpenAI
+| Project suffix | Coverage |
+| --- | --- |
+| Domain.Tests | Value objects, math, and invariants. |
+| Application.Tests | Oracle, FX, and portfolio calculations. |
+| Data.Tests | Deterministic generation, loading, and manifests. |
+| Tools.Tests | Tool contracts, recording, event isolation, payloads, and timelines. |
+| AgentShared.Tests | Runner limits, fake clients, schemas, artifacts, and reconciliation. |
+| Architecture.Tests | Dependency boundaries. |
+| Contract.Tests | Cross-mode HTTP/schema/tool consistency. |
+| Classic.IntegrationTests | Classic API using offline clients, plus opt-in live tests. |
+| CodeAct.IntegrationTests | Offline API and separately gated real-Hyperlight tests. |
+| Comparison.Tests | Scoring, aggregation, reports, and all-profile offline comparisons. |
 
-The offline fake model is a control (both modes emit the oracle, so timings are tiny). A real
-Classic-vs-CodeAct comparison needs a live model. Set these in the **same shell** before running
-(PowerShell: use `$env:NAME = "value"`):
+More detail: [architecture](docs/architecture.md) and [security model](docs/security-model.md).
 
-```bash
-az login
-export AZURE_OPENAI_ENDPOINT="https://<resource>.openai.azure.com/"   # base endpoint, WITH trailing slash
-export AZURE_OPENAI_DEPLOYMENT_NAME="<your-chat-deployment>"          # e.g. gpt-4o (deployment name, not model id)
-# export AZURE_OPENAI_API_KEY="<key>"                                 # optional; only if key auth is enabled
-dotnet run --project src/SterlingVale.Benchmark -- run --profile small --trials 10 --open
+## 5. Quickstart: offline demo
+
+### Prerequisites
+
+- Git and the .NET 9 SDK selected by [global.json](global.json).
+  Local validation used SDK **9.0.320** with the configured feature roll-forward.
+- A terminal running PowerShell: Windows PowerShell works here; PowerShell 7 is available
+  for Windows, Linux, and macOS. No Python, Azure account, guest image, or virtualization required.
+- Package-feed access for the first restore. Allow a few minutes for initial downloads.
+
+**Verification scope:** the commands below succeeded in a clean local-source clone on Windows
+ARM64. Linux/macOS execution and a remote-origin clone are **not yet verified**.
+The commands use `Join-Path` rather than OS-specific project paths.
+
+Clone setup template (**remote clone not yet verified**; replace the placeholder):
+
+```powershell
+git clone --branch feature/observability-validation <repository-url> codeact-poc
+Set-Location codeact-poc
 ```
 
-Common setup gotchas:
-- Use the **base resource endpoint** (`https://<resource>.openai.azure.com/`), not an AI Foundry
-  `.../openai/v1` URL — the wrong form returns HTTP 404 "Resource not found".
-- `AZURE_OPENAI_DEPLOYMENT_NAME` is your **deployment** name (case-sensitive), not the base model id.
-- For identity auth (`DefaultAzureCredential`), your account needs the **Cognitive Services OpenAI
-  User** role on the resource; without it you get 403 `PermissionDenied`. Key auth may be disabled by
-  policy.
-- Environment variables are per-shell — set them in the same terminal you run the benchmark from.
-
-### Making Classic completable at scale (`CLASSIC_BATCH_SIZE`)
-
-With a live model, direct tool-calling (Classic) reliably fails to emit a report once the dataset is
-large — the model gathers data but returns an empty `households` array (an output-emission failure;
-the turn-by-turn evidence is in each run's `transcript.jsonl` / `tool-calls.jsonl`). To get a
-*both-complete* comparison, set `CLASSIC_BATCH_SIZE` to run Classic over **small batches of
-households** (one model invocation per batch, results merged); each batch is small enough that the
-model emits a report, and the harness sums Classic's metrics across the batches. CodeAct is
-unaffected (it always runs all households in one invocation).
-
-```bash
-export CLASSIC_BATCH_SIZE=5    # 0 / unset = single run (default); >0 = batch Classic
-dotnet run --project src/SterlingVale.Benchmark -- run --profile large --trials 1 --open
-```
-
-The dashboards and the comparison JSON record the batch size, so the extra model invocations Classic
-needed to keep up are explicit. Vary it to find where Classic breaks (e.g. completes at small batch
-sizes, fails as the batch grows).
-
-## Testing
-
-```bash
-# Everything except opt-in live/Hyperlight tests (this is what CI runs):
-dotnet test -c Release --filter "Category!=LiveModel&Category!=Hyperlight"
-
-# Live-model tests (opt-in; requires Azure + explicit enable):
-ENABLE_LIVE_TESTS=true dotnet test --filter "Category=LiveModel"
-
-# Hyperlight runtime tests (requires HYPERLIGHT_PYTHON_GUEST_PATH + virtualization):
-dotnet test --filter "Category=Hyperlight"
-```
-
-Test kinds: **fake** (default, deterministic), **LiveModel** (opt-in, capped), **Hyperlight**
-(gated on a guest). Plus unit, contract, architecture, and benchmark tests.
-
-## Observable execution
-
-For a single-command PowerShell validation with isolated offline settings and all three datasets:
-`./scripts/verify-observability.ps1 -Trials 1`. It saves a machine-readable validation summary with
-dataset sizes, statuses, latency, tokens, turns, granular tool counts, estimated costs, and correctness
-scores. Use `-Live -Trials 3` only after configuring the live prerequisites below. Offline measurements
-are explicitly labeled fake controls, never live performance results.
-
-PowerShell script execution must be allowed by your organization's policy. This validation session's
-host disabled script files; do not weaken that policy. The individual `dotnet` commands below can
-still be run from an approved terminal. A clean remote clone has not yet been certified.
-
-Run these commands from the repository root. The SDK is pinned to 9.0.317 with feature roll-forward;
-9.0.320 was used for local validation. Azure and Hyperlight settings are read from the process
-environment; copying `.env.example` does not automatically load its values into your shell.
-
-PowerShell offline control, with explicit isolation from any live settings:
+From the repository root, paste these into one terminal. The explicit environment settings
+prevent inherited Azure, guest, batching, pricing, or output-directory settings changing the demo:
 
 ```powershell
 $env:AZURE_OPENAI_ENDPOINT = ""
 $env:HYPERLIGHT_PYTHON_GUEST_PATH = ""
 $env:BENCHMARK_REQUIRE_LIVE = "false"
+$env:CLASSIC_BATCH_SIZE = "0"
+$env:DATASET_ROOT = "data"
+$env:ARTIFACTS_ROOT = "artifacts"
+$env:BENCHMARK_MAX_TURNS = "12"
+$env:BENCHMARK_TIMEOUT_SECONDS = "120"
+$env:PRICING_INPUT_PER_MILLION = "2.50"
+$env:PRICING_OUTPUT_PER_MILLION = "10.00"
+$env:ENABLE_LIVE_TESTS = "false"
+$env:OTEL_EXPORTER_OTLP_ENDPOINT = ""
+$generator = Join-Path src SterlingVale.DataGenerator
+$benchmark = Join-Path src SterlingVale.Benchmark
 dotnet restore --locked-mode
-dotnet build -c Release
-dotnet test -c Release --filter "Category!=LiveModel&Category!=Hyperlight"
-dotnet run -c Release --project src/SterlingVale.DataGenerator -- data
-dotnet run -c Release --project src/SterlingVale.Benchmark -- compare --trials 1 --log-level normal --payload-capture full
+dotnet build -c Release --no-restore
+dotnet run -c Release --no-build --project $generator -- data
+dotnet run -c Release --no-build --project $benchmark -- validate-data
+dotnet run -c Release --no-build --project $benchmark -- compare --trials 1 --log-level normal --payload-capture full
+dotnet run -c Release --no-build --project $benchmark -- visualize
 ```
 
-This is a deterministic fake-model control, NOT a performance comparison of live agents. The offline
-`execute_code` function executes no Python. Live setup on an x64 host with KVM/MSHV or WHP:
+Stop if any command fails; do not treat an old dashboard as a successful new run.
+`compare` runs every available profile (currently Large, Medium, Small); `visualize` combines
+the latest comparison for each profile. Open its printed HTML path in your browser.
+The HTML contains inline charts and needs no external assets or JavaScript.
+
+Actual output excerpt, with changing comparison ID omitted:
+
+```text
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+[small] VALID — 10 households, 33 accounts, 370 positions; on-disk manifest present
+[medium] VALID — 40 households, 156 accounts, 2201 positions; on-disk manifest present
+[large] VALID — 120 households, 485 accounts, 7198 positions; on-disk manifest present
+  execution kind: offline-fake-control
+  FAKE-MODEL CONTROL: synthetic tokens and formula cost; NOT live performance. The no-guest stand-in executes no Python.
+  fairness: MATCHED
+  telemetry: VALID
+  classic  duration median 20.14 ms; codeact duration median 17.74 ms
+```
+
+Optional verification, also run successfully:
 
 ```powershell
-az login
-$env:AZURE_OPENAI_ENDPOINT = "https://<resource>.openai.azure.com/"
-$env:AZURE_OPENAI_DEPLOYMENT_NAME = "<deployment>"
-$env:HYPERLIGHT_PYTHON_GUEST_PATH = "<absolute-path-to-version-matched-python-guest>"
+dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
+```
+
+Result: **198 passed, 0 failed, 0 skipped across ten projects**: the existing 197 tests plus
+one report-label/narrative regression test. The separate Hyperlight group discovered six tests;
+all six skipped here, with zero executed. A skip is not sandbox evidence.
+
+## 6. What the results show
+
+### Fake-model controls, NOT real performance
+
+This laptop's fake client makes one representative tool request, then emits a precomputed oracle
+report. Classic calls `list_households`; CodeAct calls a stand-in `execute_code` that runs
+**no Python** and invokes **no data callbacks**. Neither mode performs live model analysis.
+
+Fresh local-clone run at `2026-11-06T00:30Z` (November 5 local time), one measured pair per
+profile after warm-up; values below were read from the generated comparison JSON:
+
+| Profile | Oracle match, both | Fairness / telemetry | Fake tokens, each mode | Formula USD, each mode | Harness ms, Classic / CodeAct |
+| --- | --- | --- | ---: | ---: | ---: |
+| Small | Exact | MATCHED / VALID | 4,174 | 0.041425 | 20.1399 / 17.7399 |
+| Medium | Exact | MATCHED / VALID | 16,230 | 0.161970 | 40.9000 / 40.1731 |
+| Large | Exact | MATCHED / VALID | 49,208 | 0.491765 | 113.1979 / 106.6385 |
+
+For every profile: two model turns per mode, one model-facing invocation per mode,
+Classic/CodeAct granular calls **1/0**, `execute_code` invocations **0/1**, sandbox callbacks **0/0**.
+Both modes had flagged/breach precision and recall 1, allocation/trade error 0.
+Fake tokens and formula costs are identical; wall-clock timings vary.
+**These numbers validate the harness and telemetry, not a speedup, model accuracy, or Azure bill.**
+
+| Metric | Interpretation |
+| --- | --- |
+| Correctness | Schema validity plus oracle match class, flagged/breach precision and recall, allocation MAE, and trade-notional error as a household-value fraction. |
+| Duration | Reported trial wall time around analysis; includes observation/persistence inside the service, excludes warm-up and later report rendering. Not model-only or micro-VM CPU time. |
+| Tokens | Per-response input/output/total usage aggregated across the run; unknown remains null. Offline usage is synthetic. |
+| Estimated USD | Input/output tokens times configured per-million prices; not an invoice. |
+| Model turns | Assistant responses observed at the model boundary; distinguish them from function invocations. |
+| Model-facing calls | Functions requested by the model: granular tools for Classic, `execute_code` for CodeAct. |
+| Granular calls | Actual host data-tool invocations, including real CodeAct callbacks; legacy `toolCallCount` now means this. |
+| Sandbox callbacks | Granular calls originating from CodeAct; zero in this no-guest control. |
+| Telemetry valid | Events, invocation counts, and token totals reconcile. It does not imply correctness or real sandbox execution. |
+
+### Reports and evidence
+
+| Relative location | Contents |
+| --- | --- |
+| `artifacts/comparisons/{id}.{json,md,csv,html}` | Raw trials, summaries, scores, fingerprints, execution kind, and dashboards. |
+| `artifacts/comparisons/{id}/summary.{json,md}` | Additional comparison summary. |
+| `artifacts/comparisons/scaling-{timestamp}.html` | Latest-per-profile overview; check execution kinds before mixing runs. |
+| `artifacts/runs/{runId}/result.json`, `metrics.json`, `metadata.json` | Structured result, metrics, identity, and configuration. |
+| `events.jsonl`, `timeline.json`, `timeline.md` within each run | Ordered boundary events and their references. |
+| `model/`, `tools/`, `classic/`, `codeact/` within each run | Requests/responses, invocations, final-response captures, generated programs, and available streams. |
+
+Default capture is metadata only. The demo explicitly uses `full` for synthetic data; payloads are
+redacted and capped at 65,536 characters. Exact programs are saved only if unredacted and untruncated.
+Use capture flags, not assumptions about a missing stream or source file.
+**Known limitation:** the legacy combined `transcript.jsonl` can truncate mid-JSON on Medium/Large.
+Use structured model journals and the result JSON; do not parse that combined file as complete JSONL.
+Current evidence and IDs: [POC demo review](docs/review-current/poc-demo-review.md).
+
+## 7. Running live
+
+**Not yet verified in this review.** Configure these Azure OpenAI environment variables in the
+same terminal; names only, with no secrets or environment-specific values in this repository:
+
+| Variable | Purpose |
+| --- | --- |
+| `AZURE_OPENAI_ENDPOINT` | Base resource endpoint, not a Foundry route or deployment URL. |
+| `AZURE_OPENAI_DEPLOYMENT_NAME` | Exact chat deployment name, not merely a model identifier. |
+| `AZURE_OPENAI_API_KEY` | Optional alternative to `DefaultAzureCredential`; keep outside artifacts. |
+
+Prefer an authorized identity with the **Cognitive Services OpenAI User** role.
+Copying [.env.example](.env.example) does not load variables into the shell.
+For a real paired comparison also configure `HYPERLIGHT_PYTHON_GUEST_PATH` on a supported x64 host.
+The laptop can use a live Classic client, but cannot demonstrate real Hyperlight locally.
+
+After configuring Azure, the matching guest, and virtualization, these commands are
+**not yet verified**:
+
+```powershell
 $env:BENCHMARK_REQUIRE_LIVE = "true"
 $env:BENCHMARK_MAX_TURNS = "40"
 $env:BENCHMARK_TIMEOUT_SECONDS = "600"
-dotnet test -c Release --filter "Category=Hyperlight"
-dotnet run -c Release --project src/SterlingVale.Benchmark -- compare --trials 3 --log-level verbose --payload-capture full
+dotnet test -c Release --no-build --filter "Category=Hyperlight"
+$benchmark = Join-Path src SterlingVale.Benchmark
+dotnet run -c Release --no-build --project $benchmark -- compare --trials 3 --log-level verbose --payload-capture full
 ```
 
-Use the version-matched guest from `scripts/vm/download-guest.sh` on Linux. For Windows, obtain
-the corresponding win-x64 guest from the same package version, and enable WHP yourself. Do not
-substitute a guest built from a different API version. Identity authentication requires the Cognitive
-Services OpenAI User role; API-key authentication is optional and keys must stay outside artifacts.
-`BENCHMARK_REQUIRE_LIVE=true` refuses missing Azure or guest configuration instead of substituting
-the offline path. It does not prove that virtualization, authentication, quota, or the guest works.
+All six runtime tests must actually pass before claiming sandbox validation.
+`BENCHMARK_REQUIRE_LIVE` refuses missing Azure/guest settings; it does not prove auth, capacity,
+guest compatibility, correctness, or virtualization. CLI success checks fairness and telemetry;
+inspect completion and oracle scores separately. Live calls incur provider charges.
 
-`--log-level minimal|normal|verbose|debug` controls terminal rendering of the same events written
-to disk. `--payload-capture none|metadata|full` defaults to `metadata`; verbose/debug do not override
-that choice. For APIs use `EXECUTION_LOG_LEVEL` and `EXECUTION_PAYLOAD_CAPTURE`. Full capture is
-explicitly for synthetic demonstrations, not a production default. Payloads are limited to 65,536
-characters, redacted, and carry truncation flags. A redacted/truncated program is marked as an
-unavailable exact capture rather than saved as an apparently exact Python program.
+Live x64 execution would add **real model decisions and token usage, actual Python execution and
+host callbacks, observed provider/sandbox latency, and independent oracle scoring of model output**.
+It could establish comparative accuracy and efficiency; the offline demo cannot.
 
-Each run has unique run/correlation IDs, comparison/trial IDs, W3C trace/span IDs, and a flushed
-`events.jsonl` journal. Artifacts include `timeline.json`, `timeline.md`, model request/response
-JSONL, direct-tool invocation JSONL, and applicable `classic/` or `codeact/` files. Full mode preserves
-each safe, bounded original program in `codeact/generated-code-NNN.py` before invoking the tool.
-Classic final-response files label model content separately from application-normalized results.
-Batch aggregate metadata references independently persisted child runs and labels the aggregate
-as application-merged. Model projection excludes reasoning-content objects.
+`CLASSIC_BATCH_SIZE` optionally decomposes Classic into household subsets and application-merges
+their outputs. Default zero leaves it disabled. Batched trials are a separate experimental variant,
+not an unchanged head-to-head; the aggregate references child runs and is not one model answer.
 
-Comparison summaries are also written to `artifacts/comparisons/{comparisonId}/summary.{json,md}`.
-All three profiles retain their original sizes. Missing token metadata remains null. Reports expose
-separate model-facing tool, granular invocation, and sandbox callback counts; the legacy
-`ToolCallCount` now means granular invocations. Telemetry inconsistency causes a nonzero benchmark
-exit. Completion, correctness, fairness, and telemetry validity are distinct checks.
+## 8. Running real Hyperlight on x64 (optional)
 
-Filter the source journal with PowerShell (replace the run ID):
+**Not yet verified; VM work is paused.** Use an x64 Linux host with accessible KVM/MSHV or
+Windows x64 with WHP, plus the version-matched Python guest. ARM64 is not a supported substitute.
+There is no claim that an ordinary container or hosted development environment supplies virtualization.
 
-```powershell
-$events = Get-Content "artifacts/runs/<runId>/events.jsonl" | ForEach-Object { $_ | ConvertFrom-Json }
-$events | Where-Object eventType -eq TOOL_CALL_COMPLETED | Sort-Object sequenceNumber
-$events | Where-Object { $_.data.toolName -eq "get_price" }
-$events | Where-Object { $_.data.modelTurn -eq 1 }
-```
+See the [x64 workflow](docs/review-current/x64-validation.md), approval-gated
+[provisioning](scripts/provision-vm.sh), [bootstrap](scripts/bootstrap-vm.sh),
+[validation helper](scripts/verify-observability.ps1), and older [VM helpers](scripts/vm/).
+Nothing in the offline quickstart provisions resources, installs a guest, or changes execution policy.
 
-The current path uses direct AIFunction callbacks, not MCP. Hyperlight internal initialization,
-serialization, cleanup timings, and host resource counters are unavailable. stdout/stderr are
-captured only when the public tool result exposes them. Real-guest tests use a deterministic model
-to request actual sandbox execution; they are not fake sandbox tests. Streaming model execution is
-not used by the shared runner and is not certified by this instrumentation.
+## 9. Project status
 
-## Metrics definitions
-
-| Metric | Meaning |
+| Area | Status and evidence |
 | --- | --- |
-| model turns / requests | assistant turns and model requests in a run |
-| tool calls / by tool | granular tool invocations |
-| `execute_code` calls | CodeAct sandbox invocations (0 for Classic) |
-| input/output/total tokens | usage; **null when the provider does not report it** |
-| estimated cost | tokens × configured pricing, or null when usage unknown |
-| schema valid | final output conformed to `exposure-report/v1` |
-| flagged/breach precision & recall | vs the oracle |
-| allocation / trade-notional MAE | mean absolute error vs the oracle |
-| match class | Exact / WithinTolerance / Partial / InvalidSchema / Failed / TimedOut / Capped |
+| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles, reports, 198 passing tests. |
+| HTTP contract | Working in offline in-process integration tests; no new standalone API-server demo claimed. |
+| Observability | Working offline: correlation, journals, capture policy, timelines, counts, reconciliation. |
+| Large payload capture | Partial: bounded captures work; legacy combined transcript may not be valid JSONL. |
+| Batched Classic | Offline tested; live quality and the changed comparison methodology remain unverified. |
+| Live Azure OpenAI | Not run in this review; historic artifacts do not certify the current branch. |
+| Real Hyperlight | Six tests skipped here; x64 execution, callbacks, cancellation, and isolation unverified. |
+| Remote clone / Linux / macOS | Clean local-source clone verified; remote clone and other operating systems pending. |
+| Provision/bootstrap scripts | Reviewed, not executed; provisioning remains paused. |
 
-Computation rules live in [docs/metrics.md](docs/metrics.md).
+The original [observability acceptance audit](docs/review-current/execution-observability.md)
+retains the TRX recount, acceptance matrix, and SKU findings as historical deep detail.
+[Historical live notes](docs/review-current/historical-live-notes.md) retain the old README claims
+without presenting them as current verified results.
 
-## Fairness methodology
+## 10. Next steps
 
-Prompts, schemas, tool definitions, model configuration, pricing, and dataset manifests are
-SHA-256 hashed. A comparison **fails** if the paired modes' fingerprints differ. Trials are paired,
-mode order is randomized (seed recorded), one warm-up per mode is discarded, and no trial is ever
-dropped. Full detail: [docs/benchmark-methodology.md](docs/benchmark-methodology.md).
+1. **Real Hyperlight on supported x64:** run all six guest tests; establish actual execution rather than a stand-in.
+2. **Live Small, Medium, Large pairs:** retain every trial and inspect oracle/telemetry scores; answer the POC's real question.
+3. **Remote clean-clone check:** repeat the quickstart with an empty checkout/package environment; local cached restore is narrower evidence.
+4. **Linux script verification:** fix ECDSA public-key rejection and exercise approved setup/validation on x64; static review is not an installation or KVM test.
+5. **Fix legacy transcript framing:** preserve JSONL and explicit truncation metadata per message; Medium/Large captures currently end mid-record.
+6. **Revisit Classic batching only if needed:** measure the unbatched baseline first; any decomposition changes the experiment and needs an explicit label.
+7. **Verify dashboard appearance and API hosting:** CLI generation and integration tests passed; the browser inspection timed out and standalone serving was not rechecked.
 
-## Expected variability
+No larger orchestration change is required to show the offline demo. Approve such changes separately.
 
-With the offline fake model, both modes emit the oracle result — identical correctness, tiny
-timings (a control, not a performance claim). Real differences require a live model and vary by
-model, dataset, and environment. **No performance outcome is guaranteed or hard-coded.**
+## 11. Troubleshooting
 
-## Troubleshooting
-
-| Symptom | Fix |
+| Symptom | What to do |
 | --- | --- |
-| `/health/ready` returns 503 | generate data (`DataGenerator`) or set `DATASET_ROOT` |
-| Benchmark: "profile not available" | run the data generator first |
-| Live: HTTP 404 "Resource not found" | use the base `https://<resource>.openai.azure.com/` endpoint and the exact deployment name |
-| Live: 403 `PermissionDenied` | assign the **Cognitive Services OpenAI User** role to your identity on the resource |
-| Hyperlight tests skipped | set `HYPERLIGHT_PYTHON_GUEST_PATH` and ensure virtualization |
-| Live tests skipped | set `ENABLE_LIVE_TESTS=true` and configure Azure OpenAI |
-| `NU1403`/locked restore fails | run `dotnet restore` to refresh lock files |
+| ARM64 / no guest; six Hyperlight tests skip | Expected on this laptop. Leave the guest unset for offline use; move real execution to supported x64. |
+| PowerShell script blocked by policy | Paste the individual quickstart commands into an approved terminal. Do not change execution policy or bypass it. |
+| OneDrive paths contain spaces or files are locked | Run from the repo root, quote paths, and avoid concurrent writers. The local clone check used an unsynchronized workspace. |
+| TRX total looks too high | Use a fresh results directory and literal-path reads for filenames containing brackets; clear the XML variable before each read. Historical 297 was an invalid recount of 197. |
+| Profile unavailable / readiness 503 | Generate data first; verify the process's `DATASET_ROOT` points to it. |
+| Full transcript cannot be parsed | Known bounded legacy-file issue. Inspect `model/responses.jsonl` capture metadata and `result.json` instead. |
+| Azure 404 / 403 | Check base endpoint and deployment name; verify identity authorization. Do not print credentials to diagnose it. |
+| Dashboard disagrees with a recent run | Check comparison ID, execution kind, and timestamp. Old reports are not rewritten automatically. |
+| Locked restore fails | Check SDK selection and authorized feed access; do not silently regenerate lock files to conceal a failure. |
 
-## Current preview limitations
-
-`Microsoft.Agents.AI.Hyperlight` is preview-only. Whether the SDK exposes the model-generated code
-is version-dependent; when unavailable, `generated-code.txt` contains an explicit "unavailable"
-marker. The number of `execute_code` calls is **measured**, never assumed. See
-[docs/sdk-findings.md](docs/sdk-findings.md) and [docs/decisions.md](docs/decisions.md).
-
-## Security
-
-Generated code runs only inside the Hyperlight micro-VM (never the host); network denied, no host
-filesystem mounted, fresh sandbox per run, disposed afterward. See
-[docs/security-model.md](docs/security-model.md) and [SECURITY.md](SECURITY.md).
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+License: [MIT](LICENSE). Security boundaries and reporting: [SECURITY.md](SECURITY.md).
