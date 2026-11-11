@@ -28,6 +28,7 @@ public sealed class ClassicLiveApiFactory : WebApplicationFactory<Program>
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["DATASET_ROOT"] = _dataRoot,
+                ["MODEL_MODE"] = LiveGates.LiveEnabled && LiveGates.AzureConfigured ? "live" : "fake",
                 ["DATASET_PROFILES"] = "small",
                 ["ARTIFACTS_ROOT"] = Path.Combine(_dataRoot, "artifacts"),
                 // Cost/iteration caps for live runs.

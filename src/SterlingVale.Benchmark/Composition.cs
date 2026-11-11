@@ -19,8 +19,9 @@ namespace SterlingVale.Benchmark;
 /// </summary>
 public sealed class Composition : IDisposable
 {
-    public Composition()
+    public Composition(string? modelMode = null)
     {
+        Selection = ModelSelection.Parse(modelMode);
         DataRoot = Environment.GetEnvironmentVariable("DATASET_ROOT") ?? "data";
         ArtifactsRoot = Environment.GetEnvironmentVariable("ARTIFACTS_ROOT") ?? "artifacts";
         Trials = ParseInt(Environment.GetEnvironmentVariable("BENCHMARK_TRIALS"), 3);
@@ -32,10 +33,14 @@ public sealed class Composition : IDisposable
             DeploymentName = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME") ?? "gpt-4o",
             ApiKey = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY") ?? string.Empty,
         };
+        if (Selection.IsLive && (!azure.IsConfigured || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME"))))
+        {
+            throw new InvalidOperationException("Live mode requires AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT_NAME. No fake substitution is permitted.");
+        }
 
         Model = new ModelConfiguration
         {
-            DeploymentName = azure.IsConfigured ? azure.DeploymentName : "fake-model",
+            DeploymentName = Selection.IsLive ? azure.DeploymentName : "fake-model",
             Temperature = 0f,
             MaxTurns = ParseInt(Environment.GetEnvironmentVariable("BENCHMARK_MAX_TURNS"), 12),
             TimeoutSeconds = ParseInt(Environment.GetEnvironmentVariable("BENCHMARK_TIMEOUT_SECONDS"), 120),
@@ -51,7 +56,7 @@ public sealed class Composition : IDisposable
 
         var datasetOptions = Options.Create(new DatasetOptions { DataRoot = DataRoot, Profiles = ["small", "medium", "large"] });
         Snapshots = new DatasetSnapshotProvider(new DatasetLoader(), datasetOptions);
-        ChatClientProvider = azure.IsConfigured
+        ChatClientProvider = Selection.IsLive
             ? new AzureOpenAIChatClientProvider(azure)
             : new FakeChatClientProvider();
         LoggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => builder
@@ -64,7 +69,7 @@ public sealed class Composition : IDisposable
         Runner = new AnalysisRunner(LoggerFactory.CreateLogger<AnalysisRunner>());
         ToolMetrics = new ToolMetrics();
         RunStore = new FileRunStore(new ArtifactsOptions { Root = ArtifactsRoot }, Model, Pricing);
-        Live = azure.IsConfigured;
+        Live = Selection.IsLive;
     }
 
     public string DataRoot { get; }
@@ -79,6 +84,7 @@ public sealed class Composition : IDisposable
     public int ClassicBatchSize { get; }
 
     public bool Live { get; }
+    public ModelSelection Selection { get; }
 
     public ISnapshotProvider Snapshots { get; }
 

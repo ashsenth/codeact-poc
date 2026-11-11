@@ -36,6 +36,7 @@ public sealed class CodeActApiFactory : WebApplicationFactory<Program>
                 ["DATASET_ROOT"] = _dataRoot,
                 ["DATASET_PROFILES"] = "small",
                 ["AZURE_OPENAI_ENDPOINT"] = string.Empty,
+                ["MODEL_MODE"] = "fake",
                 ["HYPERLIGHT_PYTHON_GUEST_PATH"] = string.Empty,
                 ["ARTIFACTS_ROOT"] = ArtifactsRoot,
             });

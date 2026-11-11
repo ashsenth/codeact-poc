@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+using SterlingVale.AgentShared.Analysis;
 using SterlingVale.Benchmark.Scoring;
 
 namespace SterlingVale.Benchmark.Model;
@@ -24,10 +26,11 @@ public sealed record TrialResult(
     public int GranularToolCalls { get; init; }
     public int SandboxCallbacks { get; init; }
     public IReadOnlyList<string> ChildRunIds { get; init; } = [];
+    public FailureInfo? Failure { get; init; }
 }
 
 /// <summary>Median/min/max of a measured quantity (no trials removed).</summary>
-public sealed record DurationStats(double Median, double Min, double Max);
+public sealed record DurationStats(double? Median, double? Min, double? Max);
 
 /// <summary>Token aggregates; <see cref="Complete"/> is false when any trial lacked usage metadata.</summary>
 public sealed record TokenStats(long? Median, long? Min, long? Max, bool Complete);
@@ -102,7 +105,38 @@ public sealed record ComparisonReport(
     IReadOnlyList<TrialResult> RawTrials,
     int ClassicBatchSize = 0)
 {
+    [JsonPropertyOrder(-10)]
+    public ComparisonOutcome Outcome => new(
+        RawTrials.Count(trial => trial.Status == "Completed"), RawTrials.Count,
+        RawTrials.Count(trial => trial.Status != "Completed"),
+        RawTrials.Count(trial => trial.Score.MatchClass is CorrectnessScorer.Match.Exact or CorrectnessScorer.Match.WithinTolerance),
+        RawTrials.Where(trial => trial.Status != "Completed")
+            .Select(trial => trial.Failure?.Category ?? trial.Status).Distinct(StringComparer.Ordinal).ToArray(),
+        Fairness.Matched && RawTrials.All(trial => trial.TelemetryValid));
+
+    public ComparisonReport ForPresentation() => Outcome.IsValid ? this : this with
+    {
+        Classic = SuppressStatistics(Classic), CodeAct = SuppressStatistics(CodeAct), Delta = null,
+    };
+
+    private static ModeSummary SuppressStatistics(ModeSummary summary) => summary with
+    {
+        DurationMs = new(null, null, null),
+        TotalTokens = new(null, null, null, false),
+        Cost = null, RoundTrips = null,
+    };
+
     public string ExecutionKind { get; init; } = "unavailable";
     public int? DatasetAccountCount { get; init; }
     public int? DatasetPositionCount { get; init; }
+}
+
+public sealed record ComparisonOutcome(int CompletedRuns, int TotalRuns, int FailedRuns, int CorrectRuns,
+    IReadOnlyList<string> FailureCategories, bool EvidenceValid)
+{
+    public bool IsValid => TotalRuns > 0 && FailedRuns == 0 && CorrectRuns == TotalRuns && EvidenceValid;
+    public string Message => FailedRuns > 0
+        ? $"COMPARISON INVALID: {FailedRuns} of {TotalRuns} runs failed ({string.Join(", ", FailureCategories)})"
+        : IsValid ? "COMPARISON VALID"
+        : "COMPARISON INVALID: correctness, fairness or telemetry requirements were not met";
 }

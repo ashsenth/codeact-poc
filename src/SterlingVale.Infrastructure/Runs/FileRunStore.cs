@@ -19,6 +19,7 @@ public sealed class FileRunStore : IRunStore
 
     private readonly ConcurrentDictionary<string, RunRecord> _index = new(StringComparer.Ordinal);
     private readonly string _runsRoot;
+    private readonly string _artifactsRoot;
     private readonly ModelConfiguration _model;
     private readonly PricingConfiguration _pricing;
 
@@ -29,6 +30,7 @@ public sealed class FileRunStore : IRunStore
         _model = model ?? throw new ArgumentNullException(nameof(model));
         _pricing = pricing ?? throw new ArgumentNullException(nameof(pricing));
         _runsRoot = Path.Combine(options.Root, "runs");
+        _artifactsRoot = options.Root;
     }
 
     /// <inheritdoc />
@@ -55,6 +57,7 @@ public sealed class FileRunStore : IRunStore
             File.WriteAllText(temporary, content, Utf8);
             File.Move(temporary, path, overwrite: true);
         }
+        ArtifactIndex.Write(_artifactsRoot);
     }
 
     /// <inheritdoc />

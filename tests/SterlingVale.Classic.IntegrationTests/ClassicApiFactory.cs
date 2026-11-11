@@ -35,6 +35,7 @@ public sealed class ClassicApiFactory : WebApplicationFactory<Program>
                 ["DATASET_ROOT"] = _dataRoot,
                 ["DATASET_PROFILES"] = "small",
                 ["AZURE_OPENAI_ENDPOINT"] = string.Empty,
+                ["MODEL_MODE"] = "fake",
                 ["ARTIFACTS_ROOT"] = ArtifactsRoot,
             });
         });

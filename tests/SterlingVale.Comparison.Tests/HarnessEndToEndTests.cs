@@ -1,5 +1,6 @@
 using SterlingVale.Benchmark;
 using SterlingVale.DataGenerator;
+using SterlingVale.Benchmark.Reporting;
 using Xunit;
 
 namespace SterlingVale.Comparison.Tests;
@@ -48,6 +49,21 @@ public sealed class HarnessEndToEndTests
             Assert.Equal(4, report.RawTrials.Select(trial => trial.CorrelationId).Distinct().Count());
             Assert.All(report.RawTrials.GroupBy(trial => trial.PairId), pair => Assert.Single(pair.Select(trial => trial.TrialId).Distinct()));
             Assert.Contains(report.RawTrials, t => t.Mode == "codeact" && t.ExecuteCodeCallCount == 1);
+            ComparisonWriter.Write(report, composition.ArtifactsRoot);
+            string index = File.ReadAllText(Path.Combine(composition.ArtifactsRoot, "index.md"));
+            Assert.Contains("COMPARISON VALID", index);
+            Assert.Contains("warm-up (not measured)", index);
+            Assert.Contains("timeline.md", index);
+            Assert.Contains("tool invocations", index);
+            foreach (string journal in Directory.GetFiles(Path.Combine(composition.ArtifactsRoot, "runs"), "events.jsonl", SearchOption.AllDirectories))
+            {
+                using var start = System.Text.Json.JsonDocument.Parse(File.ReadLines(journal).First());
+                if (start.RootElement.GetProperty("isWarmup").GetBoolean())
+                {
+                    Assert.Equal("warmup", start.RootElement.GetProperty("trialId").GetString());
+                    Assert.DoesNotContain(start.RootElement.GetProperty("runId").GetString(), report.RawTrials.Select(trial => trial.RunId));
+                }
+            }
             if (batchSize > 0)
             {
                 foreach (var trial in report.RawTrials.Where(trial => trial.Mode == "classic"))

@@ -25,6 +25,11 @@ public static class ExecutionConsole
         string prefix = $"[{entry.Timestamp:HH:mm:ss.fff}] [{entry.AgentMode.ToUpperInvariant()}] " +
             $"run={entry.RunId} correlation={entry.CorrelationId} comparison={entry.ComparisonId} trial={entry.TrialId} " +
             $"trace={entry.TraceId} span={entry.SpanId} seq={entry.SequenceNumber} ";
+        if (level <= ExecutionLogLevel.Normal && entry.EventType != "RUN_STARTED")
+        {
+            prefix = $"[{entry.RunId[..Math.Min(8, entry.RunId.Length)]}] ";
+        }
+        prefix += entry.IsWarmup ? "[WARM-UP, not measured] " : "[MEASURED] ";
         string label = entry.EventType switch
         {
             "CODE_GENERATED" => "MODEL OUTPUT: GENERATED PYTHON",
@@ -38,10 +43,16 @@ public static class ExecutionConsole
         if (level != ExecutionLogLevel.Verbose && data.Length > 0)
         {
             using var document = JsonDocument.Parse(data);
-            data = document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("toolName", out var name)
+            var root = document.RootElement;
+            data = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("toolName", out var name)
                 ? name.GetString() ?? string.Empty : string.Empty;
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("failure", out var failure))
+            {
+                data += " " + failure.GetProperty("message").GetString();
+            }
         }
 
-        return $"{prefix}{label} {entry.Status} {entry.DurationMs:0.###}ms {data}".TrimEnd();
+        string duration = entry.DurationMs is { } milliseconds ? $" {milliseconds:0.###}ms" : string.Empty;
+        return $"{prefix}{label} {entry.Status}{duration} {entry.ErrorCategory} {data}".TrimEnd();
     }
 }

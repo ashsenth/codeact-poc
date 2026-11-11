@@ -3,6 +3,8 @@ using SterlingVale.Benchmark.Commands;
 using SterlingVale.Benchmark.Model;
 using SterlingVale.Benchmark.Reporting;
 using SterlingVale.Telemetry;
+using SterlingVale.Infrastructure.Runs;
+using SterlingVale.AgentShared.Configuration;
 
 // Sterling Vale benchmark CLI.
 //   benchmark validate-data
@@ -18,7 +20,22 @@ if (args.Length == 0)
 }
 
 string command = args[0];
-var options = ParseOptions(args);
+Dictionary<string, string> options;
+ModelSelection selection;
+try
+{
+    options = ParseOptions(args);
+    selection = ModelSelection.Parse(options.GetValueOrDefault("model"));
+}
+catch (ArgumentException exception)
+{
+    Console.Error.WriteLine(exception.Message);
+    return 2;
+}
+if (command is "run" or "compare")
+{
+    Console.WriteLine($"Model selected: {selection.Mode}. Reason: {selection.Reason}.");
+}
 if (options.TryGetValue("log-level", out var logLevel))
 {
     if (!Enum.TryParse<ExecutionLogLevel>(logLevel, true, out var parsedLevel) || !Enum.IsDefined(parsedLevel))
@@ -42,16 +59,18 @@ if (options.TryGetValue("payload-capture", out var capture))
 }
 bool open = args.Contains("--open", StringComparer.OrdinalIgnoreCase);
 
+try
+{
 switch (command)
 {
     case "validate-data":
         return ValidateData.Run(new Composition().DataRoot);
 
     case "run":
-        return await RunAsync(options.GetValueOrDefault("profile", "medium"), TrialsFrom(options), open);
+        return await RunAsync(options.GetValueOrDefault("profile", "medium"), TrialsFrom(options), open, selection.Mode);
 
     case "compare":
-        return await CompareAsync(TrialsFrom(options));
+        return await CompareAsync(TrialsFrom(options), selection.Mode);
 
     case "report":
         return Report(options.GetValueOrDefault("comparison-id"), open);
@@ -63,10 +82,17 @@ switch (command)
         PrintUsage();
         return 2;
 }
-
-static async Task<int> RunAsync(string profile, int? trials, bool open)
+}
+catch (InvalidOperationException exception)
 {
-    using var composition = new Composition();
+    Console.Error.WriteLine(SterlingVale.AgentShared.Analysis.FailureInfo.FromException(exception).Message);
+    Console.Error.WriteLine("Check the selected model, Azure endpoint/deployment settings and dataset availability; no comparison succeeded.");
+    return 1;
+}
+
+static async Task<int> RunAsync(string profile, int? trials, bool open, string modelMode)
+{
+    using var composition = new Composition(modelMode);
     if (Environment.GetEnvironmentVariable("BENCHMARK_REQUIRE_LIVE") == "true" && (!composition.Live || !composition.Hyperlight.HasGuest))
     {
         Console.Error.WriteLine("Live comparison blocked: configure Azure OpenAI and HYPERLIGHT_PYTHON_GUEST_PATH on an x64 virtualization-capable host. No offline substitution permitted.");
@@ -87,12 +113,12 @@ static async Task<int> RunAsync(string profile, int? trials, bool open)
         OpenInBrowser(Path.ChangeExtension(path, ".html"));
     }
 
-    return report.Fairness.Matched && report.RawTrials.All(trial => trial.TelemetryValid) ? 0 : 1;
+    return report.Outcome.IsValid ? 0 : 1;
 }
 
-static async Task<int> CompareAsync(int? trials)
+static async Task<int> CompareAsync(int? trials, string modelMode)
 {
-    using var composition = new Composition();
+    using var composition = new Composition(modelMode);
     if (Environment.GetEnvironmentVariable("BENCHMARK_REQUIRE_LIVE") == "true" && (!composition.Live || !composition.Hyperlight.HasGuest))
     {
         Console.Error.WriteLine("Live comparison blocked: Azure OpenAI and a real Hyperlight guest are required. No offline substitution permitted.");
@@ -105,7 +131,7 @@ static async Task<int> CompareAsync(int? trials)
         var report = await harness.RunAsync(profile, trials ?? composition.Trials, CancellationToken.None);
         string path = ComparisonWriter.Write(report, composition.ArtifactsRoot);
         PrintSummary(report, path, composition.Live);
-        if (!report.Fairness.Matched || report.RawTrials.Any(trial => !trial.TelemetryValid))
+        if (!report.Outcome.IsValid)
         {
             exit = 1;
         }
@@ -138,6 +164,7 @@ static int Report(string? comparisonId, bool open)
     File.WriteAllText(mdPath, ComparisonWriter.RenderMarkdown(report));
     File.WriteAllText(csvPath, ComparisonWriter.RenderCsv(report));
     File.WriteAllText(htmlPath, ComparisonWriter.RenderHtml(report));
+    ArtifactIndex.Write(composition.ArtifactsRoot);
     Console.WriteLine($"Wrote {mdPath}");
     Console.WriteLine($"Wrote {csvPath}");
     Console.WriteLine($"Wrote {htmlPath}");
@@ -198,6 +225,7 @@ static int Visualize(IReadOnlyDictionary<string, string> options, bool open)
 
     string outPath = Path.Combine(dir, $"scaling-{DateTime.UtcNow:yyyyMMddHHmmss}.html");
     File.WriteAllText(outPath, ComparisonWriter.RenderScalingHtml(reports));
+    ArtifactIndex.Write(composition.ArtifactsRoot);
     Console.WriteLine($"Wrote {outPath} ({reports.Count} profile(s))");
     if (open)
     {
@@ -210,20 +238,17 @@ static int Visualize(IReadOnlyDictionary<string, string> options, bool open)
 static void PrintSummary(ComparisonReport report, string path, bool live)
 {
     Console.WriteLine($"Comparison {report.ComparisonId} ({report.Profile}) — {(live ? "LIVE model" : "offline fake model")}");
-    Console.WriteLine($"  execution kind: {report.ExecutionKind}");
+    Console.Write(ComparisonWriter.RenderConsoleSummary(report));
     if (!live)
     {
         Console.WriteLine("  FAKE-MODEL CONTROL: synthetic tokens and formula cost; NOT live performance. The no-guest stand-in executes no Python.");
     }
-    Console.WriteLine($"  fairness: {(report.Fairness.Matched ? "MATCHED" : "FAILED: " + string.Join(",", report.Fairness.Mismatches))}");
-    Console.WriteLine($"  telemetry: {(report.RawTrials.All(trial => trial.TelemetryValid) ? "VALID" : "FAILED")}");
     if (report.ClassicBatchSize > 0)
     {
         Console.WriteLine($"  classic batched: {report.ClassicBatchSize} household(s) per model invocation (metrics summed across batches)");
     }
 
-    Console.WriteLine($"  classic  duration median {report.Classic.DurationMs.Median:0.###} ms; codeact duration median {report.CodeAct.DurationMs.Median:0.###} ms");
-    if (report.ExecutionKind == "live-model-hyperlight" && report.Delta is not null)
+    if (report.Outcome.IsValid && report.ExecutionKind == "live-model-hyperlight" && report.Delta is not null)
     {
         Console.WriteLine($"  delta (codeact vs classic): {ComparisonWriter.FormatDeltaSummary(report.Delta)}");
     }
@@ -233,17 +258,20 @@ static void PrintSummary(ComparisonReport report, string path, bool live)
 }
 
 static int? TrialsFrom(IReadOnlyDictionary<string, string> options) =>
-    options.TryGetValue("trials", out var raw) && int.TryParse(raw, out var n) ? n : null;
+    !options.TryGetValue("trials", out var raw) ? null :
+    int.TryParse(raw, out var n) && n > 0 ? n : throw new InvalidOperationException("--trials must be a positive integer.");
 
 static Dictionary<string, string> ParseOptions(string[] args)
 {
     var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-    for (int i = 1; i < args.Length - 1; i++)
+    for (int i = 1; i < args.Length; i++)
     {
-        if (args[i].StartsWith("--", StringComparison.Ordinal))
+        if (args[i] == "--open") continue;
+        if (!args[i].StartsWith("--", StringComparison.Ordinal) || i + 1 >= args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal))
         {
-            options[args[i][2..]] = args[i + 1];
+            throw new ArgumentException($"Missing or invalid option value for {args[i]}.");
         }
+        options[args[i][2..]] = args[++i];
     }
 
     return options;
@@ -258,4 +286,5 @@ static void PrintUsage()
     Console.WriteLine("  benchmark report --comparison-id <id> [--open]");
     Console.WriteLine("  benchmark visualize [--profiles small,medium,large] [--open]");
     Console.WriteLine("  execution options: --log-level minimal|normal|verbose|debug --payload-capture none|metadata|full");
+    Console.WriteLine("  model selection: --model fake|live (default fake; environment never opts in)");
 }

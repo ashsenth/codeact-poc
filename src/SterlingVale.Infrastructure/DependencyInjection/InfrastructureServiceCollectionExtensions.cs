@@ -24,6 +24,8 @@ public static class InfrastructureServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
+        var selection = ModelSelection.Parse(configuration["model"] ?? configuration["MODEL_MODE"]);
+        Console.WriteLine($"Model selected: {selection.Mode}. Reason: {selection.Reason}.");
 
         var azure = new AzureOpenAIOptions
         {
@@ -31,6 +33,10 @@ public static class InfrastructureServiceCollectionExtensions
             DeploymentName = configuration["AZURE_OPENAI_DEPLOYMENT_NAME"] ?? "gpt-4o",
             ApiKey = configuration["AZURE_OPENAI_API_KEY"] ?? string.Empty,
         };
+        if (selection.IsLive && (!azure.IsConfigured || string.IsNullOrWhiteSpace(configuration["AZURE_OPENAI_DEPLOYMENT_NAME"])))
+        {
+            throw new InvalidOperationException("Live mode requires AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT_NAME.");
+        }
 
         var benchmark = new BenchmarkOptions
         {
@@ -50,7 +56,7 @@ public static class InfrastructureServiceCollectionExtensions
 
         var model = new ModelConfiguration
         {
-            DeploymentName = azure.IsConfigured ? azure.DeploymentName : "fake-model",
+            DeploymentName = selection.IsLive ? azure.DeploymentName : "fake-model",
             Temperature = benchmark.Temperature,
             MaxTurns = benchmark.MaxTurns,
             TimeoutSeconds = benchmark.TimeoutSeconds,
@@ -86,7 +92,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IRunStore, FileRunStore>();
         services.AddSingleton<AnalysisRunner>();
 
-        if (azure.IsConfigured)
+        if (selection.IsLive)
         {
             services.AddSingleton<IChatClientProvider>(new AzureOpenAIChatClientProvider(azure));
         }

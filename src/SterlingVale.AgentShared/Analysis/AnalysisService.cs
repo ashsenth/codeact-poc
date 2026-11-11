@@ -24,12 +24,13 @@ public sealed class AnalysisService(
 {
     /// <summary>Runs an analysis and returns the complete run record.</summary>
     public async Task<RunRecord> AnalyzeAsync(AnalysisRequest request, CancellationToken cancellationToken,
-        string? comparisonId = null, string? trialId = null)
+        string? comparisonId = null, string? trialId = null, bool isWarmup = false)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         using var execution = new ExecutionSession(executionOptions?.ArtifactsRoot ?? Environment.GetEnvironmentVariable("ARTIFACTS_ROOT") ?? "artifacts",
-            agentFactory.Mode, request.DatasetProfile, comparisonId, trialId);
+            agentFactory.Mode, request.DatasetProfile, comparisonId, trialId, isWarmup: isWarmup);
+        execution.ModelIsLive = chatClientProvider.IsLive;
         execution.Emit("RUN_STARTED");
         execution.Emit("EXECUTION_CONFIGURATION", data: new { model = chatClientProvider.IsLive ? "live" : "deterministic-fake",
             transport = "direct-aifunction", payloadCapture = execution.Payloads.Mode.ToString() });
@@ -74,16 +75,27 @@ public sealed class AnalysisService(
         }
 
         execution.Emit("JSON_VALIDATION_COMPLETED", record.Response.Metrics.SchemaValid ? "ok" : "failed");
+        var priorFailure = execution.Snapshot().FirstOrDefault(entry => entry.ErrorCategory is not null);
+        var fallbackFailure = record.Response.Status switch
+        {
+            RunStatus.NotExecuted => new FailureInfo("NoHyperlightGuest", "not executed: no Hyperlight guest"),
+            RunStatus.TimedOut => new FailureInfo("TimedOut", "The per-run time limit expired."),
+            RunStatus.Capped => new FailureInfo("TurnLimit", "The model turn limit was exceeded."),
+            _ => new FailureInfo("InvalidModelOutput", "The model did not return a valid non-empty analysis report."),
+        };
         execution.Emit(record.Response.Status == RunStatus.Completed ? "RUN_COMPLETED" : "RUN_FAILED",
-            record.Response.Status.ToString(), record.Response.Metrics.Duration.TotalMilliseconds);
+            record.Response.Status.ToString(), record.Response.Metrics.Duration.TotalMilliseconds,
+            errorCategory: record.Response.Status == RunStatus.Completed ? null : priorFailure?.ErrorCategory ?? fallbackFailure.Category,
+            data: record.Response.Status == RunStatus.Completed ? null : priorFailure?.Data ?? new { failure = fallbackFailure });
         return record with { Execution = execution.Context, Events = execution.Snapshot(), PayloadCaptureMode = execution.Payloads.Mode };
         }
         catch (Exception exception)
         {
-            execution.Emit("RUN_FAILED", "error", errorCategory: exception.GetType().Name);
+            var failure = FailureInfo.FromException(exception);
+            execution.Emit("RUN_FAILED", "error", errorCategory: failure.Category, data: new { failure });
             execution.WriteArtifact("result.json", System.Text.Json.JsonSerializer.Serialize(new
             {
-                execution.Context, status = "Failed", errorCategory = exception.GetType().Name,
+                execution.Context, status = "Failed", failure,
                 callerCancelled = cancellationToken.IsCancellationRequested,
             }));
             throw;

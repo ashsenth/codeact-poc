@@ -56,10 +56,11 @@ $validation = Join-Path scripts verify-observability.ps1
 & $validation -Mode Live -Trials 1
 ```
 
-The Live preflight makes a small Azure call. Full Live mode restores/builds, requires all 199
+The Live preflight makes a small Azure call. Full Live mode restores/builds, requires all 205
 non-live passes and six actual guest passes, then runs profiles sequentially. It requires exact
 oracle results, valid telemetry and actual code-execution completion without stand-in events.
-This helper's acceptance bar is stricter than the benchmark CLI exit code.
+The benchmark now rejects incomplete/incorrect comparisons too; this helper additionally requires
+exact oracle matches and actual guest execution. Live benchmark commands explicitly select `--model live`.
 
 If script execution is forbidden, do not bypass policy. Run the individual permitted dotnet
 commands in the README and inspect the same conditions explicitly. Linux PowerShell script

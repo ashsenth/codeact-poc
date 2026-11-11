@@ -51,6 +51,9 @@ public enum RunStatus
 
     /// <summary>The run failed (error or invalid output).</summary>
     Failed = 3,
+
+    /// <summary>Source was generated but sandbox execution was unavailable.</summary>
+    NotExecuted = 4,
 }
 
 /// <summary>

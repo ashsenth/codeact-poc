@@ -97,4 +97,19 @@ retain identities without payload content. Legacy unobserved records keep their 
 Truncated or redacted raw-output captures also retain their envelope rather than masquerading as
 complete text. The no-guest CodeAct stand-in executes no Python and
 emits explicit offline events, not real sandbox-completion events.
+Benchmark model selection is explicit: `--model fake|live`, default fake regardless of Azure
+environment variables. APIs use `--model live` or `MODEL_MODE=live` for explicit opt-in.
+Live no-guest CodeAct captures generated Python, does not invoke the stand-in, terminates after
+the current generated-call batch, and returns `NotExecuted` with an explicit missing-guest reason.
+It is not a completed analysis or a valid performance comparison.
+
+Failure events retain a safe category, HTTP status, allowlisted service code and synthesized
+guidance; raw provider messages/URLs/credentials are never copied. Normal console output prints
+full identity only at RUN STARTED, then a short run prefix; verbose/debug and journals retain
+full identity. Warm-ups carry `isWarmup` on context and every event, are persisted, and are excluded
+from measured trials. Completion/correctness precede telemetry validity in reports. Any failed or
+not-executed measured attempt invalidates the comparison and suppresses aggregate performance
+statistics in console, JSON, Markdown, HTML and scaling views while retaining raw trial evidence.
+The shared run store and comparison writer refresh `<ARTIFACTS_ROOT>/index.md` with statuses
+and relative links to available timelines, generated-code captures and tool-invocation records.
 See the [current POC review](review-current/poc-demo-review.md) for verified scope and open issues.

@@ -7,8 +7,8 @@ namespace SterlingVale.CodeAct.IntegrationTests;
 
 /// <summary>
 /// LIVE-model factory for CodeAct: leaves Azure OpenAI settings to the environment and forces the
-/// offline <c>execute_code</c> stand-in (no guest) so a live run exercises the model + CodeAct
-/// orchestration without needing a Hyperlight runtime. Applies conservative caps.
+/// no-guest generation-only path so a live run saves Python without pretending it executed.
+/// Applies conservative caps.
 /// </summary>
 public sealed class CodeActLiveApiFactory : WebApplicationFactory<Program>
 {
@@ -28,6 +28,7 @@ public sealed class CodeActLiveApiFactory : WebApplicationFactory<Program>
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["DATASET_ROOT"] = _dataRoot,
+                ["MODEL_MODE"] = LiveGates.LiveEnabled && LiveGates.AzureConfigured ? "live" : "fake",
                 ["DATASET_PROFILES"] = "small",
                 ["ARTIFACTS_ROOT"] = Path.Combine(_dataRoot, "artifacts"),
                 ["HYPERLIGHT_PYTHON_GUEST_PATH"] = string.Empty,
@@ -85,6 +86,7 @@ public sealed class CodeActGuestApiFactory : WebApplicationFactory<Program>
                 ["DATASET_PROFILES"] = "small",
                 ["ARTIFACTS_ROOT"] = Path.Combine(_dataRoot, "artifacts"),
                 ["AZURE_OPENAI_ENDPOINT"] = string.Empty,
+                ["MODEL_MODE"] = "fake",
                 // HYPERLIGHT_PYTHON_GUEST_PATH intentionally NOT set: flows from the environment.
             });
         });

@@ -35,7 +35,10 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
         ArgumentNullException.ThrowIfNull(agent);
         ArgumentNullException.ThrowIfNull(context);
 
-        LogStarting(context.RunId, context.Mode);
+        if (SterlingVale.Telemetry.ExecutionSession.Current is null)
+        {
+            LogStarting(context.RunId, context.Mode);
+        }
 
         var recorder = new ToolCallRecorder();
         var stopwatch = Stopwatch.StartNew();
@@ -65,7 +68,9 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
         catch (Exception exception)
         {
             failed = true;
-            SterlingVale.Telemetry.ExecutionSession.Current?.Emit("AGENT_EXECUTION_FAILED", "error", errorCategory: exception.GetType().Name);
+            var failure = FailureInfo.FromException(exception);
+            SterlingVale.Telemetry.ExecutionSession.Current?.Emit("AGENT_EXECUTION_FAILED", "error",
+                errorCategory: failure.Category, data: new { failure });
         }
 
         stopwatch.Stop();
@@ -73,7 +78,7 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
 
         if (timedOut || run is null)
         {
-            if (timedOut)
+            if (timedOut && SterlingVale.Telemetry.ExecutionSession.Current is null)
             {
                 LogTimedOut(context.RunId, context.Mode, context.Model.Timeout.TotalSeconds, toolCalls.Count);
             }
@@ -122,6 +127,12 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
         }
 
         var status = capped ? RunStatus.Capped : valid ? RunStatus.Completed : RunStatus.Failed;
+        if (SterlingVale.Telemetry.ExecutionSession.Current?.Snapshot().Any(entry => entry.EventType == "CODE_EXECUTION_NOT_EXECUTED") == true)
+        {
+            status = RunStatus.NotExecuted;
+            valid = false;
+            report = null;
+        }
 
         var metrics = new RunMetrics
         {
@@ -173,7 +184,10 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
             }
         }
 
-        LogRunDetail(context, status, turns, toolCalls, byName.GetValueOrDefault("execute_code"), total);
+        if (SterlingVale.Telemetry.ExecutionSession.Current is null)
+        {
+            LogRunDetail(context, status, turns, toolCalls, byName.GetValueOrDefault("execute_code"), total);
+        }
         return BuildRecord(context, status, raw, report, generatedCode, toolResults, toolCalls, transcript, metrics);
     }
 

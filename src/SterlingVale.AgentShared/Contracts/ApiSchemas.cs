@@ -51,7 +51,7 @@ public static class ApiSchemas
           "properties": {
             "runId": { "type": "string", "minLength": 1 },
             "mode": { "type": "string", "enum": ["classic", "codeact"] },
-            "status": { "type": "string", "enum": ["Completed", "Capped", "TimedOut", "Failed"] },
+            "status": { "type": "string", "enum": ["Completed", "Capped", "TimedOut", "Failed", "NotExecuted"] },
             "report": { "type": ["object", "null"] },
             "metrics": {
               "type": "object",

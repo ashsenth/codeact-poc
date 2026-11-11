@@ -46,12 +46,12 @@ public sealed class CodeActAgentFactory : IAgentFactory
 
         if (ExecutionSession.Current is { } session)
         {
-            session.SandboxRuntime = _hyperlight.HasGuest ? "hyperlight" : "offline-stand-in";
+            session.SandboxRuntime = _hyperlight.HasGuest ? "hyperlight" : session.ModelIsLive ? "generation-only" : "offline-stand-in";
         }
 
         ExecutionSession.Current?.Emit("SANDBOX_CONFIGURATION", data: new
         {
-            runtime = _hyperlight.HasGuest ? "hyperlight" : "offline-stand-in-no-code-executed",
+            runtime = ExecutionSession.Current?.SandboxRuntime ?? (_hyperlight.HasGuest ? "hyperlight" : "offline-stand-in"),
             initializationMetrics = "unavailable", cleanupMetrics = "unavailable",
         });
         return _hyperlight.HasGuest

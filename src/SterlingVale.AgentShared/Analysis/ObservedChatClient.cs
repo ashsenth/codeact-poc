@@ -43,8 +43,9 @@ public sealed class ObservedChatClient(IChatClient inner) : DelegatingChatClient
         }
         catch (Exception exception)
         {
-            execution.Emit("MODEL_REQUEST_FAILED", "error", Stopwatch.GetElapsedTime(start).TotalMilliseconds, exception.GetType().Name,
-                new { requestId, modelTurn });
+            var failure = FailureInfo.FromException(exception);
+            execution.Emit("MODEL_REQUEST_FAILED", "error", Stopwatch.GetElapsedTime(start).TotalMilliseconds, failure.Category,
+                new { requestId, modelTurn, failure });
             throw;
         }
     }

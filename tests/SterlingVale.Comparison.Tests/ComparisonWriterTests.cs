@@ -14,8 +14,8 @@ public sealed class ComparisonWriterTests
     {
         var trials = new List<TrialResult>
         {
-            new(1, 0, "classic", 5.0, "Completed", 1, 2, 0, 100, 0.001m, "run-c", Exact),
-            new(1, 1, "codeact", 4.0, "Completed", 1, 2, 1, 120, 0.001m, "run-a", Exact),
+            new(1, 0, "classic", 5.0, "Completed", 1, 2, 0, 100, 0.001m, "run-c", Exact) { TelemetryValid = true },
+            new(1, 1, "codeact", 4.0, "Completed", 1, 2, 1, 120, 0.001m, "run-a", Exact) { TelemetryValid = true },
         };
         var fingerprints = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -35,8 +35,8 @@ public sealed class ComparisonWriterTests
     {
         var trials = new List<TrialResult>
         {
-            new(1, 0, "classic", 5.0, "Completed", 3, 4, 0, 300, 0.003m, "run-c", Exact),
-            new(1, 1, "codeact", 4.0, "Completed", 1, 2, 1, 120, 0.001m, "run-a", Exact),
+            new(1, 0, "classic", 5.0, "Completed", 3, 4, 0, 300, 0.003m, "run-c", Exact) { TelemetryValid = true },
+            new(1, 1, "codeact", 4.0, "Completed", 1, 2, 1, 120, 0.001m, "run-a", Exact) { TelemetryValid = true },
         };
         var fp = new Dictionary<string, string>(StringComparer.Ordinal) { ["prompt"] = "a", ["tools"] = "b", ["dataset"] = "c" };
         var fairness = new FairnessReport(true, [], fp, fp);
@@ -45,6 +45,40 @@ public sealed class ComparisonWriterTests
         return new ComparisonReport(
             $"{profile}-x", "2026-01-01T00:00:00+00:00", profile, "c", 1L, 1, 1, households, fairness,
             classic, codeact, Aggregator.ComputeDelta(classic, codeact), trials);
+    }
+
+    [Fact]
+    public void Failed_measured_run_invalidates_every_renderer_and_suppresses_aggregate_statistics()
+    {
+        var original = SampleReport() with { ExecutionKind = "live-model-hyperlight" };
+        var failed = original.RawTrials[1] with
+        {
+            Status = "Failed",
+            Score = RunScore.ForFailure("Failed", false, CorrectnessScorer.Match.Failed),
+            Failure = new("ClientResultException", "Model request failed: HTTP 403, error code Forbidden.", 403, "Forbidden"),
+        };
+        var report = original with { RawTrials = [original.RawTrials[0], failed] };
+        const string message = "COMPARISON INVALID: 1 of 2 runs failed (ClientResultException)";
+        foreach (string output in new[] { ComparisonWriter.RenderConsoleSummary(report), ComparisonWriter.RenderHtml(report),
+            ComparisonWriter.RenderMarkdown(report), ComparisonWriter.RenderScalingHtml([report]) })
+        {
+            Assert.Contains(message, output);
+            Assert.DoesNotContain("median", output, StringComparison.OrdinalIgnoreCase);
+        }
+        string directory = Path.Combine(Path.GetTempPath(), "sv-invalid-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            string path = ComparisonWriter.Write(report, directory);
+            using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            Assert.Equal("outcome", json.RootElement.EnumerateObject().First().Name);
+            Assert.Equal(message, json.RootElement.GetProperty("outcome").GetProperty("message").GetString());
+            Assert.Equal(System.Text.Json.JsonValueKind.Null, json.RootElement.GetProperty("classic").GetProperty("durationMs").GetProperty("median").ValueKind);
+            Assert.Equal(System.Text.Json.JsonValueKind.Null, json.RootElement.GetProperty("codeAct").GetProperty("roundTrips").ValueKind);
+            Assert.Null(ComparisonWriter.Read(path).Delta);
+            Assert.Contains(message, File.ReadAllText(Path.Combine(directory, "index.md")));
+            Assert.Contains("HTTP 403", File.ReadAllText(Path.ChangeExtension(path, ".html")));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using System.ClientModel;
 using System.Diagnostics;
+using System.Text.Json;
 using SterlingVale.AgentShared.Agents;
 using SterlingVale.AgentShared.Analysis;
 using SterlingVale.AgentShared.Contracts;
@@ -26,6 +27,7 @@ public sealed class BenchmarkHarness(Composition composition)
     public async Task<ComparisonReport> RunAsync(string profile, int trials, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profile);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(trials);
 
         string comparisonId = $"{profile}-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
         var snapshot = composition.Snapshots.GetSnapshot(profile);
@@ -51,8 +53,8 @@ public sealed class BenchmarkHarness(Composition composition)
         var random = new Random((int)(seed & 0x7FFFFFFF));
 
         // One unmeasured warm-up per mode; a warm-up failure is non-fatal (measured trials record it).
-        await WarmUpAsync(classicService, request, cancellationToken).ConfigureAwait(false);
-        await WarmUpAsync(codeactService, request, cancellationToken).ConfigureAwait(false);
+        await WarmUpAsync(classicService, request, comparisonId, cancellationToken).ConfigureAwait(false);
+        await WarmUpAsync(codeactService, request, comparisonId, cancellationToken).ConfigureAwait(false);
 
         var results = new List<TrialResult>();
         for (int pair = 1; pair <= trials; pair++)
@@ -77,8 +79,9 @@ public sealed class BenchmarkHarness(Composition composition)
                     // A provider rejection (e.g. Classic exceeding the tool-call cap on larger datasets)
                     // is recorded as a failed trial so the paired comparison completes instead of aborting.
                     stopwatch.Stop();
-                    Console.Error.WriteLine($"[{mode}] provider error on pair {pair}: {ex.Message}");
-                    results.Add(FailedTrial(pair, orderIndex, mode, stopwatch.Elapsed.TotalMilliseconds));
+                    var failure = FailureInfo.FromException(ex);
+                    Console.Error.WriteLine($"[{mode}] provider error on pair {pair}: {failure.Message}");
+                    results.Add(FailedTrial(pair, orderIndex, mode, stopwatch.Elapsed.TotalMilliseconds) with { Failure = failure });
                     continue;
                 }
 
@@ -98,6 +101,7 @@ public sealed class BenchmarkHarness(Composition composition)
                     TelemetryValid = m.TelemetryValid, ModelFacingToolCalls = m.ModelFacingToolCallCount,
                     GranularToolCalls = m.GranularToolCallCount, SandboxCallbacks = m.SandboxCallbackCount,
                     ChildRunIds = record.ChildRuns.Select(child => child.Response.RunId).ToArray(),
+                    Failure = FindFailure(record),
                 });
             }
         }
@@ -120,10 +124,10 @@ public sealed class BenchmarkHarness(Composition composition)
             results,
             composition.ClassicBatchSize)
         {
-            ExecutionKind = !composition.Live ? "offline-fake-control" : composition.Hyperlight.HasGuest ? "live-model-hyperlight" : "live-model-offline-code-stand-in",
+            ExecutionKind = !composition.Live ? "offline-fake-control" : composition.Hyperlight.HasGuest ? "live-model-hyperlight" : "live-model-code-generation-only",
             DatasetAccountCount = snapshot.Accounts.Count,
             DatasetPositionCount = snapshot.Positions.Count,
-        };
+        }.ForPresentation();
     }
 
     // Classic cannot emit a correct report over many households in one model run (it skips pricing and
@@ -231,16 +235,33 @@ public sealed class BenchmarkHarness(Composition composition)
         };
     }
 
-    private static async Task WarmUpAsync(AnalysisService service, AnalysisRequest request, CancellationToken cancellationToken)
+    private async Task WarmUpAsync(AnalysisService service, AnalysisRequest request, string comparisonId, CancellationToken cancellationToken)
     {
         try
         {
-            _ = await service.AnalyzeAsync(request, cancellationToken).ConfigureAwait(false);
+            var record = await service.AnalyzeAsync(request, cancellationToken, comparisonId, "warmup", isWarmup: true).ConfigureAwait(false);
+            composition.RunStore.Save(record);
         }
         catch (ClientResultException)
         {
             // Warm-up errors are non-fatal; measured trials capture provider failures.
         }
+    }
+
+    private static FailureInfo? FindFailure(RunRecord record)
+    {
+        var failed = record.Events.FirstOrDefault(entry => entry.ErrorCategory is not null);
+        if (failed?.Data is not null)
+        {
+            var data = JsonSerializer.SerializeToElement(failed.Data);
+            if (data.TryGetProperty("failure", out var failure))
+                return failure.Deserialize<FailureInfo>();
+        }
+        if (failed is not null)
+            return new FailureInfo(failed.ErrorCategory!, "See the run timeline for failure evidence.");
+        if (record.Response.Status == RunStatus.NotExecuted)
+            return new FailureInfo("NoHyperlightGuest", "not executed: no Hyperlight guest");
+        return record.ChildRuns.Select(FindFailure).FirstOrDefault(failure => failure is not null);
     }
 
     private static TrialResult FailedTrial(int pair, int orderIndex, string mode, double durationMs) =>

@@ -28,7 +28,7 @@ internal static class LiveGates
 public sealed class CodeActLiveTests(CodeActLiveApiFactory factory) : IClassFixture<CodeActLiveApiFactory>
 {
     private static readonly JsonSerializerOptions Json = JsonOptions();
-    private static readonly string[] AcceptableStatuses = ["Completed", "Capped", "Failed", "TimedOut"];
+    private static readonly string[] AcceptableStatuses = ["Completed", "Capped", "Failed", "TimedOut", "NotExecuted"];
 
     private readonly HttpClient _client = factory.CreateClient();
 

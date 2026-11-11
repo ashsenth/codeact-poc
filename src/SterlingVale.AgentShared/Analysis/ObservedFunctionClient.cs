@@ -45,14 +45,27 @@ public sealed class ObservedFunctionClient(IChatClient inner) : FunctionInvoking
             session.Emit("CODE_GENERATED", captured.Content is null || captured.Truncated || captured.Redacted ? "exact-capture-unavailable" : "ok",
                 data: new { invocationId, modelTurn = context.Iteration + 1, reference, program = captured });
             session.Emit("EXECUTE_CODE_CALL_STARTED", data: request);
-            session.Emit(executionEventPrefix + "_STARTED", data: request);
+            if (session.SandboxRuntime != "generation-only")
+                session.Emit(executionEventPrefix + "_STARTED", data: request);
         }
 
         using var activity = new Activity(code ? "code.execute" : "model.tool").SetIdFormat(ActivityIdFormat.W3C).Start();
         long start = Stopwatch.GetTimestamp();
         try
         {
-            object? result = await base.InvokeFunctionAsync(context, cancellationToken).ConfigureAwait(false);
+            bool notExecuted = code && session.SandboxRuntime == "generation-only";
+            object? result;
+            if (notExecuted)
+            {
+                context.Terminate = context.FunctionCallIndex + 1 >= context.FunctionCount;
+                result = new { success = false, status = "not executed: no Hyperlight guest" };
+                session.Emit("CODE_EXECUTION_NOT_EXECUTED", "not executed: no Hyperlight guest",
+                    data: new { invocationId, reference, toolName = name });
+            }
+            else
+            {
+                result = await base.InvokeFunctionAsync(context, cancellationToken).ConfigureAwait(false);
+            }
             var payload = session.Payloads.Capture(result);
             bool? success = null;
             int? exitCode = null;
@@ -91,7 +104,7 @@ public sealed class ObservedFunctionClient(IChatClient inner) : FunctionInvoking
 
             var completed = new { invocationId, toolName = name, modelTurn = context.Iteration + 1,
                 reference, startTime, endTime = DateTimeOffset.UtcNow, durationMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds,
-                status = success == false ? "failed" : "returned", success, exitCode, stdoutAvailable, stderrAvailable, result = payload,
+                status = notExecuted ? "not executed: no Hyperlight guest" : success == false ? "failed" : "returned", success, exitCode, stdoutAvailable, stderrAvailable, result = payload,
                 runtime = session.SandboxRuntime,
                 internalInitialization = "unavailable", internalCleanup = "unavailable" };
             session.Emit("MODEL_TOOL_CALL_COMPLETED", data: completed);
@@ -99,18 +112,22 @@ public sealed class ObservedFunctionClient(IChatClient inner) : FunctionInvoking
             {
                 session.WriteArtifact($"codeact/execution-{number:D3}.json", JsonSerializer.Serialize(completed));
                 session.Emit("EXECUTE_CODE_CALL_COMPLETED", data: completed);
-                session.Emit(executionEventPrefix + (success == false ? "_FAILED" : "_COMPLETED"),
-                    success == false ? "failed" : "returned", completed.durationMs, data: completed);
+                if (!notExecuted)
+                {
+                    session.Emit(executionEventPrefix + (success == false ? "_FAILED" : "_COMPLETED"),
+                        success == false ? "failed" : "returned", completed.durationMs, data: completed);
+                }
             }
 
             return result;
         }
         catch (Exception exception)
         {
+            var failure = FailureInfo.FromException(exception);
             var failed = new { invocationId, toolName = name, reference, startTime, endTime = DateTimeOffset.UtcNow,
-                status = "error", exceptionCategory = exception.GetType().Name,
+                status = "error", failure,
                 timedOutOrCancelled = exception is OperationCanceledException };
-            session.Emit("MODEL_TOOL_CALL_FAILED", "error", Stopwatch.GetElapsedTime(start).TotalMilliseconds, exception.GetType().Name, failed);
+            session.Emit("MODEL_TOOL_CALL_FAILED", "error", Stopwatch.GetElapsedTime(start).TotalMilliseconds, failure.Category, failed);
             if (code)
             {
                 session.WriteArtifact($"codeact/execution-{number:D3}.json", JsonSerializer.Serialize(failed));

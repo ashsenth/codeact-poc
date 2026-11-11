@@ -176,7 +176,7 @@ dotnet restore --locked-mode
 dotnet build -c Release --no-restore
 dotnet run -c Release --no-build --project $generator -- data
 dotnet run -c Release --no-build --project $benchmark -- validate-data
-dotnet run -c Release --no-build --project $benchmark -- compare --trials 1 --log-level normal --payload-capture full
+dotnet run -c Release --no-build --project $benchmark -- compare --trials 1 --model fake --log-level normal --payload-capture full
 dotnet run -c Release --no-build --project $benchmark -- visualize
 ```
 
@@ -194,11 +194,11 @@ Build succeeded.
 [small] VALID — 10 households, 33 accounts, 370 positions; on-disk manifest present
 [medium] VALID — 40 households, 156 accounts, 2201 positions; on-disk manifest present
 [large] VALID — 120 households, 485 accounts, 7198 positions; on-disk manifest present
-  execution kind: offline-fake-control
-  FAKE-MODEL CONTROL: synthetic tokens and formula cost; NOT live performance. The no-guest stand-in executes no Python.
-  fairness: MATCHED
-  telemetry: VALID
-  classic  duration median 20.14 ms; codeact duration median 17.74 ms
+Model selected: fake. Reason: explicit fake control; Azure environment variables are ignored.
+Completion: 2/2; correctness (Exact/WithinTolerance): 2/2
+COMPARISON VALID
+Execution kind: offline-fake-control
+Fairness: MATCHED; telemetry: VALID (accounting only, not success)
 ```
 
 Optional verification, also run successfully:
@@ -207,8 +207,8 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Result: **199 passed, 0 failed, 0 skipped across ten projects**: the prior 198 tests plus
-one transcript-framing/capture-policy regression test. The separate Hyperlight group discovered six tests;
+Result: **205 passed, 0 failed, 0 skipped across ten projects**: the prior 199 plus six
+diagnostic/mode/reporting/logging/generation regressions. The separate Hyperlight group discovered six tests;
 all six skipped here, with zero executed. A skip is not sandbox evidence.
 
 ## 6. What the results show
@@ -250,6 +250,7 @@ Fake tokens and formula costs are identical; wall-clock timings vary.
 
 | Relative location | Contents |
 | --- | --- |
+| `<ARTIFACTS_ROOT>/index.md` | Comparisons and runs, status, warm-up labels, and available timeline/code/tool-invocation links. |
 | `artifacts/comparisons/{id}.{json,md,csv,html}` | Raw trials, summaries, scores, fingerprints, execution kind, and dashboards. |
 | `artifacts/comparisons/{id}/summary.{json,md}` | Additional comparison summary. |
 | `artifacts/comparisons/scaling-{timestamp}.html` | Latest-per-profile overview; check execution kinds before mixing runs. |
@@ -267,10 +268,21 @@ Separate generated Python captures still require an unredacted, untruncated prog
 otherwise a `.capture.json` explicitly marks the unavailable exact source.
 Current evidence and IDs: [POC demo review](docs/review-current/poc-demo-review.md).
 
+Completion and oracle correctness come first in console/JSON/HTML summaries. If any measured run
+fails or is not executed, the comparison says `COMPARISON INVALID: N of M runs failed (<category>)`,
+exits nonzero, and suppresses aggregate medians/deltas/charts; raw attempts remain available.
+Telemetry can reconcile a failed request: **VALID accounting is not successful analysis**.
+Warm-ups are persisted and labelled **WARM-UP, not measured**. Normal logs show full IDs at
+RUN STARTED, then an eight-character run prefix; verbose/debug and disk journals retain full IDs.
+
 ## 7. Running live
 
-**Not yet verified in this review.** Configure these Azure OpenAI environment variables in the
-same terminal; names only, with no secrets or environment-specific values in this repository:
+**November 11 laptop check:** the configured endpoint returned HTTP 404. Removing its path and
+using the base resource address restored model responses without changing authentication/RBAC.
+Classic made live tool calls but returned an empty report; CodeAct saved generated Python and
+reported **NotExecuted: not executed: no Hyperlight guest**. This is not a successful live comparison.
+A separate one-household Classic API request completed with valid schema/telemetry (not oracle-scored).
+Configure these variables in the same terminal; do not put real values in source or artifacts:
 
 | Variable | Purpose |
 | --- | --- |
@@ -278,31 +290,47 @@ same terminal; names only, with no secrets or environment-specific values in thi
 | `AZURE_OPENAI_DEPLOYMENT_NAME` | Exact chat deployment name, not merely a model identifier. |
 | `AZURE_OPENAI_API_KEY` | Optional alternative to `DefaultAzureCredential`; keep outside artifacts. |
 
-Prefer an authorized identity with the **Cognitive Services OpenAI User** role.
-Copying [.env.example](.env.example) does not load variables into the shell.
-For a real paired comparison also configure `HYPERLIGHT_PYTHON_GUEST_PATH` on a supported x64 host.
-The laptop can use a live Classic client, but cannot demonstrate real Hyperlight locally.
+The benchmark defaults to `--model fake`, **even with Azure variables set**.
+Only `--model live` opts in; missing live configuration never falls back to fake.
+APIs also default to fake; opt in with `--model live` or `MODEL_MODE=live`.
+Copying [.env.example](.env.example) does not load shell variables.
 
-After configuring Azure, the matching guest, and virtualization, these commands are
-**not yet verified**:
+Identity/deployment setup templates below are **not yet verified/executed**; replace placeholders:
 
 ```powershell
-$env:BENCHMARK_REQUIRE_LIVE = "true"
-$env:BENCHMARK_MAX_TURNS = "40"
-$env:BENCHMARK_TIMEOUT_SECONDS = "600"
-dotnet test -c Release --no-build --filter "Category=Hyperlight"
-$benchmark = Join-Path src SterlingVale.Benchmark
-dotnet run -c Release --no-build --project $benchmark -- compare --trials 3 --log-level verbose --payload-capture full
+az login --tenant <tenant-id>
+az account set --subscription <subscription-id>
+az cognitiveservices account deployment list --resource-group <resource-group> --name <resource-name> --query "[].name" --output tsv
 ```
 
-All six runtime tests must actually pass before claiming sandbox validation.
-`BENCHMARK_REQUIRE_LIVE` refuses missing Azure/guest settings; it does not prove auth, capacity,
-guest compatibility, correctness, or virtualization. CLI success checks fairness and telemetry;
-inspect completion and oracle scores separately. Live calls incur provider charges.
+Use the **deployment name**, not the underlying model name. The endpoint must be the resource base,
+for example `https://<resource-name>.openai.azure.com/`, with no deployment, project, `/openai/v1`,
+chat-completions path or query. Use the resource's actual supported Azure OpenAI base endpoint.
+An authorized administrator can grant **Cognitive Services OpenAI User** at the resource scope;
+see [exact RBAC steps and error diagnosis](docs/review-current/poc-demo-review.md#azure-setup-templates).
+No login, role assignment or resource change was performed by this review.
 
-Live x64 execution would add **real model decisions and token usage, actual Python execution and
-host callbacks, observed provider/sandbox latency, and independent oracle scoring of model output**.
-It could establish comparative accuracy and efficiency; the offline demo cannot.
+Laptop connectivity/generation check, **executed but not yet verified as a successful comparison**:
+
+```powershell
+$env:BENCHMARK_REQUIRE_LIVE = "false"
+$env:HYPERLIGHT_PYTHON_GUEST_PATH = ""
+$env:BENCHMARK_MAX_TURNS = "12"
+$env:BENCHMARK_TIMEOUT_SECONDS = "60"
+$benchmark = Join-Path src SterlingVale.Benchmark
+dotnet run -c Release --no-build --project $benchmark -- run --profile small --trials 1 --model live --log-level normal --payload-capture full
+```
+
+Expect exit 1 without a guest: generation-only CodeAct is not a completed analysis. Full,
+unredacted, untruncated source lands in `codeact/generated-code-*.py`; otherwise capture flags explain
+why exact source is unavailable. Python is never executed by the laptop fallback.
+Failure events contain a safe category, HTTP status/allowlisted service code and sanitized guidance,
+not raw provider error text. Live calls incur charges; old journals cannot recover omitted messages.
+
+An x64 guest adds **actual Python execution, host callbacks and a scoreable CodeAct report**.
+Pass all six runtime tests first, then use explicit live mode for Small/Medium/Large pairs.
+The optional `BENCHMARK_REQUIRE_LIVE=true` strict gate refuses a missing guest; leave it false
+for laptop code generation. It does not prove auth, capacity or correctness.
 
 `CLASSIC_BATCH_SIZE` optionally decomposes Classic into household subsets and application-merges
 their outputs. Default zero leaves it disabled. Batched trials are a separate experimental variant,
@@ -323,12 +351,12 @@ Nothing in the offline quickstart provisions resources, installs a guest, or cha
 
 | Area | Status and evidence |
 | --- | --- |
-| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles and reports; follow-up suite has 199 passing tests. |
-| HTTP contract | Working in offline in-process integration tests; no new standalone API-server demo claimed. |
+| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles and reports; current suite has 205 passing tests. |
+| HTTP contract | Offline integration tests pass; a standalone live Classic request completed for one household, with valid schema/telemetry but no oracle score. |
 | Observability | Working offline: correlation, journals, capture policy, timelines, counts, reconciliation. |
 | Large payload capture | Bounded payloads with explicit flags; transcript records remain valid JSONL and retain later calls. Exact oversized payloads remain unavailable. |
 | Batched Classic | Offline tested; live quality and the changed comparison methodology remain unverified. |
-| Live Azure OpenAI | Not run in this review; historic artifacts do not certify the current branch. |
+| Live Azure OpenAI | Connectivity and CodeAct Python capture verified after correcting endpoint; Classic returned an empty report. No valid live comparison. |
 | Real Hyperlight | Six tests skipped here; x64 execution, callbacks, cancellation, and isolation unverified. |
 | Remote clone / Linux / macOS | Clean local-source clone verified; remote clone and other operating systems pending. |
 | Provision/bootstrap scripts | Reviewed, not executed; provisioning remains paused. |
@@ -346,7 +374,8 @@ with source commits/dates and **NOT RE-VERIFIED** labels, not as current verifie
 4. **Linux script verification:** fix the SSH-key regex rejecting valid ECDSA keys such as `ecdsa-sha2-nistp256`, then test approved setup/validation on x64; static review is not a KVM test.
 5. **Exercise new transcript captures live:** JSONL framing is fixed and regression-tested offline; confirm the per-field capture envelopes with real generated Python and callbacks on x64.
 6. **Revisit Classic batching only if needed:** measure the unbatched baseline first; any decomposition changes the experiment and needs an explicit label.
-7. **Verify dashboard appearance and API hosting:** CLI generation and integration tests passed; the browser inspection timed out and standalone serving was not rechecked.
+7. **Verify dashboard appearance and CodeAct API hosting:** CLI/report tests and scoped Classic serving passed; browser appearance and standalone CodeAct serving remain unchecked.
+8. **Improve live Classic completion:** diagnose the empty report after successful tool calls; connectivity is fixed, analytical correctness is not.
 
 No larger orchestration change is required to show the offline demo. Approve such changes separately.
 
@@ -358,9 +387,11 @@ No larger orchestration change is required to show the offline demo. Approve suc
 | PowerShell script blocked by policy | Paste the individual quickstart commands into an approved terminal. Do not change execution policy or bypass it. |
 | OneDrive paths contain spaces or files are locked | Run from the repo root, quote paths, and avoid concurrent writers. The local clone check used an unsynchronized workspace. |
 | TRX total looks too high | Use a fresh results directory and literal-path reads for filenames containing brackets; clear the XML variable before each read. Historical 297 was an invalid recount of 197. |
-| Profile unavailable / readiness 503 | Generate data first; verify the process's `DATASET_ROOT` points to it. |
+| Profile unavailable / readiness 503 | Generate data first. Standalone APIs resolve relative roots under their project content root; supply absolute data/artifact roots. |
 | Old transcript cannot be parsed | Regenerate artifacts after the framing fix. Old files are not rewritten; new per-field capture envelopes explicitly flag partial payloads. |
-| Azure 404 / 403 | Check base endpoint and deployment name; verify identity authorization. Do not print credentials to diagnose it. |
+| Azure 404 / 403 | 404 was reproduced with a path-bearing endpoint; base address fixed connectivity. For 403 check the resource-scoped OpenAI User role and networking. |
+| Azure configured but fake selected | Intentional safe default. Pass `--model live`; environment variables alone never opt in. |
+| INVALID comparison with VALID telemetry | The request accounting reconciled, but analysis failed/not executed. Read category/status and timeline; no medians are published. |
 | Dashboard disagrees with a recent run | Check comparison ID, execution kind, and timestamp. Old reports are not rewritten automatically. |
 | Locked restore fails | Check SDK selection and authorized feed access; do not silently regenerate lock files to conceal a failure. |
 

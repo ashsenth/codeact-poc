@@ -6,13 +6,19 @@ namespace SterlingVale.Telemetry;
 
 public sealed record ExecutionContext(
     string ComparisonId, string TrialId, string RunId, string CorrelationId,
-    string TraceId, string SpanId, string AgentMode, string DatasetProfile);
+    string TraceId, string SpanId, string AgentMode, string DatasetProfile)
+{
+    public bool IsWarmup { get; init; }
+}
 
 public sealed record ExecutionEvent(
     string EventId, string SchemaVersion, long SequenceNumber, DateTimeOffset Timestamp,
     string EventType, string CorrelationId, string RunId, string ComparisonId, string TrialId,
     string TraceId, string SpanId, string AgentMode, string DatasetProfile,
-    string Status, double? DurationMs, string? ErrorCategory, object? Data);
+    string Status, double? DurationMs, string? ErrorCategory, object? Data)
+{
+    public bool IsWarmup { get; init; }
+}
 
 public sealed record ModelUsage(int ModelTurn, long? InputTokens, long? OutputTokens, long? TotalTokens);
 
@@ -31,7 +37,7 @@ public sealed class ExecutionSession : IDisposable
     private readonly ExecutionLogLevel _logLevel;
 
     public ExecutionSession(string artifactsRoot, string agentMode, string datasetProfile,
-        string? comparisonId = null, string? trialId = null, PayloadPolicy? payloads = null)
+        string? comparisonId = null, string? trialId = null, PayloadPolicy? payloads = null, bool isWarmup = false)
     {
         _logLevel = Enum.TryParse<ExecutionLogLevel>(Environment.GetEnvironmentVariable("EXECUTION_LOG_LEVEL"), true, out var level) ? level : ExecutionLogLevel.Normal;
         Payloads = payloads ?? new PayloadPolicy(
@@ -42,7 +48,7 @@ public sealed class ExecutionSession : IDisposable
         Context = new ExecutionContext(comparisonId ?? Guid.NewGuid().ToString("N"),
             trialId ?? Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N"),
             Guid.NewGuid().ToString("N"), _activity.TraceId.ToString(), _activity.SpanId.ToString(),
-            agentMode, datasetProfile);
+            agentMode, datasetProfile) { IsWarmup = isWarmup };
         _activity.SetTag("run.id", Context.RunId);
         _activity.SetTag("correlation.id", Context.CorrelationId);
         RunDirectory = Path.Combine(artifactsRoot, "runs", Context.RunId);
@@ -58,6 +64,7 @@ public sealed class ExecutionSession : IDisposable
     public string RunDirectory { get; }
     public PayloadPolicy Payloads { get; }
     public string SandboxRuntime { get; set; } = "not-configured";
+    public bool ModelIsLive { get; set; }
     public static string? ParentInvocationId => Invocation.Value;
 
     public static IDisposable BeginInvocation(string invocationId)
@@ -108,7 +115,7 @@ public sealed class ExecutionSession : IDisposable
                 DateTimeOffset.UtcNow, eventType, Context.CorrelationId, Context.RunId,
                 Context.ComparisonId, Context.TrialId, activity?.TraceId.ToString() ?? Context.TraceId,
                 activity?.SpanId.ToString() ?? Context.SpanId, Context.AgentMode, Context.DatasetProfile,
-                status, durationMs, errorCategory, data);
+                status, durationMs, errorCategory, data) { IsWarmup = Context.IsWarmup };
             _writer.WriteLine(JsonSerializer.Serialize(entry, Json));
             _events.Add(entry);
             string? line = ExecutionConsole.Format(entry, _logLevel);

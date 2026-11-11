@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SterlingVale.Benchmark.Model;
+using SterlingVale.Infrastructure.Runs;
 
 namespace SterlingVale.Benchmark.Reporting;
 
@@ -20,11 +21,12 @@ public static class ComparisonWriter
     public static string Write(ComparisonReport report, string artifactsRoot)
     {
         ArgumentNullException.ThrowIfNull(report);
+        report = report.ForPresentation();
         string dir = Path.Combine(artifactsRoot, "comparisons");
         Directory.CreateDirectory(dir);
 
         string jsonPath = Path.Combine(dir, report.ComparisonId + ".json");
-        File.WriteAllText(jsonPath, JsonSerializer.Serialize(report, Json), Utf8);
+        WriteAtomic(jsonPath, JsonSerializer.Serialize(report, Json));
         File.WriteAllText(Path.Combine(dir, report.ComparisonId + ".md"), RenderMarkdown(report), Utf8);
         File.WriteAllText(Path.Combine(dir, report.ComparisonId + ".csv"), RenderCsv(report), Utf8);
         File.WriteAllText(Path.Combine(dir, report.ComparisonId + ".html"), RenderHtml(report), Utf8);
@@ -32,8 +34,8 @@ public static class ComparisonWriter
         Directory.CreateDirectory(comparisonDirectory);
         WriteAtomic(Path.Combine(comparisonDirectory, "summary.json"), JsonSerializer.Serialize(report, Json));
         WriteAtomic(Path.Combine(comparisonDirectory, "summary.md"),
-            "Execution kind: " + report.ExecutionKind + "\n\nTelemetry validity: " +
-            (report.RawTrials.All(trial => trial.TelemetryValid) ? "VALID" : "FAILED") + "\n\n" + RenderMarkdown(report));
+            RenderMarkdown(report));
+        ArtifactIndex.Write(artifactsRoot);
         return jsonPath;
     }
 
@@ -46,8 +48,28 @@ public static class ComparisonWriter
 
     /// <summary>Reads a comparison report from its JSON file.</summary>
     public static ComparisonReport Read(string jsonPath) =>
-        JsonSerializer.Deserialize<ComparisonReport>(File.ReadAllText(jsonPath), Json)
-        ?? throw new InvalidDataException($"Could not read comparison from {jsonPath}.");
+        (JsonSerializer.Deserialize<ComparisonReport>(File.ReadAllText(jsonPath), Json)
+        ?? throw new InvalidDataException($"Could not read comparison from {jsonPath}.")).ForPresentation();
+
+    public static string RenderConsoleSummary(ComparisonReport report)
+    {
+        var outcome = report.Outcome;
+        var sb = new StringBuilder();
+        sb.AppendLine($"Completion: {outcome.CompletedRuns}/{outcome.TotalRuns}; correctness (Exact/WithinTolerance): {outcome.CorrectRuns}/{outcome.TotalRuns}");
+        sb.AppendLine(outcome.Message);
+        sb.AppendLine($"Execution kind: {report.ExecutionKind}");
+        sb.AppendLine($"Fairness: {(report.Fairness.Matched ? "MATCHED" : "FAILED")}; telemetry: {(report.RawTrials.All(trial => trial.TelemetryValid) ? "VALID (accounting only, not success)" : "FAILED")}");
+        foreach (var trial in report.RawTrials)
+        {
+            sb.AppendLine($"  {trial.Mode}: {trial.Status}; oracle={trial.Score.MatchClass}" +
+                (trial.Failure is null ? string.Empty : $"; {trial.Failure.Message}"));
+        }
+        if (outcome.IsValid)
+        {
+            sb.AppendLine($"  classic duration median {F(report.Classic.DurationMs.Median)} ms; codeact duration median {F(report.CodeAct.DurationMs.Median)} ms");
+        }
+        return sb.ToString();
+    }
 
     /// <summary>Renders one CSV row per raw trial (RFC 4180 quoting) for external analysis.</summary>
     public static string RenderCsv(ComparisonReport report)
@@ -100,6 +122,19 @@ public static class ComparisonWriter
     public static string RenderHtml(ComparisonReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
+        if (!report.Outcome.IsValid)
+        {
+            var invalid = new StringBuilder();
+            AppendHtmlHead(invalid, report.ComparisonId);
+            invalid.Append("<h1>Sterling Vale &mdash; Classic vs CodeAct</h1>");
+            invalid.Append($"<h2>{Enc(report.Outcome.Message)}</h2>");
+            invalid.Append($"<p>{Enc(RenderConsoleSummary(report))}</p>");
+            invalid.Append($"<p>{Enc(ExecutionNotice(report))}</p>");
+            invalid.Append("<p>Aggregate performance statistics are suppressed. Raw attempts remain in JSON/CSV and run timelines.</p>");
+            AppendTrialStatusTable(invalid, report);
+            invalid.Append("</main></body></html>");
+            return invalid.ToString();
+        }
         var c = report.Classic;
         var a = report.CodeAct;
         int cN = TrialCount(report, "classic"), cDone = CompletedCount(report, "classic");
@@ -108,6 +143,7 @@ public static class ComparisonWriter
         var sb = new StringBuilder();
         AppendHtmlHead(sb, $"Sterling Vale \u2014 {report.ComparisonId}");
         sb.Append("<h1>Sterling Vale &mdash; Classic vs CodeAct</h1>");
+        sb.Append($"<p class=\"panel\">{Enc(report.Outcome.Message)}; completion {report.Outcome.CompletedRuns}/{report.Outcome.TotalRuns}; oracle correct {report.Outcome.CorrectRuns}/{report.Outcome.TotalRuns}</p>");
         sb.Append("<p class=\"disc\">SYNTHETIC analysis only &mdash; not investment advice. Measured numbers for a controlled A/B of orchestration only; no performance outcome is guaranteed.</p>");
         sb.Append($"<p class=\"panel\"><b>{Enc(ExecutionNotice(report))}</b></p>");
         sb.Append($"<p class=\"meta\">Comparison <code>{Enc(report.ComparisonId)}</code> &middot; profile <b>{Enc(report.Profile)}</b>{HouseholdsMeta(report)} &middot; {Enc(report.GeneratedAtUtc)}</p>");
@@ -190,6 +226,18 @@ public static class ComparisonWriter
 
     private static int TrialCount(ComparisonReport r, string mode) =>
         r.RawTrials.Count(t => string.Equals(t.Mode, mode, StringComparison.Ordinal));
+
+    private static void AppendTrialStatusTable(StringBuilder sb, ComparisonReport report)
+    {
+        sb.Append("<table><tr><th>Mode</th><th>Status</th><th>Oracle</th><th>Failure</th><th>Timeline</th></tr>");
+        foreach (var trial in report.RawTrials)
+        {
+            sb.Append($"<tr><td>{Enc(trial.Mode)}</td><td>{Enc(trial.Status)}</td><td>{Enc(trial.Score.MatchClass)}</td>" +
+                $"<td>{Enc(trial.Failure?.Message ?? trial.Failure?.Category ?? "none")}</td>" +
+                $"<td><a href=\"../runs/{Uri.EscapeDataString(trial.RunId)}/timeline.md\">timeline</a></td></tr>");
+        }
+        sb.Append("</table>");
+    }
 
     private static int CompletedCount(ComparisonReport r, string mode) =>
         r.RawTrials.Count(t => string.Equals(t.Mode, mode, StringComparison.Ordinal)
@@ -280,6 +328,19 @@ public static class ComparisonWriter
     public static string RenderScalingHtml(IReadOnlyList<ComparisonReport> reports)
     {
         ArgumentNullException.ThrowIfNull(reports);
+        if (reports.Any(report => !report.Outcome.IsValid))
+        {
+            var invalid = new StringBuilder();
+            AppendHtmlHead(invalid, "Sterling Vale scaling");
+            invalid.Append("<h1>Sterling Vale &mdash; scaling</h1><p>Aggregate performance statistics suppressed: at least one comparison is invalid.</p>");
+            foreach (var report in reports)
+            {
+                invalid.Append($"<h2>{Enc(report.Profile)}: {Enc(report.Outcome.Message)}</h2><p>{Enc(ExecutionNotice(report))}</p>");
+                AppendTrialStatusTable(invalid, report);
+            }
+            invalid.Append("</main></body></html>");
+            return invalid.ToString();
+        }
         var ordered = reports
             .OrderBy(r => r.DatasetHouseholdCount ?? 0)
             .ThenBy(r => r.Profile, StringComparer.Ordinal)
@@ -501,8 +562,14 @@ public static class ComparisonWriter
     public static string RenderMarkdown(ComparisonReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
+        if (!report.Outcome.IsValid)
+        {
+            return "# Sterling Vale comparison\n\n" + RenderConsoleSummary(report) + "\n\n" +
+                ExecutionNotice(report) + "\n\nAggregate performance statistics suppressed; inspect raw attempts and timelines.\n";
+        }
         var sb = new StringBuilder();
         sb.Append("# Sterling Vale — Classic vs CodeAct comparison\n\n");
+        sb.Append(RenderConsoleSummary(report)).Append('\n');
         sb.Append("> SYNTHETIC analysis only — not investment advice. This benchmark reports measured\n");
         sb.Append("> numbers for a controlled A/B of orchestration only. **No performance outcome is\n");
         sb.Append("> guaranteed**; results depend on the model, dataset, and environment.\n\n");
@@ -621,6 +688,7 @@ public static class ComparisonWriter
     {
         "offline-fake-control" => "OFFLINE FAKE-MODEL CONTROL - NOT live performance. Answers come from the oracle; no Python is executed in the no-guest stand-in. Tokens are synthetic and cost is a formula, not Azure spending.",
         "live-model-offline-code-stand-in" => "LIVE MODEL WITH OFFLINE CODE STAND-IN - NOT a real CodeAct comparison. No Python is executed.",
+        "live-model-code-generation-only" => "LIVE CODE GENERATION ONLY - not executed: no Hyperlight guest. Python is captured, not run; NOT a valid performance comparison.",
         "live-model-hyperlight" => "LIVE MODEL / HYPERLIGHT CONFIGURED - inspect runtime events, oracle scores and telemetry before treating this as validated performance.",
         _ => "EXECUTION KIND UNAVAILABLE - historical or unclassified results; not verified live performance.",
     };
@@ -652,7 +720,7 @@ public static class ComparisonWriter
     private static string Tokens(TokenStats t) =>
         t.Median is null ? "unknown" : $"{t.Median}{(t.Complete ? string.Empty : " (partial)")}";
 
-    private static string F(double value) => value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+    private static string F(double? value) => value?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) ?? "unavailable";
 
     private static string Short(string hash) => hash.Length <= 12 ? hash : hash[..12];
 

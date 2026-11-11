@@ -45,7 +45,7 @@ public sealed class AzureOpenAIChatClientProvider : IChatClientProvider
 
     /// <inheritdoc />
     public IChatClient CreateChatClient(ChatClientRequest request) =>
-        _client.GetChatClient(_deployment).AsIChatClient();
+        new DiagnosticChatClient(_client.GetChatClient(_deployment).AsIChatClient());
 
     private sealed class ExecutionHeaderPolicy : PipelinePolicy
     {
