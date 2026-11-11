@@ -90,7 +90,7 @@ No **Critical** or **High** severity findings. Build, tests, format, and vulnera
 - **Evidence:** `README.md` curl example uses `localhost:5000`; no `launchSettings.json` or documented
   `ASPNETCORE_URLS`.
 - **Why it matters:** `dotnet run` may bind a different URL; a new developer's curl could fail.
-- **Remediation:** Document `ASPNETCORE_URLS=http://localhost:5000` or add `launchSettings.json`.
+- **Remediation:** Document `ASPNETCORE_URLS=<LOCAL_BIND_URL>` or add `launchSettings.json`.
 - **Blocks release/demo:** No.
 
 ## F-09 — Startup configuration validation is partial

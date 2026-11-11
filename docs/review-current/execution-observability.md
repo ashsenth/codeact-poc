@@ -121,9 +121,8 @@ callbacks in this control. Ratios demonstrate report plumbing only and prove no 
 | Medium | 40 | 156 | 2201 | Completed | Completed | 67.1642 | 44.8586 | 33.2105 | 16230 | 16230 | 0 | 2 | 2 | 1 | 0 | 0.161970 | 0.161970 | Both Exact, precision/recall 1, allocation/trade MAE 0 |
 | Large | 120 | 485 | 7198 | Completed | Completed | 144.5755 | 111.0355 | 23.1990 | 49208 | 49208 | 0 | 2 | 2 | 1 | 0 | 0.491765 | 0.491765 | Both Exact, precision/recall 1, allocation/trade MAE 0 |
 
-Source comparison IDs, in order: `small-20261103174940-5fcd8795ea9b436cbd7dceaecd714be9`,
-`medium-20261103174939-08c99c2a8bd5418c8302ba98e910bf7e`,
-`large-20261103174938-fd085e6e6d4441db9247a47251150732`.
+Source comparison IDs, in order: `<SMALL_COMPARISON_ID>`, `<MEDIUM_COMPARISON_ID>`,
+`<LARGE_COMPARISON_ID>` (sanitized; exact values remain in local ignored evidence).
 
 Each measured fake mode has one model-facing invocation; CodeAct's invocation is execute_code.
 Model-facing invocations must not be confused with the granular-call columns above.
@@ -173,7 +172,7 @@ failed and notExecuted are individually zero in every row.
 
 ### Fresh deterministic rerun
 
-Run directory: `artifacts/phase-a-validation/20261105T210359054Z-87d737a5bd6444b4949819e0712426b3/`.
+Run directory: `artifacts/phase-a-validation/<VALIDATION_RUN_ID>/`.
 Release build succeeded. The unchanged `Category!=LiveModel&Category!=Hyperlight` filter ran
 explicitly against all ten test projects. Only these ten new TRX files were aggregated using
 `Get-Content -LiteralPath ... -Raw -ErrorAction Stop`. No old results were included.

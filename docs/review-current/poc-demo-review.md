@@ -54,7 +54,7 @@ Important qualifications:
 | ID | Location | Confirmed issue | Blocks offline demo? | Disposition |
 | --- | --- | --- | --- | --- |
 | D1 | [ComparisonWriter](../../src/SterlingVale.Benchmark/Reporting/ComparisonWriter.cs), report rendering | Generated HTML/Markdown/CSV lacked consistent execution-kind disclosure. The scaling page unconditionally claimed Classic failed, even when its matrix showed successful controls; other prose asserted fewer calls or inferred failure causes without evidence. | **Yes:** the main visual deliverable misrepresented the demonstrated results. | Fixed in `f44d9f2`; labels cover fake, stand-in, live-configured and historical/unknown results. Offline efficiency headlines are suppressed, CSV carries execution kind, and completion text no longer invents performance or failure causes. |
-| D2 | [RunArtifacts.cs](../../src/SterlingVale.AgentShared/Artifacts/RunArtifacts.cs), lines 75-79 | Full capture bounds the entire combined transcript string, then writes only the truncated content, discarding the capture envelope. Medium/Large files end at 65,536 characters inside a JSON record. | **No:** structured result JSON, comparison JSON, per-response capture envelopes and event journals remain available. | Reproduced by parsing every transcript line; one invalid final record in each measured Medium/Large transcript. Documented; leave a per-message framing/truncation fix for follow-up. |
+| D2 | [RunArtifacts.cs](../../src/SterlingVale.AgentShared/Artifacts/RunArtifacts.cs) | Full capture bounded the entire combined transcript string, discarding the capture envelope. Medium/Large files ended inside a JSON record and could omit later Python arguments/tool calls. | **No** for the original result demo, but unsafe for a complete transcript walkthrough. | Fixed in the November 11 follow-up: retain every message/call/result identity; capture individual payload fields with explicit limits/redaction metadata. Regression coverage includes oversized text, Python arguments, results, later messages and all capture modes. |
 | D3 | [provision-vm.sh](../../scripts/provision-vm.sh), line 30 | The public-key regex accepts the literal token `ecdsa-sha2-` followed immediately by a space, not real tokens such as `ecdsa-sha2-nistp256`. Valid ECDSA public keys are rejected. | **No:** provisioning is paused and is not part of this demo. | Confirmed against a synthetic algorithm/key-line fixture without executing the script. Ed25519/RSA are unaffected. Fix and test ECDSA acceptance during the approved Linux-script follow-up. |
 
 No larger runner, prompt, sandbox or batching redesign was performed. No other crash or wrong
@@ -118,18 +118,18 @@ Synthetic usage and price arithmetic are not spending. All profiles had two turn
 one model-facing invocation per mode, granular calls 1/0, execute_code calls 0/1 and callbacks 0/0
 (Classic/CodeAct). Allocation/trade errors were zero and flagged/breach precision/recall were one.
 
-Final comparison IDs:
+Final comparison IDs (sanitized; exact values remain in local ignored evidence):
 
-- `small-20261106003011-8d871efdd36a4fc49be4a7fb81fccbaf`
-- `medium-20261106003011-b3f9721106594009b71fa7968871c557`
-- `large-20261106003010-7de511bf7c914ec295e3e793d20567d8`
+- `<SMALL_COMPARISON_ID>`
+- `<MEDIUM_COMPARISON_ID>`
+- `<LARGE_COMPARISON_ID>`
 - Scaling report: `scaling-20261106003012.html`.
 
 Local ignored evidence is under
 `artifacts/demo-validation/20261105-demo/verified/`: clone/restore/build/generation/validation/
 comparison/visualization/test logs, fresh TRX files, and `demo-artifacts/` containing all report
 and run files. It is intentionally not committed. The requested README commands reproduce the
-same shapes with new timestamps/IDs. The sanitized result table and identifiers above are committed.
+same shapes with new timestamps/IDs. The sanitized result table above is committed.
 
 ## What is not verified
 
@@ -147,7 +147,8 @@ same shapes with new timestamps/IDs. The sanitized result table and identifiers 
 
 Use the [README offline quickstart](../../README.md#5-quickstart-offline-demo), then inspect the
 new scaling report, a profile's correctness table and the corresponding event journal. Small is
-the best source/transcript walkthrough because its combined legacy transcript fits the capture cap.
+the simplest source/transcript walkthrough. The November 11 fix preserves transcript JSONL framing
+and later call records even when earlier payloads exceed the capture cap.
 Medium/Large demonstrate deterministic scaling of data volume and artifact generation, not agent
 performance.
 
@@ -157,6 +158,29 @@ and an independently scored answer. Repeated live Small/Medium/Large pairs can t
 POC's accuracy/token/latency/cost/call-count question. First pass all six real-guest tests.
 
 Prioritized follow-up is in [README Next steps](../../README.md#10-next-steps).
+### November 11 pre-push follow-up
+
+- Historical live claims now identify source commits `03cb30a` and `5a65c6e` (September 29, 2026),
+  separately from archive snapshot `9cde519` (November 5), and explicitly say **NOT RE-VERIFIED**.
+  Commit dates do not certify execution dates.
+- Transcript cutoff could lose Python arguments and later tool calls. The fix preserves every
+  message/call/result identity with per-field payload envelopes rather than a whole-file substring.
+  Oversized payloads remain bounded and explicitly truncated; separate exact Python files retain
+  their existing safe-capture rules. This is a capture fix, not an execution change.
+- Release build: zero warnings/errors. The prior 198 tests plus one new regression test all passed:
+  **199 passed, 0 failed, 0 skipped across ten projects**. Fresh TRX files were read literally.
+- All six measured Small/Medium/Large controls completed with Exact scores and valid telemetry.
+  All 18 measured transcript messages parsed as JSONL; two oversized text fields explicitly
+  reported truncation without losing later records. This remains fake-model evidence.
+- The ECDSA validation bug is explicitly retained in README Next steps; provisioning is still paused.
+- Scanned all 18 README/docs files and replaced literal run/comparison IDs and local bind endpoints
+  with placeholders. No machine-specific absolute paths, Azure resource endpoints, identity GUIDs
+  or internal URLs remained. Public source links, package names, source commit hashes and relative
+  artifact locations are intentionally retained. Every relative documentation link resolved.
+- Fresh ignored evidence: `artifacts/pre-push-validation/<VALIDATION_RUN_ID>/`, including build,
+  tests, comparisons and actual run artifacts. No live calls, provisioning or push was performed.
+
+These follow-up counts do not change the historical counts above.
 Original acceptance criteria, TRX forensics and SKU evidence remain in
 [execution-observability.md](execution-observability.md); they are historical deep detail, not
 conditions for showing the honest offline demo.

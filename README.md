@@ -207,8 +207,8 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Result: **198 passed, 0 failed, 0 skipped across ten projects**: the existing 197 tests plus
-one report-label/narrative regression test. The separate Hyperlight group discovered six tests;
+Result: **199 passed, 0 failed, 0 skipped across ten projects**: the prior 198 tests plus
+one transcript-framing/capture-policy regression test. The separate Hyperlight group discovered six tests;
 all six skipped here, with zero executed. A skip is not sandbox evidence.
 
 ## 6. What the results show
@@ -260,8 +260,11 @@ Fake tokens and formula costs are identical; wall-clock timings vary.
 Default capture is metadata only. The demo explicitly uses `full` for synthetic data; payloads are
 redacted and capped at 65,536 characters. Exact programs are saved only if unredacted and untruncated.
 Use capture flags, not assumptions about a missing stream or source file.
-**Known limitation:** the legacy combined `transcript.jsonl` can truncate mid-JSON on Medium/Large.
-Use structured model journals and the result JSON; do not parse that combined file as complete JSONL.
+`transcript.jsonl` retains every message and call/result identity. For observed runs, text, arguments
+and results are separate capture envelopes with content/length/truncation/redaction fields; large
+payloads can be partial, but no whole-file cutoff removes later calls or breaks JSONL framing.
+Separate generated Python captures still require an unredacted, untruncated program for a `.py` file;
+otherwise a `.capture.json` explicitly marks the unavailable exact source.
 Current evidence and IDs: [POC demo review](docs/review-current/poc-demo-review.md).
 
 ## 7. Running live
@@ -320,10 +323,10 @@ Nothing in the offline quickstart provisions resources, installs a guest, or cha
 
 | Area | Status and evidence |
 | --- | --- |
-| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles, reports, 198 passing tests. |
+| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles and reports; follow-up suite has 199 passing tests. |
 | HTTP contract | Working in offline in-process integration tests; no new standalone API-server demo claimed. |
 | Observability | Working offline: correlation, journals, capture policy, timelines, counts, reconciliation. |
-| Large payload capture | Partial: bounded captures work; legacy combined transcript may not be valid JSONL. |
+| Large payload capture | Bounded payloads with explicit flags; transcript records remain valid JSONL and retain later calls. Exact oversized payloads remain unavailable. |
 | Batched Classic | Offline tested; live quality and the changed comparison methodology remain unverified. |
 | Live Azure OpenAI | Not run in this review; historic artifacts do not certify the current branch. |
 | Real Hyperlight | Six tests skipped here; x64 execution, callbacks, cancellation, and isolation unverified. |
@@ -333,15 +336,15 @@ Nothing in the offline quickstart provisions resources, installs a guest, or cha
 The original [observability acceptance audit](docs/review-current/execution-observability.md)
 retains the TRX recount, acceptance matrix, and SKU findings as historical deep detail.
 [Historical live notes](docs/review-current/historical-live-notes.md) retain the old README claims
-without presenting them as current verified results.
+with source commits/dates and **NOT RE-VERIFIED** labels, not as current verified results.
 
 ## 10. Next steps
 
 1. **Real Hyperlight on supported x64:** run all six guest tests; establish actual execution rather than a stand-in.
 2. **Live Small, Medium, Large pairs:** retain every trial and inspect oracle/telemetry scores; answer the POC's real question.
 3. **Remote clean-clone check:** repeat the quickstart with an empty checkout/package environment; local cached restore is narrower evidence.
-4. **Linux script verification:** fix ECDSA public-key rejection and exercise approved setup/validation on x64; static review is not an installation or KVM test.
-5. **Fix legacy transcript framing:** preserve JSONL and explicit truncation metadata per message; Medium/Large captures currently end mid-record.
+4. **Linux script verification:** fix the SSH-key regex rejecting valid ECDSA keys such as `ecdsa-sha2-nistp256`, then test approved setup/validation on x64; static review is not a KVM test.
+5. **Exercise new transcript captures live:** JSONL framing is fixed and regression-tested offline; confirm the per-field capture envelopes with real generated Python and callbacks on x64.
 6. **Revisit Classic batching only if needed:** measure the unbatched baseline first; any decomposition changes the experiment and needs an explicit label.
 7. **Verify dashboard appearance and API hosting:** CLI generation and integration tests passed; the browser inspection timed out and standalone serving was not rechecked.
 
@@ -356,7 +359,7 @@ No larger orchestration change is required to show the offline demo. Approve suc
 | OneDrive paths contain spaces or files are locked | Run from the repo root, quote paths, and avoid concurrent writers. The local clone check used an unsynchronized workspace. |
 | TRX total looks too high | Use a fresh results directory and literal-path reads for filenames containing brackets; clear the XML variable before each read. Historical 297 was an invalid recount of 197. |
 | Profile unavailable / readiness 503 | Generate data first; verify the process's `DATASET_ROOT` points to it. |
-| Full transcript cannot be parsed | Known bounded legacy-file issue. Inspect `model/responses.jsonl` capture metadata and `result.json` instead. |
+| Old transcript cannot be parsed | Regenerate artifacts after the framing fix. Old files are not rewritten; new per-field capture envelopes explicitly flag partial payloads. |
 | Azure 404 / 403 | Check base endpoint and deployment name; verify identity authorization. Do not print credentials to diagnose it. |
 | Dashboard disagrees with a recent run | Check comparison ID, execution kind, and timestamp. Old reports are not rewritten automatically. |
 | Locked restore fails | Check SDK selection and authorized feed access; do not silently regenerate lock files to conceal a failure. |

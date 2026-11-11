@@ -56,7 +56,7 @@ $validation = Join-Path scripts verify-observability.ps1
 & $validation -Mode Live -Trials 1
 ```
 
-The Live preflight makes a small Azure call. Full Live mode restores/builds, requires all 198
+The Live preflight makes a small Azure call. Full Live mode restores/builds, requires all 199
 non-live passes and six actual guest passes, then runs profiles sequentially. It requires exact
 oracle results, valid telemetry and actual code-execution completion without stand-in events.
 This helper's acceptance bar is stricter than the benchmark CLI exit code.

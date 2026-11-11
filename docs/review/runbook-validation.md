@@ -29,8 +29,8 @@ Commands below were **actually executed** during this audit or earlier phases; r
 
 1. **Ports (F-08).** README's `curl localhost:5000` assumes a fixed port; `dotnet run` without a
    `launchSettings.json` may bind elsewhere.
-   *Proposed text:* "Set the bind address explicitly: `ASPNETCORE_URLS=http://localhost:5000 dotnet
-   run --project src/SterlingVale.Classic.Api`, then `curl http://localhost:5000/health/live`."
+   *Proposed text:* "Set the bind address explicitly: `ASPNETCORE_URLS=<LOCAL_BIND_URL> dotnet
+   run --project src/SterlingVale.Classic.Api`, then `curl <LOCAL_BIND_URL>/health/live`."
 
 2. **Line endings / CI (F-02).** No mention that the repo enforces CRLF and lacks `.gitattributes`;
    Linux contributors may trip the format check.

@@ -7,6 +7,7 @@ using SterlingVale.AgentShared.Analysis;
 using SterlingVale.AgentShared.Configuration;
 using SterlingVale.AgentShared.Contracts;
 using SterlingVale.AgentShared.Prompting;
+using SterlingVale.Telemetry;
 
 namespace SterlingVale.AgentShared.Artifacts;
 
@@ -71,14 +72,10 @@ public static class RunArtifacts
 
         if (record.Execution is not null)
         {
-            var policy = new SterlingVale.Telemetry.PayloadPolicy(record.PayloadCaptureMode);
-            string[] payloadFiles = [Files.GeneratedCode, Files.RawOutput, Files.ToolResults, Files.Transcript];
-            foreach (string name in payloadFiles)
-            {
-                var captured = policy.Capture(files[name]);
-                files[name] = captured.Content ?? JsonSerializer.Serialize(captured, Json);
-            }
-
+            var policy = new PayloadPolicy(record.PayloadCaptureMode);
+            var captured = policy.Capture(files[Files.RawOutput]);
+            files[Files.RawOutput] = captured.Content is not null && !captured.Truncated && !captured.Redacted
+                ? captured.Content : JsonSerializer.Serialize(captured, Json);
             files.Remove(Files.GeneratedCode);
             files.Remove(Files.ToolResults);
         }
@@ -110,10 +107,11 @@ public static class RunArtifacts
         return builder.ToString();
     }
 
-    // Full model conversation: one message per line (role, text, tool calls, tool results), runId-stamped.
+    // Bound payloads, not JSONL framing, so later messages and invocation identities survive.
     private static string BuildTranscript(RunRecord record)
     {
         string runId = record.Response.RunId;
+        var policy = record.Execution is null ? null : new PayloadPolicy(record.PayloadCaptureMode);
         var builder = new StringBuilder();
         foreach (var message in record.Transcript)
         {
@@ -122,17 +120,18 @@ public static class RunArtifacts
                 ["runId"] = runId,
                 ["index"] = message.Index,
                 ["role"] = message.Role,
-                ["text"] = message.Text,
+                ["text"] = policy is null ? message.Text : policy.Capture(message.Text),
                 ["calls"] = message.Calls.Select(c => new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["id"] = c.Id,
                     ["name"] = c.Name,
-                    ["arguments"] = AsJson(c.ArgumentsJson),
+                    ["arguments"] = policy is null ? AsJson(c.ArgumentsJson) : policy.Capture(c.ArgumentsJson),
                 }).ToList(),
                 ["results"] = message.Results.Select(r => new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
                     ["callId"] = r.CallId,
-                    ["result"] = AsJson(r.ResultJson),
+                    ["name"] = r.Name,
+                    ["result"] = policy is null ? AsJson(r.ResultJson) : policy.Capture(r.ResultJson),
                 }).ToList(),
             });
         }

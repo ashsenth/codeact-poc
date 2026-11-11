@@ -90,7 +90,11 @@ payloads to 65,536 characters. Model-facing calls, granular calls and sandbox ca
 metrics, reconciled against actual events and per-response usage. A batch aggregate references
 independently persisted children and labels its output as application-merged, not model-generated.
 
-The legacy combined transcript can truncate mid-record on Medium/Large; use structured model
-capture envelopes and result JSON instead. The no-guest CodeAct stand-in executes no Python and
+Observed transcripts preserve one JSON object per message and every call/result identity.
+Text, arguments and results are individually captured in policy envelopes, so oversized payloads
+remain explicitly partial without removing later messages or breaking JSONL. Metadata/none modes
+retain identities without payload content. Legacy unobserved records keep their prior representation.
+Truncated or redacted raw-output captures also retain their envelope rather than masquerading as
+complete text. The no-guest CodeAct stand-in executes no Python and
 emits explicit offline events, not real sandbox-completion events.
 See the [current POC review](review-current/poc-demo-review.md) for verified scope and open issues.

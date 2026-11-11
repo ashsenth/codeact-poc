@@ -1,6 +1,12 @@
 # Historical live-run notes from the previous README
 
-**Archived claims, not current validation evidence.** This section was removed from the README
+**Archived claims - NOT RE-VERIFIED. Not current validation evidence.**
+Source: `README.md` at commit `03cb30a` (September 29, 2026) for the numerical table, placeholder
+and approximately 16 KB explanation; commit `5a65c6e` (September 29, 2026) for the 54-81-call
+and anti-placeholder-prompt narrative. These are source commit dates, not verified execution dates.
+The archive was extracted from the README snapshot at `9cde519` (November 5, 2026).
+Neither those live claims nor their execution dates were re-verified in the current review.
+This section was removed from the README
 to avoid presenting historical model/guest results as verification of the observability branch.
 No live model or real Hyperlight execution was reproduced in the November 5 POC review.
 The table and observations below preserve the former README's record; they are not endorsed
@@ -22,7 +28,7 @@ It said Classic made 54-81 tool calls over 4-5 turns and emitted an empty `house
 rather than the expected report. A reproduced placeholder was described as:
 
 ```json
-{ "runId": "run_20231010_001", "generatedAt": "2023-10-10T00:00:00Z", "households": [] }
+{ "runId": "<HISTORICAL_RUN_ID>", "generatedAt": "<HISTORICAL_TIMESTAMP>", "households": [] }
 ```
 
 It also described an anti-placeholder prompt experiment returning the same placeholder and
