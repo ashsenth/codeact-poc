@@ -40,4 +40,8 @@ public sealed record HouseholdExposureDto(
 public sealed record ExposureReportDto(
     string RunId,
     string GeneratedAt,
-    IReadOnlyList<HouseholdExposureDto> Households);
+    IReadOnlyList<HouseholdExposureDto> Households)
+{
+    public string Status { get; init; } = "complete";
+    public IReadOnlyList<string> MissingItems { get; init; } = [];
+}

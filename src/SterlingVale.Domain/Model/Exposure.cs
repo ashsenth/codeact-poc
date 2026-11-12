@@ -61,6 +61,8 @@ public sealed record HouseholdExposure(
     IReadOnlyList<ProposedTrade> ProposedTrades,
     bool Flagged);
 
+public enum ReportStatus { Complete, Incomplete }
+
 /// <summary>
 /// The top-level analysis output: per-household exposures plus the run identifier. This is the
 /// schema-validated payload emitted by both Classic and CodeAct agents.
@@ -68,4 +70,8 @@ public sealed record HouseholdExposure(
 public sealed record ExposureReport(
     string RunId,
     DateTimeOffset GeneratedAt,
-    IReadOnlyList<HouseholdExposure> Households);
+    IReadOnlyList<HouseholdExposure> Households)
+{
+    public ReportStatus Status { get; init; } = ReportStatus.Complete;
+    public IReadOnlyList<string> MissingItems { get; init; } = [];
+}

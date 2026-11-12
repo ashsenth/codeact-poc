@@ -48,6 +48,44 @@ public sealed class ComparisonWriterTests
     }
 
     [Fact]
+    public void Mixed_prompt_revisions_cannot_be_compared_in_scaling_report()
+    {
+        var old = ReportFor("small", 10);
+        var current = ReportFor("medium", 40);
+        var fingerprints = new Dictionary<string, string>(current.Fairness.ClassicFingerprints) { ["prompt"] = "new-prompt" };
+        current = current with { Fairness = new(true, [], fingerprints, fingerprints) };
+        var error = Assert.Throws<InvalidOperationException>(() => ComparisonWriter.RenderScalingHtml([old, current]));
+        Assert.Contains("shared-prompt hashes", error.Message);
+        string html = ComparisonWriter.RenderScalingHtml([old, ReportFor("medium", 40)]);
+        Assert.Contains("small", html);
+        Assert.Contains("medium", html);
+    }
+
+    [Fact]
+    public void Incomplete_evidence_and_prompt_boundary_are_recorded_in_all_report_formats()
+    {
+        var sample = SampleReport();
+        var trials = sample.RawTrials.Select(trial => trial with
+        {
+            Status = "Incomplete", ReportStatus = "incomplete", MissingItems = ["price for SYN001"],
+            Score = trial.Score with { MatchClass = CorrectnessScorer.Match.Partial },
+        }).ToArray();
+        var report = sample with
+        {
+            RawTrials = trials, PreviousPromptHash = "old-prompt", PromptRevision = "exposure-analysis/v2",
+        };
+        foreach (string output in new[] { ComparisonWriter.RenderConsoleSummary(report), ComparisonWriter.RenderMarkdown(report),
+            ComparisonWriter.RenderHtml(report), ComparisonWriter.RenderCsv(report) })
+        {
+            Assert.Contains("incomplete", output);
+            Assert.Contains("SYN001", output);
+            Assert.Contains("aaaa", output);
+            Assert.Contains("old-prompt", output);
+            Assert.DoesNotContain("duration median", output);
+        }
+    }
+
+    [Fact]
     public void Generation_only_tokens_are_labelled_in_reports_and_never_described_as_complete_totals()
     {
         var original = SampleReport();

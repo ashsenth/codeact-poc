@@ -123,10 +123,12 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
             report = dto is not null ? ReportJson.ToDomain(dto) : null;
             // A schema-valid but empty households array is an analytically empty result (e.g. a stub
             // the model salvaged after a sandbox failure); treat it as a failure, not a pass.
-            valid = report is not null && report.Households.Count > 0;
+            valid = report is not null && (report.Households.Count > 0 || report.Status == ReportStatus.Incomplete);
         }
 
         var status = capped ? RunStatus.Capped : valid ? RunStatus.Completed : RunStatus.Failed;
+        if (valid && report?.Status == ReportStatus.Incomplete)
+            status = RunStatus.Incomplete;
         if (SterlingVale.Telemetry.ExecutionSession.Current?.Snapshot().Any(entry => entry.EventType == "CODE_EXECUTION_NOT_EXECUTED") == true)
         {
             status = RunStatus.NotExecuted;

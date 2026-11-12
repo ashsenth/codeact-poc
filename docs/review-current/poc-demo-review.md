@@ -362,8 +362,9 @@ sets are wrong. `Completed` establishes schema/non-empty output, not oracle succ
 | 3 | CodeAct | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 
 Classic counts are model-facing requests by name, not unique securities/accounts; CodeAct
-granular callbacks are all zero because Python did not execute. `asset_class=0` is an observed
-skipped step even though positions carry classification. No explanation of model intent is inferred.
+granular callbacks are all zero because Python did not execute. `asset_class=0` is not a
+classification shortcut: positions already carry asset class. The earlier full-Small run made no
+price calls; scoped price calls can cover multiple positions sharing a symbol.
 
 New actual Classic preview excerpts:
 
@@ -446,3 +447,87 @@ Validation: Release build zero warnings/errors; ten fresh TRX files confirm **22
 0 failed, 0 skipped**. Three additional complete tools-suite runs passed (40 tests each),
 including the concurrent collector stress. Both existing live HTML reports were regenerated
 and checked for the exact comparability label; no new model calls were made. Prompts remain unchanged.
+
+## Approved shared prompt v2 live follow-up
+
+November 12, 2026. This section supersedes the earlier **unapplied** proposal's status, not its
+historical results. Commit `b4a0762` was pushed first and verified against origin.
+Only `Prompt.Shared` changed task instructions; both mode addenda remain unchanged.
+The approved addition is:
+
+> Apply the task only to the explicitly requested household IDs. Before returning a report,
+> verify that every position in that scope has price, required FX and asset class (from position data or asset_class).
+> If evidence is incomplete, do not invent values. Return the report with status 'incomplete' and list the missing items (e.g. symbols without a price).
+
+The embedded schema is now `exposure-report/v2`. It requires `status` and `missingItems`;
+incomplete needs a non-empty list, complete an empty list. An incomplete report may have no
+households rather than fabricate numeric placeholders. The runner retains it with execution
+status `Incomplete`, mappings retain missing items, and scoring always yields Partial even if
+all supplied values otherwise exactly match the oracle. Batch aggregation preserves this state.
+The schema is not relaxed to accept invented trade directions or repair model answers.
+
+| Shared prompt boundary | SHA-256 |
+| --- | --- |
+| Before (v1, previous scoped experiments) | `d6dba82ae649a3ca253a9f3e61bf70392fbae04d54d3b81daa4f6a7a3ad8b596` |
+| After (v2, these experiments) | `630a3a841752d3b4475fadde5050b2884c11b59b28f87e4c43a694fc57ebbc86` |
+
+The hash covers Shared **including the schema**. Comparisons/run summaries record the boundary.
+Scaling selects only the latest prompt cohort and refuses mixed or unknown hashes; historical
+reports stay readable but cannot be aggregated with this revision. No before/after speedup is claimed.
+
+### Measured live ARM64 results
+
+Same limits: Small, one measured trial per mode after one clearly labelled warm-up per mode,
+20 turns, 120 seconds, temperature zero, Classic batching zero, full payload capture, no guest.
+Fresh roots: `artifacts/live-prompt-v2-n1/` and `artifacts/live-prompt-v2-n3/`.
+Both commands exited 1 because both comparisons are invalid; telemetry/fairness matched.
+CodeAct tokens are **first turn only, code not executed: not comparable to Classic totals**.
+No model/deployment, pricing or mode-specific prompt settings were tuned.
+
+| N | Mode / run prefix | Status | Finish | Turns | Input / output tokens | Duration ms | Oracle | Python bytes |
+| ---: | --- | --- | --- | ---: | ---: | ---: | --- | ---: |
+| 1 | Classic `4cae5754` | Failed | stop | 6 | 21,079 / 1,082 | 16,003.170 | InvalidSchema | 0 |
+| 1 | CodeAct `509ab37b` | NotExecuted | tool_calls | 1 | 2,176 / 1,258 | 6,619.094 | Not scoreable | 5,017 |
+| 3 | Classic `bc40c18c` | Completed | stop | 5 | 37,101 / 974 | 14,763.335 | Partial | 0 |
+| 3 | CodeAct `577ed589` | NotExecuted | tool_calls | 1 | 2,184 / 536 | 4,330.247 | Not scoreable | 1,616 |
+
+| N | Mode | list_households | get_policy | list_accounts | list_positions | get_price | get_fx | asset_class | execute_code |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | Classic | 0 | 1 | 1 | 3 | 13 | 3 | 0 | 0 |
+| 1 | CodeAct | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+| 3 | Classic | 0 | 3 | 3 | 11 | 17 | 3 | 0 | 0 |
+| 3 | CodeAct | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |
+
+| N | Positions in scope | Distinct symbols | Classic get_price calls | Positions with recorded successful prices | Classic declared incomplete? |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 1 | 26 | 13 | 13 | 26 | No: raw answer declared complete, missingItems=[] |
+| 3 | 117 | 17 | 17 | 117 | No: raw answer declared complete, missingItems=[] |
+
+N=1's final answer contains placeholder-looking values (`totalValue=1234567.89`) and a Crypto
+trade with `direction="Hold"`, which the shared Buy/Sell schema rejects. It was not truncated:
+finish stop, final response 660 output tokens. No repair or retry hid the failure.
+N=3's final answer has three households with totalValue zero and empty drift/breach/trade arrays;
+finish stop, final response 245 output tokens. Schema completion is not correctness.
+The accepted-report status for N=1 is unavailable because validation rejected it; its raw
+`classic/final-response.json` establishes the model's explicit complete claim.
+
+Both scoped Classic runs fetched every distinct price needed by their positions. Price-call count
+is not position coverage: repeated symbols reuse one quote. Asset class is already present in
+position data, so not calling `asset_class` is not missing evidence. The earlier full-Small
+smoke's gap was missing prices (zero calls); these new scoped runs demonstrate an additional
+arithmetic/report-integrity gap despite full price coverage. The approved prompt did not fix it.
+
+CodeAct source files were checked on disk: N=1 has `generated-code-001.py` (5,017 bytes);
+N=3 has `generated-code-001.py` (159 bytes) and `generated-code-002.py` (1,457 bytes).
+The two N=3 calls belong to the same first model response, not two model turns.
+No code ran, no portfolio callbacks occurred, and these are not CodeAct correctness/performance results.
+Both roots contain index, comparison JSON/Markdown/CSV/HTML, timelines and model/tool artifacts.
+
+Validation: ten fresh TRX files confirm **228 passed, 0 failed, 0 skipped** (seven new cases:
+incomplete mapping/empty output, three invalid completion contracts, incomplete-never-Exact,
+mixed-prompt rejection, and report-boundary/missing-items rendering). Provisioning remains paused.
+Final Release build: zero warnings/errors. An actual visualize check with old-prompt Medium
+and new-prompt Small selected Small only, explicitly skipped Medium, and wrote the new hash to
+scaling HTML. Both live HTML reports were checked for the hash, missing-items/price-scope evidence
+and generation-only token warning. README/docs scan found no machine paths, resource IDs,
+literal resource endpoints/IPs or internal-feed URLs. README is 400 lines.

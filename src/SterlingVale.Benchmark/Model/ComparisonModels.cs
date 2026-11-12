@@ -30,6 +30,10 @@ public sealed record TrialResult(
     public RunDiagnostics? Diagnostics { get; init; }
     public long? InputTokens { get; init; }
     public long? OutputTokens { get; init; }
+    public string? ReportStatus { get; init; }
+    public IReadOnlyList<string> MissingItems { get; init; } = [];
+    public int? PricedPositionCount { get; init; }
+    public IReadOnlyList<string> UnpricedSymbols { get; init; } = [];
 }
 
 /// <summary>Median/min/max of a measured quantity (no trials removed).</summary>
@@ -133,6 +137,11 @@ public sealed record ComparisonReport(
     public int? DatasetAccountCount { get; init; }
     public int? DatasetPositionCount { get; init; }
     public int? ScopedHouseholdCount { get; init; }
+    public int? ScopedPositionCount { get; init; }
+    public int? ScopedSymbolCount { get; init; }
+    public string? PromptHash => Fairness.ClassicFingerprints.GetValueOrDefault("prompt");
+    public string? PreviousPromptHash { get; init; }
+    public string? PromptRevision { get; init; }
 }
 
 public sealed record ComparisonOutcome(int CompletedRuns, int TotalRuns, int FailedRuns, int CorrectRuns,

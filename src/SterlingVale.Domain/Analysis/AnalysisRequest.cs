@@ -54,6 +54,9 @@ public enum RunStatus
 
     /// <summary>Source was generated but sandbox execution was unavailable.</summary>
     NotExecuted = 4,
+
+    /// <summary>The model explicitly reported missing evidence; the partial report is retained.</summary>
+    Incomplete = 5,
 }
 
 /// <summary>

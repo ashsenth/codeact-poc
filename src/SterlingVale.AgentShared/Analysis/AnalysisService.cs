@@ -1,4 +1,5 @@
 using SterlingVale.AgentShared.Configuration;
+using SterlingVale.AgentShared.Prompting;
 using SterlingVale.Domain.Analysis;
 using SterlingVale.Telemetry;
 using SterlingVale.Tools;
@@ -66,6 +67,9 @@ public sealed class AnalysisService(
         execution.WriteArtifact("summary.json", System.Text.Json.JsonSerializer.Serialize(new
         {
             status = record.Response.Status.ToString(), diagnostics, metrics = record.Response.Metrics,
+            reportStatus = record.Response.Report?.Status.ToString().ToLowerInvariant(),
+            missingItems = execution.Payloads.Capture(record.Response.Report?.MissingItems ?? []),
+            promptHash = context.Fingerprints.PromptHash, previousPromptHash = Prompt.PreviousSharedHash,
         }, Json));
         execution.WriteArtifact("metrics.json", System.Text.Json.JsonSerializer.Serialize(record.Response.Metrics));
         execution.WriteArtifact("result.json", System.Text.Json.JsonSerializer.Serialize(record.Response));
@@ -89,13 +93,16 @@ public sealed class AnalysisService(
             RunStatus.NotExecuted => new FailureInfo("NoHyperlightGuest", "not executed: no Hyperlight guest"),
             RunStatus.TimedOut => new FailureInfo("TimedOut", "The per-run time limit expired."),
             RunStatus.Capped => new FailureInfo("TurnLimit", "The model turn limit was exceeded."),
+            RunStatus.Incomplete => new FailureInfo("IncompleteEvidence", "INCOMPLETE: model reported missing evidence; see missingItems."),
             _ => new FailureInfo("InvalidModelOutput", diagnostics.IncompleteReason is null
                 ? "The model did not return a valid non-empty analysis report." : diagnostics.Summary),
         };
         execution.Emit(record.Response.Status == RunStatus.Completed ? "RUN_COMPLETED" : "RUN_FAILED",
             record.Response.Status.ToString(), record.Response.Metrics.Duration.TotalMilliseconds,
             errorCategory: record.Response.Status == RunStatus.Completed ? null : priorFailure?.ErrorCategory ?? fallbackFailure.Category,
-            data: new { diagnostics, failure = record.Response.Status == RunStatus.Completed ? null :
+            data: new { diagnostics, reportStatus = record.Response.Report?.Status.ToString().ToLowerInvariant(),
+                missingItems = execution.Payloads.Capture(record.Response.Report?.MissingItems ?? []),
+                failure = record.Response.Status == RunStatus.Completed ? null :
                 priorFailure is null ? fallbackFailure : FailureFromEvent(priorFailure) });
         return record with { Execution = execution.Context, Events = execution.Snapshot(), PayloadCaptureMode = execution.Payloads.Mode };
         }

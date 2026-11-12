@@ -200,7 +200,7 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Result: **221 passed, 0 failed, 0 skipped across ten projects**, including diagnostic, mode,
+Result: **228 passed, 0 failed, 0 skipped across ten projects**, including diagnostic, mode,
 scope, capture and normalization regressions. The separate Hyperlight group discovered six tests;
 all six skipped here, with zero executed. A skip is not sandbox evidence.
 
@@ -281,8 +281,7 @@ Configure these variables in the same terminal; do not put real values in source
 | `AZURE_OPENAI_DEPLOYMENT_NAME` | Exact chat deployment name, not merely a model identifier. |
 | `AZURE_OPENAI_API_KEY` | Optional alternative to `DefaultAzureCredential`; keep outside artifacts. |
 
-The benchmark defaults to `--model fake`, **even with Azure variables set**.
-Only `--model live` opts in; missing live configuration never falls back to fake.
+Default is `--model fake`, **even with Azure variables set**. Only `--model live` opts in; no fallback.
 APIs also default to fake; opt in with `--model live` or `MODEL_MODE=live`.
 Copying [.env.example](.env.example) does not load shell variables.
 
@@ -297,8 +296,7 @@ az cognitiveservices account deployment list --resource-group <resource-group> -
 Use the **deployment name**, not the model name. Example base: `https://<resource-name>.openai.azure.com/`.
 The SDK uses this authority with `/`; path/query/fragment are removed, not silently sent as a second route.
 An authorized administrator can grant **Cognitive Services OpenAI User** at the resource scope;
-see [exact RBAC steps and error diagnosis](docs/review-current/poc-demo-review.md#azure-setup-templates).
-No login, role assignment or resource change was performed by this review.
+See [RBAC steps and diagnosis](docs/review-current/poc-demo-review.md#azure-setup-templates); no resource changes were performed.
 
 Laptop connectivity/generation check, **executed but not yet verified as a successful comparison**:
 
@@ -313,30 +311,33 @@ dotnet run -c Release --no-build --project $benchmark -- run --profile small --t
 ```
 
 `--households N` selects the first N dataset households for both agents, warm-ups and oracle; default is all.
-Measured runs after warm-up, **live ARM64**, no prompt changes. CodeAct tokens: **first turn only, code not executed: not comparable to Classic totals**.
+Measured runs after warm-up, **live ARM64, November 12, 2026**, approved shared prompt v2.
+CodeAct tokens: **first turn only, code not executed: not comparable to Classic totals**.
 
 | N | Classic status / finish / turns | Input / output tokens | Duration ms | Oracle | CodeAct turns / input / output / Python bytes |
 | ---: | --- | ---: | ---: | --- | --- |
-| 1 | Completed / stop / 6 | 20,766 / 920 | 13,933.371 | Partial | 1 / 1,911 / 78 / 139 |
-| 3 | Completed / stop / 5 | 35,776 / 961 | 12,052.803 | Partial | 1 / 1,919 / 1,208 / 4,614 |
+| 1 | Failed / stop / 6 | 21,079 / 1,082 | 16,003.170 | InvalidSchema (`Hold`) | 1 / 2,176 / 1,258 / 5,017 |
+| 3 | Completed / stop / 5 | 37,101 / 974 | 14,763.335 | Partial (zero reports) | 1 / 2,184 / 536 / 1,616 |
 
-Both Classic runs skipped `asset_class`. Full per-tool counts, final previews and historical capture
-limits are in [scoped live findings](docs/review-current/poc-demo-review.md#scoped-live-arm64-follow-up).
+Both Classic answers declared `complete`, with no missing items; neither was correct.
+`get_price` / positions: **13 / 26** (N=1), **17 / 117** (N=3); all 13/17 distinct symbols covered.
+Asset class already comes with position data; `asset_class=0` is **not** a classification shortcut.
+The earlier full-Small run's gap was missing prices (`get_price=0`); these scoped runs also show
+incorrect computation despite price coverage. Both CodeAct runs were NotExecuted.
+V2 requires `status` and `missingItems`; explicit `incomplete` is **Partial, never Exact**, even with exact values.
+Reports record current/previous prompt hashes; scaling selects one hash and rejects mixed revisions.
+See [prompt boundary, per-tool tables and prior results](docs/review-current/poc-demo-review.md#approved-shared-prompt-v2-live-follow-up).
 Finish reason, last-response output tokens, a redacted 240-character preview and zero-inclusive counts
 are persisted in each run's `summary.json`, final event and comparison; generated-source events include byte counts.
-Safe live Python lands in `codeact/generated-code-*.py` even with metadata/none payload capture;
-redaction/size bounds still produce explicit markers. Python is never executed by the laptop fallback.
-Failure events contain a safe category, HTTP status/allowlisted service code and sanitized guidance,
-not raw provider error text. Live calls incur charges; old journals cannot recover omitted messages.
+Safe live Python lands in `codeact/generated-code-*.py` even with metadata/none capture; unsafe/oversized source gets markers.
+Failure events contain safe category/status/code/guidance, not raw server text. Live calls incur charges.
 
-An x64 guest adds **actual Python execution, host callbacks and a scoreable CodeAct report**.
-Pass all six runtime tests first, then use explicit live mode for Small/Medium/Large pairs.
+An x64 guest adds **actual Python execution, callbacks and a scoreable report**; pass all six runtime tests first.
 The optional `BENCHMARK_REQUIRE_LIVE=true` strict gate refuses a missing guest; leave it false
 for laptop code generation. It does not prove auth, capacity or correctness.
 
-`CLASSIC_BATCH_SIZE` optionally decomposes Classic into household subsets and application-merges
-their outputs. Default zero leaves it disabled. Batched trials are a separate experimental variant,
-not an unchanged head-to-head; the aggregate references child runs and is not one model answer.
+`CLASSIC_BATCH_SIZE` optionally decomposes Classic into household batches; default zero disables it.
+This is a separate experimental variant: the aggregate references child runs, not one model answer.
 
 ## 8. Running real Hyperlight on x64 (optional)
 
@@ -353,12 +354,12 @@ Nothing in the offline quickstart provisions resources, installs a guest, or cha
 
 | Area | Status and evidence |
 | --- | --- |
-| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles and reports; current suite has 221 passing tests. |
+| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles and reports; current suite has 228 passing tests. |
 | HTTP contract | Offline integration tests pass; a standalone live Classic request completed for one household, with valid schema/telemetry but no oracle score. |
 | Observability | Working offline: correlation, journals, capture policy, timelines, counts, reconciliation. |
 | Large payload capture | Bounded payloads with explicit flags; transcript records remain valid JSONL and retain later calls. Exact oversized payloads remain unavailable. |
 | Batched Classic | Offline tested; live quality and the changed comparison methodology remain unverified. |
-| Live Azure OpenAI | Scoped N=1/N=3 Classic Completed but oracle Partial; CodeAct Python saved, not executed. No valid live comparison. |
+| Live Azure OpenAI | Shared v2: N=1 Classic invalid schema, N=3 Partial despite full price coverage; CodeAct Python saved, not executed. No valid live comparison. |
 | Real Hyperlight | Six tests skipped here; x64 execution, callbacks, cancellation, and isolation unverified. |
 | Remote clone / Linux / macOS | Clean local-source clone verified; remote clone and other operating systems pending. |
 | Provision/bootstrap scripts | Reviewed, not executed; provisioning remains paused. |
@@ -377,7 +378,7 @@ with source commits/dates and **NOT RE-VERIFIED** labels, not as current verifie
 5. **Exercise new transcript captures live:** JSONL framing is fixed and regression-tested offline; confirm the per-field capture envelopes with real generated Python and callbacks on x64.
 6. **Revisit Classic batching only if needed:** measure the unbatched baseline first; any decomposition changes the experiment and needs an explicit label.
 7. **Verify dashboard appearance and CodeAct API hosting:** reports and scoped Classic serving passed; browser appearance and standalone CodeAct serving remain unchecked.
-8. **Investigate live Classic correctness:** scoped reports stop normally but score Partial and skip classification; prompts stay unchanged pending approval.
+8. **Investigate live Classic correctness:** approved shared v2 did not fix fabricated/zero reports or false completion; validate arithmetic, schema and self-reported missing evidence, not redundant classification calls.
 9. **Monitor the fixed telemetry-listener race:** `TelemetryRedactionTests.Tool_metrics_and_activity_expose_only_whitelisted_tags` now isolates its trace and uses concurrent collectors; keep parallel stress coverage to prevent recurrence.
 
 ## 11. Troubleshooting

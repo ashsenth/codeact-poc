@@ -9,7 +9,8 @@ namespace SterlingVale.AgentShared.Prompting;
 public static class Prompt
 {
     /// <summary>Stable identifier for this prompt revision.</summary>
-    public const string PromptId = "exposure-analysis/v1";
+    public const string PromptId = "exposure-analysis/v2";
+    public const string PreviousSharedHash = "d6dba82ae649a3ca253a9f3e61bf70392fbae04d54d3b81daa4f6a7a3ad8b596";
 
     /// <summary>The shared, mode-independent instructions (hashed for fairness).</summary>
     public const string Shared =
@@ -18,6 +19,10 @@ public static class Prompt
         produce SYNTHETIC analysis only — never investment advice.
 
         Goal: for every household in scope, compute a base-currency exposure and rebalancing report.
+
+        Apply the task only to the explicitly requested household IDs. Before returning a report,
+        verify that every position in that scope has price, required FX and asset class (from position data or asset_class).
+        If evidence is incomplete, do not invent values. Return the report with status 'incomplete' and list the missing items (e.g. symbols without a price).
 
         Rules:
         - Native value = quantity x price (in the symbol's quote currency).

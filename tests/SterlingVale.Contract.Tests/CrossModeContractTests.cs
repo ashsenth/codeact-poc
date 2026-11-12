@@ -53,7 +53,7 @@ public sealed class CrossModeContractTests
     {
         Assert.StartsWith(Prompt.Shared, Prompt.Classic, StringComparison.Ordinal);
         Assert.StartsWith(Prompt.Shared, Prompt.CodeAct, StringComparison.Ordinal);
-        Assert.Equal(Hashing.Sha256Hex(Prompt.Shared), Hashing.Sha256Hex(Prompt.Shared));
+        Assert.NotEqual(Prompt.PreviousSharedHash, Hashing.Sha256Hex(Prompt.Shared));
     }
 
     [Fact]
@@ -73,9 +73,9 @@ public sealed class CrossModeContractTests
     [Fact]
     public void Schemas_have_stable_versioned_identifiers()
     {
-        Assert.Equal("exposure-report/v1", OutputSchema.SchemaId);
+        Assert.Equal("exposure-report/v2", OutputSchema.SchemaId);
         Assert.Equal("analysis-request/v1", ApiSchemas.RequestSchemaId);
         Assert.Equal("analysis-response/v1", ApiSchemas.ResponseSchemaId);
-        Assert.Equal("exposure-analysis/v1", Prompt.PromptId);
+        Assert.Equal("exposure-analysis/v2", Prompt.PromptId);
     }
 }

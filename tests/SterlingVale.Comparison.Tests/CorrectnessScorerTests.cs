@@ -34,6 +34,16 @@ public sealed class CorrectnessScorerTests
     }
 
     [Fact]
+    public void Self_reported_incomplete_is_partial_even_with_oracle_exact_values()
+    {
+        var oracle = Oracle();
+        var actual = oracle with { Status = "incomplete", MissingItems = ["price for SYN001"] };
+        var score = CorrectnessScorer.Score(actual, oracle, "Incomplete", true);
+        Assert.Equal(CorrectnessScorer.Match.Partial, score.MatchClass);
+        Assert.Equal(0m, score.AllocationMae);
+    }
+
+    [Fact]
     public void Invalid_schema_is_classified_invalid()
     {
         var score = CorrectnessScorer.Score(null, Oracle(), "Failed", schemaValid: false);

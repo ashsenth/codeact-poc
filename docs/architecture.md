@@ -60,6 +60,21 @@ resolves the snapshot, builds the shared tool service, computes fairness fingerp
 mode's agent, and runs it through `AnalysisRunner` (usage aggregation, turn/tool counting, timeout,
 turn cap, schema validation, raw-output capture) → `FileRunStore` persists artifacts → response DTO.
 
+The shared prompt is `exposure-analysis/v2`; its embedded `exposure-report/v2` schema requires
+`status` (`complete` or `incomplete`) and `missingItems` (strings). Incomplete requires at least
+one missing item, may omit unsupported households, and is retained as run status `Incomplete`.
+The scorer always classifies it Partial, never Exact/WithinTolerance; execution, schema validity
+and correctness remain separate. Complete requires an empty missing-items list.
+Domain/DTO mappings preserve both fields, including across Classic batch aggregation.
+The stricter v2 schema rejects v1 model outputs without these fields; historical comparison files
+remain readable and are not rescored or silently upgraded.
+
+Run summaries and comparison JSON/Markdown/CSV/HTML record the shared prompt hash and its previous
+revision's hash. Scaling selects the latest prompt cohort among requested profiles, skips profiles
+without that hash, and refuses mixed/unknown hashes rather than comparing pre-/post-change runs.
+Price coverage counts successful recorded `get_price` symbols against scoped positions (shared
+symbols count for multiple positions); null means arguments were not captured, not zero coverage.
+
 ## Observability
 
 Each run has distinct immutable run/correlation IDs, paired comparison/trial IDs and W3C trace/span

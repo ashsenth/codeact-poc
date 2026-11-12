@@ -113,7 +113,7 @@ public sealed class RunArtifactsTests
         var files = RunArtifacts.Build(Record(null), Model, Pricing);
         string metadata = files[RunArtifacts.Files.Metadata];
         Assert.Contains("fingerprints", metadata, StringComparison.Ordinal);
-        Assert.Contains("exposure-analysis/v1", metadata, StringComparison.Ordinal);
+        Assert.Contains("exposure-analysis/v2", metadata, StringComparison.Ordinal);
     }
 
     [Fact]

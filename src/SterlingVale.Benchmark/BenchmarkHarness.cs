@@ -4,6 +4,7 @@ using System.Text.Json;
 using SterlingVale.AgentShared.Agents;
 using SterlingVale.AgentShared.Analysis;
 using SterlingVale.AgentShared.Contracts;
+using SterlingVale.AgentShared.Prompting;
 using SterlingVale.Application.Oracle;
 using SterlingVale.Benchmark.Model;
 using SterlingVale.Benchmark.Scoring;
@@ -37,6 +38,9 @@ public sealed class BenchmarkHarness(Composition composition)
             throw new InvalidOperationException("--households exceeds the number of households in the selected dataset.");
         var householdIds = snapshot.Households.Select(h => h.Id.Value).Take(households ?? snapshot.Households.Count).ToList();
         var request = new AnalysisRequest { DatasetProfile = profile, HouseholdIds = households is null ? null : householdIds };
+        var scopedAccounts = snapshot.Accounts.Where(account => householdIds.Contains(account.HouseholdId.Value))
+            .Select(account => account.Id).ToHashSet();
+        var scopedPositions = snapshot.Positions.Where(position => scopedAccounts.Contains(position.AccountId)).ToArray();
 
         var oracleDto = ReportJson.ToDto(new ExposureOracle().Analyze(snapshot, request, "oracle", OracleAsOf));
 
@@ -96,6 +100,12 @@ public sealed class BenchmarkHarness(Composition composition)
                     actualDto, oracleDto, record.Response.Status.ToString(), record.Response.Metrics.SchemaValid);
 
                 var m = record.Response.Metrics;
+                var priceCalls = (record.ChildRuns.Count == 0 ? record.ToolCalls : record.ChildRuns.SelectMany(child => child.ToolCalls))
+                    .Where(call => call.Name == "get_price" && call.Status == "ok").ToArray();
+                bool priceEvidenceAvailable = priceCalls.All(call => call.ArgumentsJson is not null);
+                var pricedSymbols = priceCalls.Select(call => call.ArgumentsJson is { } arguments
+                        ? JsonSerializer.Deserialize<JsonElement>(arguments).GetProperty("symbol").GetString() : null)
+                    .OfType<string>().ToHashSet(StringComparer.Ordinal);
                 results.Add(new TrialResult(
                     pair, orderIndex, mode, stopwatch.Elapsed.TotalMilliseconds, record.Response.Status.ToString(),
                     m.ToolCallCount, m.ModelTurnCount, m.ExecuteCodeCallCount, m.TotalTokens, m.EstimatedCostUsd, record.Response.RunId, score)
@@ -107,6 +117,11 @@ public sealed class BenchmarkHarness(Composition composition)
                     Failure = FindFailure(record),
                     Diagnostics = record.Diagnostics,
                     InputTokens = m.InputTokens, OutputTokens = m.OutputTokens,
+                    ReportStatus = actualDto?.Status, MissingItems = actualDto?.MissingItems ?? [],
+                    PricedPositionCount = priceEvidenceAvailable
+                        ? scopedPositions.Count(position => pricedSymbols.Contains(position.Symbol.Value)) : null,
+                    UnpricedSymbols = priceEvidenceAvailable ? scopedPositions.Select(position => position.Symbol.Value).Distinct(StringComparer.Ordinal)
+                        .Where(symbol => !pricedSymbols.Contains(symbol)).Order(StringComparer.Ordinal).ToArray() : [],
                 });
             }
         }
@@ -133,6 +148,9 @@ public sealed class BenchmarkHarness(Composition composition)
             DatasetAccountCount = snapshot.Accounts.Count,
             DatasetPositionCount = snapshot.Positions.Count,
             ScopedHouseholdCount = householdIds.Count,
+            ScopedPositionCount = scopedPositions.Length,
+            ScopedSymbolCount = scopedPositions.Select(position => position.Symbol).Distinct().Count(),
+            PromptRevision = Prompt.PromptId, PreviousPromptHash = Prompt.PreviousSharedHash,
         }.ForPresentation();
     }
 
@@ -163,6 +181,9 @@ public sealed class BenchmarkHarness(Composition composition)
     {
         var first = batches[0];
         var households = new List<HouseholdExposure>();
+        var missingItems = batches.Where(batch => batch.Response.Report?.Status == ReportStatus.Incomplete)
+            .SelectMany(batch => batch.Response.Report!.MissingItems).Distinct(StringComparer.Ordinal).ToArray();
+        bool anyIncomplete = batches.Any(batch => batch.Response.Report?.Status == ReportStatus.Incomplete);
         bool allCompleted = true;
         foreach (var b in batches)
         {
@@ -177,25 +198,28 @@ public sealed class BenchmarkHarness(Composition composition)
             }
         }
 
-        var merged = households.Count > 0
+        var merged = households.Count > 0 || anyIncomplete
             ? new ExposureReport($"classic-batched-{Guid.NewGuid().ToString("N")[..8]}", DateTimeOffset.UtcNow, households)
+            { Status = anyIncomplete ? ReportStatus.Incomplete : ReportStatus.Complete, MissingItems = missingItems }
             : null;
         bool valid = allCompleted && merged is not null;
-        var metrics = MergeMetrics(batches.Select(b => b.Response.Metrics).ToList(), valid);
+        bool onlyIncomplete = batches.All(batch => batch.Response.Status is RunStatus.Completed or RunStatus.Incomplete) && anyIncomplete;
+        var mergedStatus = valid ? RunStatus.Completed : onlyIncomplete ? RunStatus.Incomplete : RunStatus.Failed;
+        var metrics = MergeMetrics(batches.Select(b => b.Response.Metrics).ToList(), valid || onlyIncomplete);
 
         using var aggregate = new SterlingVale.Telemetry.ExecutionSession(composition.ArtifactsRoot, "classic", "aggregate",
             first.Execution?.ComparisonId, first.Execution?.TrialId);
         aggregate.Emit("BATCH_AGGREGATION_STARTED", data: new { childRunIds = batches.Select(batch => batch.Response.RunId).ToArray() });
         aggregate.Emit("BATCH_AGGREGATION_COMPLETED", valid ? "ok" : "failed");
         var aggregateDiagnostics = RunDiagnostics.FromEvents("classic",
-            valid ? RunStatus.Completed : RunStatus.Failed, batches.SelectMany(batch => batch.Events).ToArray());
+            mergedStatus, batches.SelectMany(batch => batch.Events).ToArray());
         return new RunRecord
         {
             Response = new AnalysisResponse
             {
                 RunId = aggregate.Context.RunId,
                 Mode = first.Mode,
-                Status = valid ? RunStatus.Completed : RunStatus.Failed,
+                Status = mergedStatus,
                 Report = merged,
                 Metrics = metrics,
             },

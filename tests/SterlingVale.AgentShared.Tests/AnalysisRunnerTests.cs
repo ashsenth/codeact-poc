@@ -67,6 +67,39 @@ public sealed class AnalysisRunnerTests
     }
 
     [Fact]
+    public async Task Explicit_incomplete_report_is_retained_even_without_households()
+    {
+        const string json = """
+            {"runId":"r","generatedAt":"2026-01-01T00:00:00Z","status":"incomplete",
+             "missingItems":["price for SYN001"],"households":[]}
+            """;
+        var agent = BuildAgent(new DeterministicFakeChatClient(new FakeChatPlan().Respond(json)));
+        var record = await new AnalysisRunner().RunAsync(agent, Context(Model()), CancellationToken.None);
+        Assert.Equal(RunStatus.Incomplete, record.Response.Status);
+        Assert.True(record.Response.Metrics.SchemaValid);
+        var report = Assert.IsType<SterlingVale.Domain.Model.ExposureReport>(record.Response.Report);
+        var wire = SterlingVale.AgentShared.Contracts.ReportJson.Serialize(report);
+        Assert.True(SterlingVale.AgentShared.Prompting.OutputSchema.IsValid(wire));
+        var roundTrip = SterlingVale.AgentShared.Contracts.ReportJson.TryParse(wire)!;
+        Assert.Equal("incomplete", roundTrip.Status);
+        Assert.Equal(["price for SYN001"], roundTrip.MissingItems);
+        Assert.Empty(roundTrip.Households);
+    }
+
+    [Theory]
+    [InlineData("incomplete", "[]")]
+    [InlineData("complete", "[\"price for SYN001\"]")]
+    [InlineData("unknown", "[]")]
+    public void Invalid_completion_contract_is_rejected(string status, string missingItems)
+    {
+        string json = $$"""
+            {"runId":"r","generatedAt":"2026-01-01T00:00:00Z","status":"{{status}}",
+             "missingItems":{{missingItems}},"households":[]}
+            """;
+        Assert.False(SterlingVale.AgentShared.Prompting.OutputSchema.IsValid(json));
+    }
+
+    [Fact]
     public async Task Invalid_model_output_is_marked_Failed_and_not_repaired()
     {
         var agent = BuildAgent(new DeterministicFakeChatClient(new FakeChatPlan().Respond("this is not json")));

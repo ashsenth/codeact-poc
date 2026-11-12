@@ -55,6 +55,7 @@ public static class CorrectnessScorer
 
         bool setsPerfect = flaggedP == 1d && flaggedR == 1d && breachP == 1d && breachR == 1d;
         string matchClass =
+            actual.Status == "incomplete" ? Match.Partial :
             setsPerfect && allocMae == 0m && tradeMae == 0m ? Match.Exact :
             setsPerfect && maxAllocError <= Tolerance ? Match.WithinTolerance :
             Match.Partial;

@@ -203,18 +203,25 @@ static int Visualize(IReadOnlyDictionary<string, string> options, bool open)
         : ["small", "medium", "large"];
 
     var reports = new List<ComparisonReport>();
+    var available = Directory.EnumerateFiles(dir, "*.json").Select(ComparisonWriter.Read)
+        .OrderByDescending(report => report.GeneratedAtUtc, StringComparer.Ordinal).ToArray();
+    string? promptHash = available.FirstOrDefault(report => profiles.Contains(report.Profile))?.PromptHash;
+    if (promptHash is null)
+    {
+        Console.Error.WriteLine("No comparison with a recorded shared-prompt hash. Run the benchmark first.");
+        return 1;
+    }
+    Console.WriteLine($"Selecting latest comparisons only for shared prompt hash {promptHash}; other prompt revisions are excluded.");
     foreach (var profile in profiles)
     {
-        string? latest = Directory.EnumerateFiles(dir, $"{profile}-*.json")
-            .OrderByDescending(f => f, StringComparer.Ordinal)
-            .FirstOrDefault();
+        var latest = available.FirstOrDefault(report => report.Profile == profile && report.PromptHash == promptHash);
         if (latest is null)
         {
-            Console.Error.WriteLine($"No comparison found for profile '{profile}'; skipping.");
+            Console.Error.WriteLine($"No comparison found for profile '{profile}' with selected prompt hash; skipping.");
             continue;
         }
 
-        reports.Add(ComparisonWriter.Read(latest));
+        reports.Add(latest);
     }
 
     if (reports.Count == 0)

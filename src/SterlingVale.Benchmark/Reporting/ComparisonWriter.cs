@@ -59,12 +59,15 @@ public static class ComparisonWriter
         sb.AppendLine($"Completion: {outcome.CompletedRuns}/{outcome.TotalRuns}; correctness (Exact/WithinTolerance): {outcome.CorrectRuns}/{outcome.TotalRuns}");
         sb.AppendLine(outcome.Message);
         sb.AppendLine($"Execution kind: {report.ExecutionKind}");
+        sb.AppendLine($"Shared prompt: {report.PromptRevision ?? "historical"}; hash={report.PromptHash ?? "unavailable"}; previous={report.PreviousPromptHash ?? "unavailable"}");
         sb.AppendLine($"Household scope: {report.ScopedHouseholdCount?.ToString(Invariant) ?? "all"} of {report.DatasetHouseholdCount?.ToString(Invariant) ?? "unknown"}");
         sb.AppendLine($"Fairness: {(report.Fairness.Matched ? "MATCHED" : "FAILED")}; telemetry: {(report.RawTrials.All(trial => trial.TelemetryValid) ? "VALID (accounting only, not success)" : "FAILED")}");
         foreach (var trial in report.RawTrials)
         {
             sb.AppendLine($"  {trial.Mode}: {trial.Status}; oracle={trial.Score.MatchClass}" +
                 (trial.Failure is null ? string.Empty : $"; {trial.Failure.Message}"));
+            sb.AppendLine($"    report status={trial.ReportStatus ?? "unavailable"}; missingItems={JsonSerializer.Serialize(trial.MissingItems, Json)}");
+            sb.AppendLine($"    get_price calls={trial.Diagnostics?.ToolCallsByName.GetValueOrDefault("get_price")}; positions in scope={report.ScopedPositionCount}; priced positions={trial.PricedPositionCount}; distinct symbols in scope={report.ScopedSymbolCount}");
             if (trial.Diagnostics is { } diagnostic)
             {
                 sb.AppendLine($"    {diagnostic.Summary}; final output tokens={diagnostic.FinalOutputTokens?.ToString(Invariant) ?? "unavailable"}");
@@ -88,7 +91,7 @@ public static class ComparisonWriter
         var sb = new StringBuilder();
         sb.Append("comparison_id,profile,dataset_hash,pair_id,order_in_pair,mode,duration_ms,status,");
         sb.Append("tool_calls,model_turns,execute_code_calls,total_tokens,estimated_cost_usd,match_class,");
-        sb.Append("flagged_precision,flagged_recall,breach_precision,breach_recall,allocation_mae,trade_notional_mae,max_allocation_error,execution_kind,finish_reason,tool_calls_by_name,input_tokens,output_tokens,generated_code_bytes,final_preview\n");
+        sb.Append("flagged_precision,flagged_recall,breach_precision,breach_recall,allocation_mae,trade_notional_mae,max_allocation_error,execution_kind,finish_reason,tool_calls_by_name,input_tokens,output_tokens,generated_code_bytes,final_preview,report_status,missing_items,prompt_hash,previous_prompt_hash,scoped_positions,priced_positions\n");
         foreach (var t in report.RawTrials)
         {
             var s = t.Score;
@@ -119,7 +122,13 @@ public static class ComparisonWriter
             sb.Append(t.InputTokens?.ToString(Invariant)).Append(',');
             sb.Append(t.OutputTokens?.ToString(Invariant)).Append(',');
             sb.Append(t.Diagnostics?.GeneratedCodeBytes.ToString(Invariant)).Append(',');
-            sb.Append(Csv(t.Diagnostics?.FinalPreview ?? "unavailable")).Append('\n');
+            sb.Append(Csv(t.Diagnostics?.FinalPreview ?? "unavailable")).Append(',');
+            sb.Append(Csv(t.ReportStatus ?? "unavailable")).Append(',');
+            sb.Append(Csv(JsonSerializer.Serialize(t.MissingItems, Json))).Append(',');
+            sb.Append(Csv(report.PromptHash ?? "unavailable")).Append(',');
+            sb.Append(Csv(report.PreviousPromptHash ?? "unavailable")).Append(',');
+            sb.Append(report.ScopedPositionCount?.ToString(Invariant)).Append(',');
+            sb.Append(t.PricedPositionCount?.ToString(Invariant)).Append('\n');
         }
 
         return sb.ToString();
@@ -159,6 +168,7 @@ public static class ComparisonWriter
         var sb = new StringBuilder();
         AppendHtmlHead(sb, $"Sterling Vale \u2014 {report.ComparisonId}");
         sb.Append("<h1>Sterling Vale &mdash; Classic vs CodeAct</h1>");
+        sb.Append($"<p>Shared prompt: {Enc(report.PromptRevision ?? "historical")}; hash {Enc(report.PromptHash ?? "unavailable")}; previous {Enc(report.PreviousPromptHash ?? "unavailable")}</p>");
         sb.Append($"<p class=\"panel\">{Enc(report.Outcome.Message)}; completion {report.Outcome.CompletedRuns}/{report.Outcome.TotalRuns}; oracle correct {report.Outcome.CorrectRuns}/{report.Outcome.TotalRuns}</p>");
         AppendTrialStatusTable(sb, report);
         sb.Append("<p class=\"disc\">SYNTHETIC analysis only &mdash; not investment advice. Measured numbers for a controlled A/B of orchestration only; no performance outcome is guaranteed.</p>");
@@ -251,7 +261,9 @@ public static class ComparisonWriter
         {
             sb.Append($"<tr><td>{Enc(trial.Mode)}</td><td>{Enc(trial.Status)}</td><td>{Enc(trial.Score.MatchClass)}</td>" +
                 $"<td>{Enc(trial.Failure?.Message ?? trial.Failure?.Category ?? "none")}</td>" +
-                $"<td>{Enc(trial.Diagnostics?.Summary ?? "unavailable")}<br>preview: {Enc(trial.Diagnostics?.FinalPreview ?? "unavailable")}</td>" +
+                $"<td>{Enc(trial.Diagnostics?.Summary ?? "unavailable")}<br>preview: {Enc(trial.Diagnostics?.FinalPreview ?? "unavailable")}" +
+                $"<br>report status: {Enc(trial.ReportStatus ?? "unavailable")}; missingItems: {Enc(JsonSerializer.Serialize(trial.MissingItems, Json))}" +
+                $"<br>get_price calls: {trial.Diagnostics?.ToolCallsByName.GetValueOrDefault("get_price")}; positions in scope: {report.ScopedPositionCount}; priced positions: {trial.PricedPositionCount}</td>" +
                 $"<td>{LongVal(trial.InputTokens)} / {LongVal(trial.OutputTokens)}" +
                 (report.ExecutionKind == "live-model-code-generation-only" && trial.Mode == "codeact"
                     ? $"<br><b>{Enc(GenerationOnlyTokenNotice)}</b>" : string.Empty) + "</td>" +
@@ -349,11 +361,16 @@ public static class ComparisonWriter
     public static string RenderScalingHtml(IReadOnlyList<ComparisonReport> reports)
     {
         ArgumentNullException.ThrowIfNull(reports);
+        if (reports.Count > 1 && (reports.Any(report => report.PromptHash is null) ||
+            reports.Select(report => report.PromptHash).Distinct(StringComparer.Ordinal).Count() != 1))
+            throw new InvalidOperationException("Cannot compare runs with different or unavailable shared-prompt hashes. Select one prompt revision.");
+        string promptHash = reports.Count == 0 ? "unavailable" : reports[0].PromptHash ?? "unavailable";
         if (reports.Any(report => !report.Outcome.IsValid))
         {
             var invalid = new StringBuilder();
             AppendHtmlHead(invalid, "Sterling Vale scaling");
             invalid.Append("<h1>Sterling Vale &mdash; scaling</h1><p>Aggregate performance statistics suppressed: at least one comparison is invalid.</p>");
+            invalid.Append($"<p>Shared prompt hash: {Enc(promptHash)}; other prompt revisions are excluded.</p>");
             foreach (var report in reports)
             {
                 invalid.Append($"<h2>{Enc(report.Profile)}: {Enc(report.Outcome.Message)}</h2><p>{Enc(ExecutionNotice(report))}</p>");
@@ -377,6 +394,7 @@ public static class ComparisonWriter
         var sb = new StringBuilder();
         AppendHtmlHead(sb, "Sterling Vale \u2014 scaling");
         sb.Append("<h1>Sterling Vale &mdash; scaling (Classic vs CodeAct)</h1>");
+        sb.Append($"<p>Shared prompt hash: {Enc(promptHash)}; other prompt revisions are excluded.</p>");
         sb.Append("<p class=\"disc\">SYNTHETIC analysis only &mdash; not investment advice. The same task is run against increasingly large datasets to show how each orchestration holds up as the number of households grows.</p>");
         foreach (var report in ordered.DistinctBy(report => report.ExecutionKind))
         {

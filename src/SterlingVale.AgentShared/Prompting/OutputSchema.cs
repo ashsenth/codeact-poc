@@ -10,7 +10,7 @@ namespace SterlingVale.AgentShared.Prompting;
 public static class OutputSchema
 {
     /// <summary>Stable identifier for this schema revision.</summary>
-    public const string SchemaId = "exposure-report/v1";
+    public const string SchemaId = "exposure-report/v2";
 
     private static readonly JsonSchema Compiled = JsonSchema.FromText(SchemaText);
 
@@ -19,16 +19,30 @@ public static class OutputSchema
         """
         {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "$id": "https://sterlingvale.example/schemas/exposure-report/v1",
+          "$id": "https://sterlingvale.example/schemas/exposure-report/v2",
           "title": "ExposureReport",
           "type": "object",
           "additionalProperties": false,
-          "required": ["runId", "generatedAt", "households"],
+          "required": ["runId", "generatedAt", "status", "missingItems", "households"],
+          "allOf": [
+            {
+              "if": { "properties": { "status": { "const": "incomplete" } } },
+              "then": { "properties": { "missingItems": { "minItems": 1 } } },
+              "else": { "properties": { "missingItems": { "maxItems": 0 } } }
+            }
+          ],
           "properties": {
             "runId": { "type": "string", "minLength": 1 },
             "generatedAt": { "type": "string", "minLength": 1 },
+            "status": { "type": "string", "enum": ["complete", "incomplete"] },
+            "missingItems": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "description": "Specific missing evidence, for example symbols without prices. Non-empty when incomplete; empty when complete."
+            },
             "households": {
               "type": "array",
+              "description": "Only household reports supported by available evidence. May be empty when incomplete; do not invent numeric placeholders.",
               "items": { "$ref": "#/$defs/household" }
             }
           },

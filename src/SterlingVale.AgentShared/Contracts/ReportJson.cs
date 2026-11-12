@@ -58,7 +58,10 @@ public static class ReportJson
                 t.Notional.Amount,
                 t.Notional.Currency.Code)).ToList())).ToList();
 
-        return new ExposureReportDto(report.RunId, report.GeneratedAt.ToString("O"), households);
+        return new ExposureReportDto(report.RunId, report.GeneratedAt.ToString("O"), households)
+        {
+            Status = report.Status.ToString().ToLowerInvariant(), MissingItems = report.MissingItems,
+        };
     }
 
     /// <summary>Maps a wire DTO back to a domain report. Throws on malformed enum/currency values.</summary>
@@ -95,7 +98,10 @@ public static class ReportJson
         return new ExposureReport(
             dto.RunId,
             DateTimeOffset.Parse(dto.GeneratedAt, System.Globalization.CultureInfo.InvariantCulture),
-            households);
+            households)
+        {
+            Status = Enum.Parse<ReportStatus>(dto.Status, ignoreCase: true), MissingItems = dto.MissingItems,
+        };
     }
 
     private static JsonSerializerOptions CreateOptions(bool indented = false)
