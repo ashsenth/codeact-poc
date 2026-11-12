@@ -36,7 +36,7 @@ public sealed class AnalysisService(
         execution.ModelIsLive = chatClientProvider.IsLive;
         execution.Emit("RUN_STARTED");
         execution.Emit("EXECUTION_CONFIGURATION", data: new { model = chatClientProvider.IsLive ? "live" : "deterministic-fake",
-            transport = "direct-aifunction", payloadCapture = execution.Payloads.Mode.ToString() });
+            transport = "direct-aifunction", payloadCapture = execution.Payloads.Mode.ToString(), modelConfiguration = model });
         try
         {
         var snapshot = snapshots.GetSnapshot(request.DatasetProfile);

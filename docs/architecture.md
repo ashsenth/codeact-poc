@@ -70,10 +70,27 @@ The stricter v2 schema rejects v1 model outputs without these fields; historical
 remain readable and are not rescored or silently upgraded.
 
 Run summaries and comparison JSON/Markdown/CSV/HTML record the shared prompt hash and its previous
-revision's hash. Scaling selects the latest prompt cohort among requested profiles, skips profiles
+revision's hash. Scaling selects the latest prompt/model-configuration cohort among requested profiles, skips profiles
 without that hash, and refuses mixed/unknown hashes rather than comparing pre-/post-change runs.
 Price coverage counts successful recorded `get_price` symbols against scoped positions (shared
 symbols count for multiple positions); null means arguments were not captured, not zero coverage.
+
+Both modes build chat options from `ModelConfiguration.CreateChatOptions`: non-strict
+`json_schema`, identical v2 response shape, parallel tool calls enabled, 16,384 output tokens.
+The installed OpenAI adapter maps `AdditionalProperties["strict"]=false` to the response and tools.
+`StructuredOutput` derives the Azure-supported schema from canonical v2 without changing the prompt:
+it omits the root conditional `allOf` and unsupported string `minLength` constraints. V2 shape,
+required fields, enums (including Buy/Sell), references and closed objects remain in the schema
+as guidance; the unchanged full v2 validator decides acceptance locally, including conditional/length rules.
+This is not a claim that Azure supports every JSON Schema keyword; see
+[Azure schema limitations](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/structured-outputs#json-schema-support-and-limitations).
+The transport-schema hash, `strict=false`, `parallel_tool_calls=true` and output cap are stored in
+run metadata/configuration events and included in the model fingerprint. Startup prints these choices.
+The canonical schema hash
+remains separate. Scaling also isolates model fingerprints, so old plain-JSON runs cannot mix
+with schema-format runs even when their shared prompt hash matches. Unsupported deployments
+surface provider failures; there is no silent fallback to plain JSON.
+Wire serialization is verified with a local fake HTTP handler, not a live model call.
 
 ## Observability
 

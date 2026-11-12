@@ -93,6 +93,7 @@ catch (InvalidOperationException exception)
 static async Task<int> RunAsync(string profile, int? trials, bool open, string modelMode, int? households)
 {
     using var composition = new Composition(modelMode);
+    Console.WriteLine(composition.Model.DescribeOutputSettings());
     if (Environment.GetEnvironmentVariable("BENCHMARK_REQUIRE_LIVE") == "true" && (!composition.Live || !composition.Hyperlight.HasGuest))
     {
         Console.Error.WriteLine("Live comparison blocked: configure Azure OpenAI and HYPERLIGHT_PYTHON_GUEST_PATH on an x64 virtualization-capable host. No offline substitution permitted.");
@@ -119,6 +120,7 @@ static async Task<int> RunAsync(string profile, int? trials, bool open, string m
 static async Task<int> CompareAsync(int? trials, string modelMode, int? households)
 {
     using var composition = new Composition(modelMode);
+    Console.WriteLine(composition.Model.DescribeOutputSettings());
     if (Environment.GetEnvironmentVariable("BENCHMARK_REQUIRE_LIVE") == "true" && (!composition.Live || !composition.Hyperlight.HasGuest))
     {
         Console.Error.WriteLine("Live comparison blocked: Azure OpenAI and a real Hyperlight guest are required. No offline substitution permitted.");
@@ -205,19 +207,22 @@ static int Visualize(IReadOnlyDictionary<string, string> options, bool open)
     var reports = new List<ComparisonReport>();
     var available = Directory.EnumerateFiles(dir, "*.json").Select(ComparisonWriter.Read)
         .OrderByDescending(report => report.GeneratedAtUtc, StringComparer.Ordinal).ToArray();
-    string? promptHash = available.FirstOrDefault(report => profiles.Contains(report.Profile))?.PromptHash;
-    if (promptHash is null)
+    var cohort = available.FirstOrDefault(report => profiles.Contains(report.Profile));
+    string? promptHash = cohort?.PromptHash;
+    string? modelFingerprint = cohort?.ModelFingerprint;
+    if (promptHash is null || modelFingerprint is null)
     {
-        Console.Error.WriteLine("No comparison with a recorded shared-prompt hash. Run the benchmark first.");
+        Console.Error.WriteLine("No comparison with recorded shared-prompt and model-configuration fingerprints. Run the benchmark first.");
         return 1;
     }
-    Console.WriteLine($"Selecting latest comparisons only for shared prompt hash {promptHash}; other prompt revisions are excluded.");
+    Console.WriteLine($"Selecting latest comparisons only for shared prompt hash {promptHash} and model configuration {modelFingerprint}; other configurations are excluded.");
     foreach (var profile in profiles)
     {
-        var latest = available.FirstOrDefault(report => report.Profile == profile && report.PromptHash == promptHash);
+        var latest = available.FirstOrDefault(report => report.Profile == profile && report.PromptHash == promptHash &&
+            report.ModelFingerprint == modelFingerprint);
         if (latest is null)
         {
-            Console.Error.WriteLine($"No comparison found for profile '{profile}' with selected prompt hash; skipping.");
+            Console.Error.WriteLine($"No comparison found for profile '{profile}' with selected prompt/model configuration; skipping.");
             continue;
         }
 

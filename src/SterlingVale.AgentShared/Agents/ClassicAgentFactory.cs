@@ -30,15 +30,7 @@ public sealed class ClassicAgentFactory : IAgentFactory
         {
             UseProvidedChatClientAsIs = chatClient is ObservedFunctionClient,
             Name = "sterling-vale-classic",
-            ChatOptions = new ChatOptions
-            {
-                ModelId = model.DeploymentName,
-                Instructions = Prompt.Classic,
-                Temperature = model.Temperature,
-                MaxOutputTokens = 16384,
-                ResponseFormat = ChatResponseFormat.Json,
-                Tools = tools,
-            },
+            ChatOptions = model.CreateChatOptions(Prompt.Classic, tools),
         });
 
         return new AgentBundle(agent);

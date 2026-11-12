@@ -61,7 +61,7 @@ public static class RunArtifacts
             [Files.Metrics] = JsonSerializer.Serialize(response.Metrics, Json),
             [Files.Events] = BuildEvents(record),
             [Files.Metadata] = JsonSerializer.Serialize(new { execution = record.Execution, configuration = BuildMetadata(record, model, pricing),
-                outputSource = record.ChildRuns.Count > 0 ? "application-merged" : "model",
+                modelConfiguration = model, outputSource = record.ChildRuns.Count > 0 ? "application-merged" : "model",
                 childRunIds = record.ChildRuns.Select(child => child.Response.RunId).ToArray() }, Json),
             [Files.GeneratedCode] = record.GeneratedCode ?? GeneratedCodeUnavailable,
             [Files.RawOutput] = string.IsNullOrEmpty(record.RawModelOutput) ? RawOutputUnavailable : record.RawModelOutput,

@@ -88,6 +88,15 @@ public sealed class ObservedClientTests : IDisposable
         Assert.True(record.Response.Metrics.TelemetryValid, string.Join("; ", record.Response.Metrics.TelemetryErrors));
         Assert.Equal(0, invocations);
         Assert.Equal(1, model.Requests);
+        Assert.Equal(1, record.Response.Metrics.ModelTurnCount);
+        Assert.Equal(2, record.Response.Metrics.ExecuteCodeCallCount);
+        Assert.Equal(2, record.Response.Metrics.ModelFacingToolCallCount);
+        var diagnostics = RunDiagnostics.FromEvents("codeact", record.Response.Status, session.Snapshot());
+        Assert.Equal(2, diagnostics.ToolCallsByName["execute_code"]);
+        var calls = session.Snapshot().Where(entry => entry.EventType == "MODEL_TOOL_CALL_STARTED")
+            .Select(entry => System.Text.Json.JsonSerializer.SerializeToElement(entry.Data)).ToArray();
+        Assert.Equal(2, calls.Select(call => call.GetProperty("invocationId").GetString()).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(calls, call => Assert.Equal(1, call.GetProperty("modelTurn").GetInt32()));
         Assert.Equal("print('first')", File.ReadAllText(Path.Combine(session.RunDirectory, "codeact", "generated-code-001.py")));
         Assert.Equal("print('second')", File.ReadAllText(Path.Combine(session.RunDirectory, "codeact", "generated-code-002.py")));
         foreach (var entry in session.Snapshot().Where(entry => entry.EventType == "CODE_GENERATED"))

@@ -114,6 +114,13 @@ public sealed class RunArtifactsTests
         string metadata = files[RunArtifacts.Files.Metadata];
         Assert.Contains("fingerprints", metadata, StringComparison.Ordinal);
         Assert.Contains("exposure-analysis/v2", metadata, StringComparison.Ordinal);
+        using var document = System.Text.Json.JsonDocument.Parse(metadata);
+        var configuration = document.RootElement.GetProperty("modelConfiguration");
+        Assert.Equal("json_schema", configuration.GetProperty("responseFormat").GetString());
+        Assert.False(configuration.GetProperty("strict").GetBoolean());
+        Assert.True(configuration.GetProperty("parallel_tool_calls").GetBoolean());
+        Assert.Equal(SterlingVale.AgentShared.Prompting.StructuredOutput.SchemaHash,
+            configuration.GetProperty("responseSchemaHash").GetString());
     }
 
     [Fact]

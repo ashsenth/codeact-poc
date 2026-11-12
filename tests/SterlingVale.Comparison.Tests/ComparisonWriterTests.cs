@@ -47,15 +47,17 @@ public sealed class ComparisonWriterTests
             classic, codeact, Aggregator.ComputeDelta(classic, codeact), trials);
     }
 
-    [Fact]
-    public void Mixed_prompt_revisions_cannot_be_compared_in_scaling_report()
+    [Theory]
+    [InlineData("prompt", "shared-prompt hashes")]
+    [InlineData("model", "model-configuration fingerprints")]
+    public void Mixed_configurations_cannot_be_compared_in_scaling_report(string key, string reason)
     {
         var old = ReportFor("small", 10);
         var current = ReportFor("medium", 40);
-        var fingerprints = new Dictionary<string, string>(current.Fairness.ClassicFingerprints) { ["prompt"] = "new-prompt" };
+        var fingerprints = new Dictionary<string, string>(current.Fairness.ClassicFingerprints) { [key] = "new-revision" };
         current = current with { Fairness = new(true, [], fingerprints, fingerprints) };
         var error = Assert.Throws<InvalidOperationException>(() => ComparisonWriter.RenderScalingHtml([old, current]));
-        Assert.Contains("shared-prompt hashes", error.Message);
+        Assert.Contains(reason, error.Message);
         string html = ComparisonWriter.RenderScalingHtml([old, ReportFor("medium", 40)]);
         Assert.Contains("small", html);
         Assert.Contains("medium", html);

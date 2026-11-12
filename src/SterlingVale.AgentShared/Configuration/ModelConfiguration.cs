@@ -1,4 +1,7 @@
 using System.Globalization;
+using System.Text.Json.Serialization;
+using Microsoft.Extensions.AI;
+using SterlingVale.AgentShared.Prompting;
 
 namespace SterlingVale.AgentShared.Configuration;
 
@@ -23,10 +26,37 @@ public sealed record ModelConfiguration
     /// <summary>The per-run timeout as a <see cref="TimeSpan"/>.</summary>
     public TimeSpan Timeout => TimeSpan.FromSeconds(TimeoutSeconds);
 
+    public string ResponseFormat => "json_schema";
+    public string ResponseSchemaId => OutputSchema.SchemaId;
+    public string ResponseSchemaHash => StructuredOutput.SchemaHash;
+    [JsonPropertyName("strict")]
+    public bool ResponseSchemaStrict => false;
+    [JsonPropertyName("parallel_tool_calls")]
+    public bool AllowMultipleToolCalls => true;
+    public int MaxOutputTokens => 16384;
+
+    public string DescribeOutputSettings() =>
+        $"Model output: response_format={ResponseFormat}; parallel_tool_calls={AllowMultipleToolCalls.ToString().ToLowerInvariant()}; " +
+        $"strict={ResponseSchemaStrict.ToString().ToLowerInvariant()}; validation=local {ResponseSchemaId}";
+
+    public ChatOptions CreateChatOptions(string instructions, IList<AITool>? tools = null) => new()
+    {
+        ModelId = DeploymentName,
+        Instructions = instructions,
+        Temperature = Temperature,
+        MaxOutputTokens = MaxOutputTokens,
+        ResponseFormat = ChatResponseFormat.ForJsonSchema(StructuredOutput.Schema, StructuredOutput.SchemaName),
+        AdditionalProperties = new() { ["strict"] = ResponseSchemaStrict },
+        AllowMultipleToolCalls = AllowMultipleToolCalls,
+        Tools = tools,
+    };
+
     /// <summary>A deterministic fingerprint over all model/limit fields.</summary>
     public string Fingerprint() => Hashing.Sha256Hex(string.Create(
         CultureInfo.InvariantCulture,
-        $"deployment={DeploymentName};temperature={Temperature:R};maxTurns={MaxTurns};timeoutSeconds={TimeoutSeconds}"));
+        $"deployment={DeploymentName};temperature={Temperature:R};maxTurns={MaxTurns};timeoutSeconds={TimeoutSeconds};" +
+        $"responseFormat={ResponseFormat};responseSchema={ResponseSchemaHash};strict={ResponseSchemaStrict};" +
+        $"parallel_tool_calls={AllowMultipleToolCalls};maxOutputTokens={MaxOutputTokens}"));
 }
 
 /// <summary>Token pricing (USD per 1,000,000 tokens). Both modes must use identical values.</summary>

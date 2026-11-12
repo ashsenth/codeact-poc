@@ -61,6 +61,7 @@ public static class InfrastructureServiceCollectionExtensions
             MaxTurns = benchmark.MaxTurns,
             TimeoutSeconds = benchmark.TimeoutSeconds,
         };
+        Console.WriteLine(model.DescribeOutputSettings());
 
         var pricing = new PricingConfiguration
         {

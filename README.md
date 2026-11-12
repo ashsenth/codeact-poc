@@ -200,7 +200,7 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Result: **228 passed, 0 failed, 0 skipped across ten projects**, including diagnostic, mode,
+Result: **231 passed, 0 failed, 0 skipped across ten projects**, including diagnostic, mode,
 scope, capture and normalization regressions. The separate Hyperlight group discovered six tests;
 all six skipped here, with zero executed. A skip is not sandbox evidence.
 
@@ -311,7 +311,7 @@ dotnet run -c Release --no-build --project $benchmark -- run --profile small --t
 ```
 
 `--households N` selects the first N dataset households for both agents, warm-ups and oracle; default is all.
-Measured runs after warm-up, **live ARM64, November 12, 2026**, approved shared prompt v2.
+Measured runs after warm-up, **live ARM64, November 12, 2026**, shared prompt v2 with plain JSON mode (before schema-format changes).
 CodeAct tokens: **first turn only, code not executed: not comparable to Classic totals**.
 
 | N | Classic status / finish / turns | Input / output tokens | Duration ms | Oracle | CodeAct turns / input / output / Python bytes |
@@ -319,16 +319,22 @@ CodeAct tokens: **first turn only, code not executed: not comparable to Classic 
 | 1 | Failed / stop / 6 | 21,079 / 1,082 | 16,003.170 | InvalidSchema (`Hold`) | 1 / 2,176 / 1,258 / 5,017 |
 | 3 | Completed / stop / 5 | 37,101 / 974 | 14,763.335 | Partial (zero reports) | 1 / 2,184 / 536 / 1,616 |
 
-Both Classic answers declared `complete`, with no missing items; neither was correct.
+Classic retrieved complete price evidence for all scoped positions but produced zero/placeholder values while declaring complete.
+**Hypothesis (unverified until CodeAct executes):** in-context arithmetic across many positions is unreliable.
 `get_price` / positions: **13 / 26** (N=1), **17 / 117** (N=3); all 13/17 distinct symbols covered.
 Asset class already comes with position data; `asset_class=0` is **not** a classification shortcut.
 The earlier full-Small run's gap was missing prices (`get_price=0`); these scoped runs also show
 incorrect computation despite price coverage. Both CodeAct runs were NotExecuted.
 V2 requires `status` and `missingItems`; explicit `incomplete` is **Partial, never Exact**, even with exact values.
-Reports record current/previous prompt hashes; scaling selects one hash and rejects mixed revisions.
+Classic runs with parallel tool calls enabled (model default); disabling it would multiply Classic's turns and isn't how the pattern is used in practice.
+Both modes explicitly set `parallel_tool_calls=true`, non-strict `json_schema` (`strict=false`), and a 16,384-token output cap.
+The schema guides output; full local v2 validation, not server-side strict guarantees, decides acceptance. **Not live-verified.**
+Startup prints the format, parallel and strict choices for both modes.
+Settings and both schema hashes are recorded; scaling rejects mixed prompt/model configurations.
 See [prompt boundary, per-tool tables and prior results](docs/review-current/poc-demo-review.md#approved-shared-prompt-v2-live-follow-up).
 Finish reason, last-response output tokens, a redacted 240-character preview and zero-inclusive counts
 are persisted in each run's `summary.json`, final event and comparison; generated-source events include byte counts.
+N=3's two CodeAct calls were distinct requests in one model response (159 + 1,457 bytes), both NotExecuted, not two turns.
 Safe live Python lands in `codeact/generated-code-*.py` even with metadata/none capture; unsafe/oversized source gets markers.
 Failure events contain safe category/status/code/guidance, not raw server text. Live calls incur charges.
 
@@ -354,7 +360,7 @@ Nothing in the offline quickstart provisions resources, installs a guest, or cha
 
 | Area | Status and evidence |
 | --- | --- |
-| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles and reports; current suite has 228 passing tests. |
+| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles and reports; current suite has 231 passing tests. |
 | HTTP contract | Offline integration tests pass; a standalone live Classic request completed for one household, with valid schema/telemetry but no oracle score. |
 | Observability | Working offline: correlation, journals, capture policy, timelines, counts, reconciliation. |
 | Large payload capture | Bounded payloads with explicit flags; transcript records remain valid JSONL and retain later calls. Exact oversized payloads remain unavailable. |

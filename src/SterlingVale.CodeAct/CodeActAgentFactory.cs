@@ -77,14 +77,7 @@ public sealed class CodeActAgentFactory : IAgentFactory
         {
             UseProvidedChatClientAsIs = chatClient is ObservedFunctionClient,
             Name = "sterling-vale-codeact",
-            ChatOptions = new ChatOptions
-            {
-                ModelId = model.DeploymentName,
-                Instructions = Prompt.CodeAct,
-                Temperature = model.Temperature,
-                MaxOutputTokens = 16384,
-                ResponseFormat = ChatResponseFormat.Json,
-            },
+            ChatOptions = model.CreateChatOptions(Prompt.CodeAct),
             AIContextProviders = [provider],
         });
 
@@ -98,14 +91,7 @@ public sealed class CodeActAgentFactory : IAgentFactory
         {
             UseProvidedChatClientAsIs = chatClient is ObservedFunctionClient,
             Name = "sterling-vale-codeact",
-            ChatOptions = new ChatOptions
-            {
-                ModelId = model.DeploymentName,
-                Instructions = Prompt.CodeAct,
-                Temperature = model.Temperature,
-                ResponseFormat = ChatResponseFormat.Json,
-                Tools = [executeCode],
-            },
+            ChatOptions = model.CreateChatOptions(Prompt.CodeAct, [executeCode]),
         });
 
         return new AgentBundle(agent);

@@ -140,6 +140,7 @@ public sealed record ComparisonReport(
     public int? ScopedPositionCount { get; init; }
     public int? ScopedSymbolCount { get; init; }
     public string? PromptHash => Fairness.ClassicFingerprints.GetValueOrDefault("prompt");
+    public string? ModelFingerprint => Fairness.ClassicFingerprints.GetValueOrDefault("model");
     public string? PreviousPromptHash { get; init; }
     public string? PromptRevision { get; init; }
 }

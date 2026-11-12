@@ -531,3 +531,90 @@ and new-prompt Small selected Small only, explicitly skipped Medium, and wrote t
 scaling HTML. Both live HTML reports were checked for the hash, missing-items/price-scope evidence
 and generation-only token warning. README/docs scan found no machine paths, resource IDs,
 literal resource endpoints/IPs or internal-feed URLs. README is 400 lines.
+
+## Structured output and generation-only count follow-up
+
+**Historical staged state, superseded before commit:** the strict/serial settings described in
+this section were replaced by parallel/non-strict settings in the correction below. No live
+experiment used the strict/serial configuration.
+
+November 12, 2026. No further live calls were made; laptop iteration stops after this change.
+The prompt text and embedded canonical v2 schema are unchanged, retaining shared hash
+`630a3a841752d3b4475fadde5050b2884c11b59b28f87e4c43a694fc57ebbc86`.
+The live tables above used the older plain-JSON request settings, not the new strict settings.
+
+The installed Microsoft.Extensions.AI OpenAI adapter supports `ChatResponseFormat.ForJsonSchema`
+and maps `AdditionalProperties["strict"]=true` into the native request. Both factories now use
+the same option builder, including CodeAct with/without a guest. Requests specify strict schema,
+disable parallel tool calls, and use the same 16,384-token output cap. The generation-only path
+previously omitted that explicit output cap; it now matches the other paths. These settings and
+the projected schema hash are recorded in metadata/configuration events and the model fingerprint.
+Scaling selects and validates both prompt and model-configuration cohorts, preventing comparison
+of these new settings with historical plain-JSON runs.
+
+Azure structured outputs support only a JSON Schema subset: the canonical v2 conditional
+`allOf`/`if`/`then`/`else` and string `minLength` cannot be enforced server-side. The derived
+transport schema retains v2's shape, required fields, closed objects, references and enums,
+including Buy/Sell rather than Hold. Full unchanged v2 validation still runs locally and rejects
+inconsistent missing-items lists or empty required strings. Both schema hashes are retained;
+there is no silent fallback if a deployment rejects structured output. This change is
+**not live-verified**. See [Azure limitations](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/structured-outputs#json-schema-support-and-limitations).
+
+The N=3 CodeAct journal for run `577ed589` contains one MODEL_RESPONSE_RECEIVED with **two distinct
+function-call IDs**, both named execute_code and both at modelTurn=1. They map to the 159-byte
+and 1,457-byte saved source files. Each gets one MODEL_TOOL_CALL_STARTED, one CODE_GENERATED
+and one CODE_EXECUTION_NOT_EXECUTED; there are zero CODE_EXECUTION_STARTED events.
+This is two requested calls, not double-counting, two executed programs, or two model turns.
+Generation-only capture deliberately retains the whole returned batch and stops after its last
+function; it neither runs Python nor supplies results for another model turn.
+The existing three capture-mode regression cases now assert one model request/turn, two distinct
+call IDs, two execute-code requests, zero actual tool invocations and two explicit NotExecuted markers.
+
+README now records: Classic retrieved complete price evidence for all scoped positions but
+produced zero/placeholder values while declaring complete.
+**Hypothesis (unverified until CodeAct executes):** in-context arithmetic across many positions
+is unreliable. This is not a demonstrated advantage for CodeAct; its arithmetic remains untested.
+
+New tests capture actual options from both factories and verify persisted settings. A local
+fake HTTP handler checks the real OpenAI adapter's strict JSON-schema request, parallel-call flag,
+v2 schema equivalence and rejection of Hold; full local validation still rejects conditional
+violations that the server subset cannot express. A scaling regression also rejects mixed
+model-configuration fingerprints. No guest or VM provisioning was attempted.
+Final Release build: zero warnings/errors; ten fresh literal-path TRX reads confirm
+**231 passed, 0 failed, 0 skipped**. No live calls, commits or pushes were made in this follow-up.
+
+## Parallel tool-call correction
+
+November 12, 2026. The prior parallel-off choice was based on the
+[Azure structured outputs, Function calling section](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/structured-outputs#function-calling-with-structured-outputs):
+
+> Structured outputs are not supported with parallel function calls. When using structured outputs set `parallel_tool_calls` to `false`.
+
+That note addresses strict structured function calling, not a general requirement of tool-calling
+agents. The SDK's global `strict` option also applies to function schemas; enabling it for the
+response had enabled strict tools too. Preserving realistic parallel batching is more important
+for this comparison than strict server-side output constraints. The SDK does not itself require
+serial calls: a fake-HTTP test verifies its outgoing request with parallel on and strict off.
+
+Both modes now explicitly send `parallel_tool_calls=true`, `response_format=json_schema` and
+`strict=false` for the response and tools. The v2 schema is non-strict guidance; the unchanged
+full local validator, not a server guarantee, decides acceptance. The prompt and canonical schema
+texts are unchanged. Metadata/configuration events record the native-named parallel/strict fields,
+the transport schema hash and output cap; fingerprints include these settings. Scaling rejects
+mixed model configurations. No silent downgrade or retry is used if a deployment rejects the format.
+
+Benchmark and both API startup paths print:
+
+```text
+Model output: response_format=json_schema; parallel_tool_calls=true; strict=false; validation=local exposure-report/v2
+```
+
+README includes the requested note: Classic runs with parallel tool calls enabled (model default);
+disabling it would multiply Classic's turns and isn't how the pattern is used in practice.
+Earlier live evidence and the unverified arithmetic hypothesis remain unchanged.
+
+Validation: clean Release build; **231 passed, 0 failed, 0 skipped**, counted from ten fresh TRX
+files. A fresh fake-only N=1 control completed with both modes Exact and confirmed the startup
+line, persisted `parallel_tool_calls=true` / `strict=false`, and matching model fingerprints.
+This only verifies wiring and accounting, not live model behavior or performance.
+No new live calls or VM/provisioning actions were performed.
