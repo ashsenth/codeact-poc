@@ -24,16 +24,19 @@ public sealed class BenchmarkHarness(Composition composition)
     private static readonly DateTimeOffset OracleAsOf = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     /// <summary>Executes the benchmark for a profile and returns the comparison report.</summary>
-    public async Task<ComparisonReport> RunAsync(string profile, int trials, CancellationToken cancellationToken)
+    public async Task<ComparisonReport> RunAsync(string profile, int trials, CancellationToken cancellationToken, int? households = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profile);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(trials);
+        if (households is <= 0) throw new InvalidOperationException("--households must be a positive integer.");
 
         string comparisonId = $"{profile}-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
         var snapshot = composition.Snapshots.GetSnapshot(profile);
         string datasetHash = composition.Snapshots.GetDatasetHash(profile);
-        var request = new AnalysisRequest { DatasetProfile = profile };
-        var householdIds = snapshot.Households.Select(h => h.Id.Value).ToList();
+        if (households > snapshot.Households.Count)
+            throw new InvalidOperationException("--households exceeds the number of households in the selected dataset.");
+        var householdIds = snapshot.Households.Select(h => h.Id.Value).Take(households ?? snapshot.Households.Count).ToList();
+        var request = new AnalysisRequest { DatasetProfile = profile, HouseholdIds = households is null ? null : householdIds };
 
         var oracleDto = ReportJson.ToDto(new ExposureOracle().Analyze(snapshot, request, "oracle", OracleAsOf));
 
@@ -102,6 +105,8 @@ public sealed class BenchmarkHarness(Composition composition)
                     GranularToolCalls = m.GranularToolCallCount, SandboxCallbacks = m.SandboxCallbackCount,
                     ChildRunIds = record.ChildRuns.Select(child => child.Response.RunId).ToArray(),
                     Failure = FindFailure(record),
+                    Diagnostics = record.Diagnostics,
+                    InputTokens = m.InputTokens, OutputTokens = m.OutputTokens,
                 });
             }
         }
@@ -127,6 +132,7 @@ public sealed class BenchmarkHarness(Composition composition)
             ExecutionKind = !composition.Live ? "offline-fake-control" : composition.Hyperlight.HasGuest ? "live-model-hyperlight" : "live-model-code-generation-only",
             DatasetAccountCount = snapshot.Accounts.Count,
             DatasetPositionCount = snapshot.Positions.Count,
+            ScopedHouseholdCount = householdIds.Count,
         }.ForPresentation();
     }
 
@@ -181,6 +187,8 @@ public sealed class BenchmarkHarness(Composition composition)
             first.Execution?.ComparisonId, first.Execution?.TrialId);
         aggregate.Emit("BATCH_AGGREGATION_STARTED", data: new { childRunIds = batches.Select(batch => batch.Response.RunId).ToArray() });
         aggregate.Emit("BATCH_AGGREGATION_COMPLETED", valid ? "ok" : "failed");
+        var aggregateDiagnostics = RunDiagnostics.FromEvents("classic",
+            valid ? RunStatus.Completed : RunStatus.Failed, batches.SelectMany(batch => batch.Events).ToArray());
         return new RunRecord
         {
             Response = new AnalysisResponse
@@ -197,6 +205,7 @@ public sealed class BenchmarkHarness(Composition composition)
             Events = aggregate.Snapshot(),
             ChildRuns = batches,
             Fingerprints = first.Fingerprints,
+            Diagnostics = aggregateDiagnostics,
         };
     }
 

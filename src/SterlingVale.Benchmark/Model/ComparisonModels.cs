@@ -27,6 +27,9 @@ public sealed record TrialResult(
     public int SandboxCallbacks { get; init; }
     public IReadOnlyList<string> ChildRunIds { get; init; } = [];
     public FailureInfo? Failure { get; init; }
+    public RunDiagnostics? Diagnostics { get; init; }
+    public long? InputTokens { get; init; }
+    public long? OutputTokens { get; init; }
 }
 
 /// <summary>Median/min/max of a measured quantity (no trials removed).</summary>
@@ -129,6 +132,7 @@ public sealed record ComparisonReport(
     public string ExecutionKind { get; init; } = "unavailable";
     public int? DatasetAccountCount { get; init; }
     public int? DatasetPositionCount { get; init; }
+    public int? ScopedHouseholdCount { get; init; }
 }
 
 public sealed record ComparisonOutcome(int CompletedRuns, int TotalRuns, int FailedRuns, int CorrectRuns,

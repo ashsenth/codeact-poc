@@ -56,6 +56,8 @@ public sealed class ComparisonWriterTests
             Status = "Failed",
             Score = RunScore.ForFailure("Failed", false, CorrectnessScorer.Match.Failed),
             Failure = new("ClientResultException", "Model request failed: HTTP 403, error code Forbidden.", 403, "Forbidden"),
+            Diagnostics = new("stop", 34, "{\"households\":[]}",
+                new Dictionary<string, int> { ["get_price"] = 0, ["get_fx"] = 0, ["asset_class"] = 0 }, 0, "INCOMPLETE: model stopped before pricing"),
         };
         var report = original with { RawTrials = [original.RawTrials[0], failed] };
         const string message = "COMPARISON INVALID: 1 of 2 runs failed (ClientResultException)";
@@ -64,6 +66,8 @@ public sealed class ComparisonWriterTests
         {
             Assert.Contains(message, output);
             Assert.DoesNotContain("median", output, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("finish_reason=stop", output);
+            Assert.Contains("get_price=0", output);
         }
         string directory = Path.Combine(Path.GetTempPath(), "sv-invalid-" + Guid.NewGuid().ToString("N"));
         try
@@ -257,8 +261,8 @@ public sealed class ComparisonWriterTests
         }
 
         Assert.DoesNotContain("CodeAct vs Classic (both completed)", html, StringComparison.Ordinal);
-        Assert.EndsWith(",execution_kind", ComparisonWriter.RenderCsv(report).Split('\n')[0], StringComparison.Ordinal);
-        Assert.Contains(",offline-fake-control\n", ComparisonWriter.RenderCsv(report), StringComparison.Ordinal);
+        Assert.Contains(",execution_kind,finish_reason,tool_calls_by_name,", ComparisonWriter.RenderCsv(report).Split('\n')[0], StringComparison.Ordinal);
+        Assert.Contains(",offline-fake-control,", ComparisonWriter.RenderCsv(report), StringComparison.Ordinal);
         Assert.Contains("EXECUTION KIND UNAVAILABLE", ComparisonWriter.RenderHtml(SampleReport()), StringComparison.Ordinal);
         Assert.Contains("LIVE MODEL WITH OFFLINE CODE STAND-IN",
             ComparisonWriter.RenderHtml(report with { ExecutionKind = "live-model-offline-code-stand-in" }), StringComparison.Ordinal);

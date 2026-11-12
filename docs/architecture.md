@@ -93,7 +93,7 @@ independently persisted children and labels its output as application-merged, no
 Observed transcripts preserve one JSON object per message and every call/result identity.
 Text, arguments and results are individually captured in policy envelopes, so oversized payloads
 remain explicitly partial without removing later messages or breaking JSONL. Metadata/none modes
-retain identities without payload content. Legacy unobserved records keep their prior representation.
+retain identities without general payload content. Legacy unobserved records keep their prior representation.
 Truncated or redacted raw-output captures also retain their envelope rather than masquerading as
 complete text. The no-guest CodeAct stand-in executes no Python and
 emits explicit offline events, not real sandbox-completion events.
@@ -110,6 +110,19 @@ full identity. Warm-ups carry `isWarmup` on context and every event, are persist
 from measured trials. Completion/correctness precede telemetry validity in reports. Any failed or
 not-executed measured attempt invalidates the comparison and suppresses aggregate performance
 statistics in console, JSON, Markdown, HTML and scaling views while retaining raw trial evidence.
+Each run also persists `summary.json` with the final model finish reason, final-response output tokens,
+a redacted preview (up to 240 characters), all eight tool names including zero counts, and saved-source
+UTF-8 byte totals. These compact diagnostics are deliberately retained independently of payload mode.
+They are copied to the final run event and comparison JSON/console/HTML/Markdown/CSV. Missing finish
+reasons remain unavailable, never inferred from text length or status.
+Live generated Python is an explicit exception to metadata/none payload suppression: source is captured
+from execute-code arguments under the same redaction/65,536-character limit and saved as exact `.py`
+only when safe and complete. Offline fake payload behavior is unchanged. Generated-code events point
+to the file or unavailable-capture marker and include the actual saved UTF-8 byte count.
+The benchmark's optional `--households N` applies the same first-N dataset-order IDs to both modes,
+warm-ups and oracle; full dataset size/hash remain unchanged and scope size is separately reported.
+The live client normalizes pasted path-bearing resource URLs to the HTTPS authority root with one
+safe notice. Invalid/insecure or credential-bearing URLs are rejected without echoing their values.
 The shared run store and comparison writer refresh `<ARTIFACTS_ROOT>/index.md` with statuses
 and relative links to available timelines, generated-code captures and tool-invocation records.
 See the [current POC review](review-current/poc-demo-review.md) for verified scope and open issues.

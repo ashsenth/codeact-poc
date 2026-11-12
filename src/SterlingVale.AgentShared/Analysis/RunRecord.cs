@@ -14,6 +14,7 @@ public sealed record RunRecord
     public IReadOnlyList<SterlingVale.Telemetry.ExecutionEvent> Events { get; init; } = [];
     public SterlingVale.Telemetry.PayloadCaptureMode PayloadCaptureMode { get; init; } = SterlingVale.Telemetry.PayloadCaptureMode.Metadata;
     public IReadOnlyList<RunRecord> ChildRuns { get; init; } = [];
+    public RunDiagnostics? Diagnostics { get; init; }
 
     /// <summary>The API-facing analysis response.</summary>
     public required AnalysisResponse Response { get; init; }

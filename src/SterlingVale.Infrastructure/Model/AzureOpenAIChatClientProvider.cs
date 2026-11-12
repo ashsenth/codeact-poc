@@ -28,7 +28,9 @@ public sealed class AzureOpenAIChatClientProvider : IChatClientProvider
             throw new InvalidOperationException("Azure OpenAI endpoint is not configured.");
         }
 
-        var endpoint = new Uri(options.Endpoint);
+        var endpoint = NormalizeEndpoint(options.Endpoint, out bool normalized);
+        if (normalized)
+            Console.WriteLine("Azure OpenAI endpoint normalized to the base URL (path/query/fragment removed).");
         var clientOptions = new AzureOpenAIClientOptions();
         clientOptions.AddPolicy(new ExecutionHeaderPolicy(), PipelinePosition.PerCall);
         _client = string.IsNullOrWhiteSpace(options.ApiKey)
@@ -42,6 +44,16 @@ public sealed class AzureOpenAIChatClientProvider : IChatClientProvider
 
     /// <inheritdoc />
     public string ModelId => _deployment;
+
+    public static Uri NormalizeEndpoint(string value, out bool normalized)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var endpoint) || endpoint.Scheme != Uri.UriSchemeHttps ||
+            !string.IsNullOrEmpty(endpoint.UserInfo))
+            throw new InvalidOperationException("AZURE_OPENAI_ENDPOINT must be an absolute HTTPS resource URL without embedded credentials.");
+        var result = new Uri(endpoint.GetLeftPart(UriPartial.Authority) + "/");
+        normalized = endpoint.AbsolutePath != "/" || endpoint.Query.Length > 0 || endpoint.Fragment.Length > 0;
+        return result;
+    }
 
     /// <inheritdoc />
     public IChatClient CreateChatClient(ChatClientRequest request) =>

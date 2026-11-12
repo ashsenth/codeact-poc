@@ -30,7 +30,11 @@ public sealed class ObservedChatClient(IChatClient inner) : DelegatingChatClient
             var response = await base.GetResponseAsync(input, options, cancellationToken).ConfigureAwait(false);
             var usage = new ModelUsage(modelTurn, response.Usage?.InputTokenCount, response.Usage?.OutputTokenCount, response.Usage?.TotalTokenCount);
             execution.RecordUsage(usage);
-            var captured = new { requestId, modelTurn, execution.Context, usage, messages = execution.Payloads.Capture(ProjectMessages(response.Messages)) };
+            string safeText = PayloadPolicy.Redact(response.Text ?? string.Empty);
+            string preview = safeText.Length > 240 ? safeText[..240] : safeText;
+            var captured = new { requestId, modelTurn, execution.Context, usage,
+                finishReason = response.FinishReason?.ToString(), outputTokens = response.Usage?.OutputTokenCount, preview,
+                messages = execution.Payloads.Capture(ProjectMessages(response.Messages)) };
             execution.AppendArtifact("model/responses.jsonl", captured);
             execution.Emit("MODEL_RESPONSE_RECEIVED", durationMs: Stopwatch.GetElapsedTime(start).TotalMilliseconds, data: captured);
             execution.Emit("MODEL_USAGE_RECORDED", usage.TotalTokens is null ? "unavailable" : "ok", data: usage);

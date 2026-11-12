@@ -66,6 +66,7 @@ public static class ArtifactIndex
                 }
                 text.Append($"- {Path.GetFileName(directory)} ({mode}, {phase}): **{status}**");
                 AddLink(text, artifactsRoot, directory, "timeline.md", "timeline");
+                AddLink(text, artifactsRoot, directory, "summary.json", "run summary");
                 AddLink(text, artifactsRoot, directory, Path.Combine("tools", "invocations.jsonl"), "tool invocations");
                 string code = Path.Combine(directory, "codeact");
                 var programs = Directory.Exists(code) ? Directory.GetFiles(code, "generated-code-*") : [];

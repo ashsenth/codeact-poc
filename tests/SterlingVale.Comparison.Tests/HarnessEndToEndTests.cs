@@ -17,11 +17,13 @@ public sealed class HarnessEndToEndTests
         ["DATASET_ROOT", "ARTIFACTS_ROOT", "AZURE_OPENAI_ENDPOINT", "HYPERLIGHT_PYTHON_GUEST_PATH", "BENCHMARK_TRIALS", "CLASSIC_BATCH_SIZE"];
 
     [Theory]
-    [InlineData("small", 0)]
-    [InlineData("medium", 0)]
-    [InlineData("large", 0)]
-    [InlineData("small", 3)]
-    public async Task Harness_produces_matched_comparison_with_exact_scores(string profile, int batchSize)
+    [InlineData("small", 0, null)]
+    [InlineData("medium", 0, null)]
+    [InlineData("large", 0, null)]
+    [InlineData("small", 3, null)]
+    [InlineData("small", 0, 1)]
+    [InlineData("small", 0, 3)]
+    public async Task Harness_produces_matched_comparison_with_exact_scores(string profile, int batchSize, int? households)
     {
         var dataset = profile switch { "medium" => DatasetProfile.Medium, "large" => DatasetProfile.Large, _ => DatasetProfile.Small };
         string tmp = Path.Combine(Path.GetTempPath(), "svcmp-e2e-" + Guid.NewGuid().ToString("N"));
@@ -37,7 +39,11 @@ public sealed class HarnessEndToEndTests
             Environment.SetEnvironmentVariable("CLASSIC_BATCH_SIZE", batchSize.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
             using var composition = new Composition();
-            var report = await new BenchmarkHarness(composition).RunAsync(profile, trials: 2, CancellationToken.None);
+            var harness = new BenchmarkHarness(composition);
+            var report = await harness.RunAsync(profile, trials: 2, CancellationToken.None, households);
+            Assert.Equal(households ?? report.DatasetHouseholdCount, report.ScopedHouseholdCount);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => harness.RunAsync(profile, 1, CancellationToken.None, 0));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => harness.RunAsync(profile, 1, CancellationToken.None, report.DatasetHouseholdCount + 1));
 
             Assert.True(report.Fairness.Matched);
             Assert.Equal(2, report.Classic.Correctness.ExactCount);
@@ -49,6 +55,19 @@ public sealed class HarnessEndToEndTests
             Assert.Equal(4, report.RawTrials.Select(trial => trial.CorrelationId).Distinct().Count());
             Assert.All(report.RawTrials.GroupBy(trial => trial.PairId), pair => Assert.Single(pair.Select(trial => trial.TrialId).Distinct()));
             Assert.Contains(report.RawTrials, t => t.Mode == "codeact" && t.ExecuteCodeCallCount == 1);
+            foreach (var trial in report.RawTrials)
+            {
+                string path = Path.Combine(composition.ArtifactsRoot, "runs", trial.RunId, "result.json");
+                using var result = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+                Assert.Equal(report.ScopedHouseholdCount, result.RootElement.GetProperty("report").GetProperty("households").GetArrayLength());
+                var ids = result.RootElement.GetProperty("report").GetProperty("households").EnumerateArray()
+                    .Select(household => household.GetProperty("householdId").GetString()).Order(StringComparer.Ordinal);
+                Assert.Equal(composition.Snapshots.GetSnapshot(profile).Households.Take(report.ScopedHouseholdCount!.Value)
+                    .Select(household => household.Id.Value).Order(StringComparer.Ordinal), ids);
+                Assert.NotNull(trial.Diagnostics);
+                Assert.True(trial.Diagnostics.ToolCallsByName.ContainsKey("get_price"));
+                Assert.Contains("get_fx=0", ComparisonWriter.RenderConsoleSummary(report));
+            }
             ComparisonWriter.Write(report, composition.ArtifactsRoot);
             string index = File.ReadAllText(Path.Combine(composition.ArtifactsRoot, "index.md"));
             Assert.Contains("COMPARISON VALID", index);

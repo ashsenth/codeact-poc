@@ -22,6 +22,8 @@ public sealed class AnalysisService(
     ToolMetrics toolMetrics,
     ExecutionOptions? executionOptions = null)
 {
+    private static readonly System.Text.Json.JsonSerializerOptions Json = new(System.Text.Json.JsonSerializerDefaults.Web);
+
     /// <summary>Runs an analysis and returns the complete run record.</summary>
     public async Task<RunRecord> AnalyzeAsync(AnalysisRequest request, CancellationToken cancellationToken,
         string? comparisonId = null, string? trialId = null, bool isWarmup = false)
@@ -59,6 +61,12 @@ public sealed class AnalysisService(
         };
 
         var record = await runner.RunAsync(bundle.Agent, context, cancellationToken).ConfigureAwait(false);
+        var diagnostics = RunDiagnostics.FromEvents(agentFactory.Mode, record.Response.Status, execution.Snapshot());
+        record = record with { Diagnostics = diagnostics };
+        execution.WriteArtifact("summary.json", System.Text.Json.JsonSerializer.Serialize(new
+        {
+            status = record.Response.Status.ToString(), diagnostics, metrics = record.Response.Metrics,
+        }, Json));
         execution.WriteArtifact("metrics.json", System.Text.Json.JsonSerializer.Serialize(record.Response.Metrics));
         execution.WriteArtifact("result.json", System.Text.Json.JsonSerializer.Serialize(record.Response));
         if (agentFactory.Mode == "classic")
@@ -66,7 +74,7 @@ public sealed class AnalysisService(
             var captured = execution.Payloads.Capture(record.RawModelOutput);
             execution.WriteArtifact("classic/final-response.json", System.Text.Json.JsonSerializer.Serialize(new
             {
-                source = "model", available = !string.IsNullOrEmpty(record.RawModelOutput), payload = captured,
+                source = "model", available = !string.IsNullOrEmpty(record.RawModelOutput), payload = captured, diagnostics,
             }));
             if (!string.IsNullOrEmpty(record.RawModelOutput))
             {
@@ -81,14 +89,17 @@ public sealed class AnalysisService(
             RunStatus.NotExecuted => new FailureInfo("NoHyperlightGuest", "not executed: no Hyperlight guest"),
             RunStatus.TimedOut => new FailureInfo("TimedOut", "The per-run time limit expired."),
             RunStatus.Capped => new FailureInfo("TurnLimit", "The model turn limit was exceeded."),
-            _ => new FailureInfo("InvalidModelOutput", "The model did not return a valid non-empty analysis report."),
+            _ => new FailureInfo("InvalidModelOutput", diagnostics.IncompleteReason is null
+                ? "The model did not return a valid non-empty analysis report." : diagnostics.Summary),
         };
         execution.Emit(record.Response.Status == RunStatus.Completed ? "RUN_COMPLETED" : "RUN_FAILED",
             record.Response.Status.ToString(), record.Response.Metrics.Duration.TotalMilliseconds,
             errorCategory: record.Response.Status == RunStatus.Completed ? null : priorFailure?.ErrorCategory ?? fallbackFailure.Category,
-            data: record.Response.Status == RunStatus.Completed ? null : priorFailure?.Data ?? new { failure = fallbackFailure });
+            data: new { diagnostics, failure = record.Response.Status == RunStatus.Completed ? null :
+                priorFailure is null ? fallbackFailure : FailureFromEvent(priorFailure) });
         return record with { Execution = execution.Context, Events = execution.Snapshot(), PayloadCaptureMode = execution.Payloads.Mode };
         }
+
         catch (Exception exception)
         {
             var failure = FailureInfo.FromException(exception);
@@ -100,6 +111,14 @@ public sealed class AnalysisService(
             }));
             throw;
         }
+    }
+
+    private static FailureInfo FailureFromEvent(ExecutionEvent entry)
+    {
+        var data = System.Text.Json.JsonSerializer.SerializeToElement(entry.Data);
+        return data.TryGetProperty("failure", out var failure)
+            ? System.Text.Json.JsonSerializer.Deserialize<FailureInfo>(failure)!
+            : new FailureInfo(entry.ErrorCategory!, "See the run timeline for failure evidence.");
     }
 
     private static string BuildUserMessage(AnalysisRequest request)

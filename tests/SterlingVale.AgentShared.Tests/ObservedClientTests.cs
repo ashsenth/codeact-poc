@@ -4,6 +4,9 @@ using SterlingVale.AgentShared.Analysis;
 using SterlingVale.AgentShared.Fakes;
 using SterlingVale.AgentShared.Configuration;
 using SterlingVale.Domain.Analysis;
+using SterlingVale.AgentShared.Agents;
+using SterlingVale.Tools;
+using SterlingVale.Application.Portfolio;
 using SterlingVale.Telemetry;
 using Xunit;
 
@@ -54,10 +57,13 @@ public sealed class ObservedClientTests : IDisposable
         Assert.DoesNotContain("private.invalid", json);
     }
 
-    [Fact]
-    public async Task Live_generation_only_saves_all_programs_without_invoking_a_tool_or_retrying_model()
+    [Theory]
+    [InlineData(PayloadCaptureMode.Full)]
+    [InlineData(PayloadCaptureMode.Metadata)]
+    [InlineData(PayloadCaptureMode.None)]
+    public async Task Live_generation_only_saves_all_programs_without_invoking_a_tool_or_retrying_model(PayloadCaptureMode captureMode)
     {
-        using var session = new ExecutionSession(_root, "codeact", "small", payloads: new PayloadPolicy(PayloadCaptureMode.Full));
+        using var session = new ExecutionSession(_root, "codeact", "small", payloads: new PayloadPolicy(captureMode));
         session.ModelIsLive = true;
         session.SandboxRuntime = "generation-only";
         int invocations = 0;
@@ -84,9 +90,67 @@ public sealed class ObservedClientTests : IDisposable
         Assert.Equal(1, model.Requests);
         Assert.Equal("print('first')", File.ReadAllText(Path.Combine(session.RunDirectory, "codeact", "generated-code-001.py")));
         Assert.Equal("print('second')", File.ReadAllText(Path.Combine(session.RunDirectory, "codeact", "generated-code-002.py")));
+        foreach (var entry in session.Snapshot().Where(entry => entry.EventType == "CODE_GENERATED"))
+        {
+            var data = System.Text.Json.JsonSerializer.SerializeToElement(entry.Data);
+            string file = Path.Combine(session.RunDirectory, data.GetProperty("reference").GetString()!);
+            Assert.Equal(new FileInfo(file).Length, data.GetProperty("byteCount").GetInt64());
+        }
         Assert.Equal(2, session.Snapshot().Count(entry => entry.EventType == "CODE_EXECUTION_NOT_EXECUTED" &&
             entry.Status == "not executed: no Hyperlight guest"));
         Assert.DoesNotContain(session.Snapshot(), entry => entry.EventType is "CODE_EXECUTION_COMPLETED" or "OFFLINE_CODE_TOOL_COMPLETED");
+    }
+
+    [Theory]
+    [InlineData("stop")]
+    [InlineData("length")]
+    [InlineData("content_filter")]
+    public async Task Failed_run_preserves_finish_reason_preview_and_skipped_tools_even_in_metadata_mode(string finishReason)
+    {
+        var model = new ModelConfiguration { DeploymentName = "fake-model", MaxTurns = 12, TimeoutSeconds = 30 };
+        var pricing = new PricingConfiguration { InputPerMillion = 0m, OutputPerMillion = 0m };
+        var service = new AnalysisService(new TestSnapshots(), new EmptyReportProvider(finishReason), new ClassicAgentFactory(),
+            new AnalysisRunner(), model, pricing, new ToolMetrics(), new ExecutionOptions { ArtifactsRoot = _root });
+        var record = await service.AnalyzeAsync(new AnalysisRequest { DatasetProfile = "small" }, CancellationToken.None);
+        Assert.Equal(RunStatus.Failed, record.Response.Status);
+        var diagnostic = Assert.IsType<RunDiagnostics>(record.Diagnostics);
+        Assert.Equal(finishReason, diagnostic.FinishReason);
+        Assert.Equal(34, diagnostic.FinalOutputTokens);
+        Assert.Contains("households", diagnostic.FinalPreview);
+        Assert.DoesNotContain("private-value", diagnostic.FinalPreview);
+        Assert.Equal(0, diagnostic.ToolCallsByName["get_price"]);
+        Assert.Equal(0, diagnostic.ToolCallsByName["get_fx"]);
+        Assert.Equal(0, diagnostic.ToolCallsByName["asset_class"]);
+        Assert.Contains("INCOMPLETE: model stopped before pricing", diagnostic.Summary);
+        var failed = Assert.Single(record.Events, entry => entry.EventType == "RUN_FAILED");
+        string json = System.Text.Json.JsonSerializer.Serialize(failed.Data);
+        Assert.Contains("finish_reason=" + finishReason, json);
+        Assert.Contains("get_price=0", json);
+        Assert.Contains("FinalPreview", json);
+        Assert.True(File.Exists(Path.Combine(_root, "runs", record.Response.RunId, "summary.json")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Generated_source_still_obeys_redaction_and_size_bounds(bool oversized)
+    {
+        using var session = new ExecutionSession(_root, "codeact", "small", payloads: new PayloadPolicy(PayloadCaptureMode.Metadata));
+        session.ModelIsLive = true;
+        session.SandboxRuntime = "generation-only";
+        string code = oversized ? new string('x', 65537) : "password='private-value'";
+        using var client = new ObservedFunctionClient(new ObservedChatClient(new DeterministicFakeChatClient(
+            new FakeChatPlan().CallTool("execute_code", new Dictionary<string, object?> { ["code"] = code }))));
+        var agent = client.AsAIAgent(new ChatClientAgentOptions
+        {
+            UseProvidedChatClientAsIs = true, ChatOptions = new ChatOptions { Tools = [FakeExecuteCodeFunction.Create()] },
+        });
+        await agent.RunAsync("generate");
+        Assert.False(File.Exists(Path.Combine(session.RunDirectory, "codeact", "generated-code-001.py")));
+        string marker = File.ReadAllText(Path.Combine(session.RunDirectory, "codeact", "generated-code-001.capture.json"));
+        Assert.DoesNotContain("private-value", marker);
+        using var capture = System.Text.Json.JsonDocument.Parse(marker);
+        Assert.True(capture.RootElement.GetProperty(oversized ? "truncated" : "redacted").GetBoolean());
     }
 
     [Fact]
@@ -101,6 +165,32 @@ public sealed class ObservedClientTests : IDisposable
     }
 
     public void Dispose() => Directory.Delete(_root, recursive: true);
+
+    private sealed class TestSnapshots : ISnapshotProvider
+    {
+        public IReadOnlyList<string> AvailableProfiles => ["small"];
+        public PortfolioSnapshot GetSnapshot(string profile) => SnapshotHelper.Build();
+        public string GetDatasetHash(string profile) => "dataset";
+        public DatasetReadiness Validate() => DatasetReadiness.Ready;
+    }
+
+    private sealed class EmptyReportProvider(string finishReason) : IChatClientProvider
+    {
+        public bool IsLive => false;
+        public string ModelId => "fake-model";
+        public IChatClient CreateChatClient(ChatClientRequest request) => new EmptyReportClient(finishReason);
+    }
+
+    private sealed class EmptyReportClient(string finishReason) : DelegatingChatClient(new DeterministicFakeChatClient(new FakeChatPlan().Respond("unused")))
+    {
+        public override Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, "{\"households\":[],\"password\":\"private-value\"}"))
+            {
+                FinishReason = new ChatFinishReason(finishReason),
+                Usage = new UsageDetails { InputTokenCount = 100, OutputTokenCount = 34, TotalTokenCount = 134 },
+            });
+    }
 
     private sealed class ThrowingClient(Exception exception) : DelegatingChatClient(new DeterministicFakeChatClient(new FakeChatPlan().Respond("unused")))
     {

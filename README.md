@@ -137,15 +137,13 @@ More detail: [architecture](docs/architecture.md) and [security model](docs/secu
 
 ### Prerequisites
 
-- Git and the .NET 9 SDK selected by [global.json](global.json).
-  Local validation used SDK **9.0.320** with the configured feature roll-forward.
+- Git and .NET 9 SDK per [global.json](global.json); validated with SDK **9.0.320** and configured roll-forward.
 - A terminal running PowerShell: Windows PowerShell works here; PowerShell 7 is available
   for Windows, Linux, and macOS. No Python, Azure account, guest image, or virtualization required.
 - Package-feed access for the first restore. Allow a few minutes for initial downloads.
 
 **Verification scope:** the commands below succeeded in a clean local-source clone on Windows
 ARM64. Linux/macOS execution and a remote-origin clone are **not yet verified**.
-The commands use `Join-Path` rather than OS-specific project paths.
 
 Clone setup template (**remote clone not yet verified**; replace the placeholder):
 
@@ -180,17 +178,12 @@ dotnet run -c Release --no-build --project $benchmark -- compare --trials 1 --mo
 dotnet run -c Release --no-build --project $benchmark -- visualize
 ```
 
-Stop if any command fails; do not treat an old dashboard as a successful new run.
-`compare` runs every available profile (currently Large, Medium, Small); `visualize` combines
-the latest comparison for each profile. Open its printed HTML path in your browser.
-The HTML contains inline charts and needs no external assets or JavaScript.
+Stop on failure; an old dashboard is not evidence of success. `compare` runs all available profiles;
+`visualize` combines the latest per profile. Its printed HTML path opens without external assets.
 
 Actual output excerpt, with changing comparison ID omitted:
 
 ```text
-Build succeeded.
-    0 Warning(s)
-    0 Error(s)
 [small] VALID — 10 households, 33 accounts, 370 positions; on-disk manifest present
 [medium] VALID — 40 households, 156 accounts, 2201 positions; on-disk manifest present
 [large] VALID — 120 households, 485 accounts, 7198 positions; on-disk manifest present
@@ -207,8 +200,8 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Result: **205 passed, 0 failed, 0 skipped across ten projects**: the prior 199 plus six
-diagnostic/mode/reporting/logging/generation regressions. The separate Hyperlight group discovered six tests;
+Result: **220 passed, 0 failed, 0 skipped across ten projects**, including diagnostic, mode,
+scope, capture and normalization regressions. The separate Hyperlight group discovered six tests;
 all six skipped here, with zero executed. A skip is not sandbox evidence.
 
 ## 6. What the results show
@@ -258,8 +251,8 @@ Fake tokens and formula costs are identical; wall-clock timings vary.
 | `events.jsonl`, `timeline.json`, `timeline.md` within each run | Ordered boundary events and their references. |
 | `model/`, `tools/`, `classic/`, `codeact/` within each run | Requests/responses, invocations, final-response captures, generated programs, and available streams. |
 
-Default capture is metadata only. The demo explicitly uses `full` for synthetic data; payloads are
-redacted and capped at 65,536 characters. Exact programs are saved only if unredacted and untruncated.
+Default payload capture is metadata only; live generated Python is saved independently of this mode.
+The demo uses `full`; payloads/source are redacted and capped at 65,536 characters. Exact source must be safe and complete.
 Use capture flags, not assumptions about a missing stream or source file.
 `transcript.jsonl` retains every message and call/result identity. For observed runs, text, arguments
 and results are separate capture envelopes with content/length/truncation/redaction fields; large
@@ -277,16 +270,14 @@ RUN STARTED, then an eight-character run prefix; verbose/debug and disk journals
 
 ## 7. Running live
 
-**November 11 laptop check:** the configured endpoint returned HTTP 404. Removing its path and
-using the base resource address restored model responses without changing authentication/RBAC.
-Classic made live tool calls but returned an empty report; CodeAct saved generated Python and
-reported **NotExecuted: not executed: no Hyperlight guest**. This is not a successful live comparison.
-A separate one-household Classic API request completed with valid schema/telemetry (not oracle-scored).
+**Live ARM64, November 11:** connectivity works. New scoped trials below are oracle-scored,
+not performance claims. Classic's schema-valid reports were **Partial**, not correct; CodeAct
+generated Python but was **NotExecuted: no Hyperlight guest**. Both comparisons returned exit 1.
 Configure these variables in the same terminal; do not put real values in source or artifacts:
 
 | Variable | Purpose |
 | --- | --- |
-| `AZURE_OPENAI_ENDPOINT` | Base resource endpoint, not a Foundry route or deployment URL. |
+| `AZURE_OPENAI_ENDPOINT` | HTTPS resource address; pasted `/openai/v1` paths are normalized to the base with a one-line notice. |
 | `AZURE_OPENAI_DEPLOYMENT_NAME` | Exact chat deployment name, not merely a model identifier. |
 | `AZURE_OPENAI_API_KEY` | Optional alternative to `DefaultAzureCredential`; keep outside artifacts. |
 
@@ -303,9 +294,8 @@ az account set --subscription <subscription-id>
 az cognitiveservices account deployment list --resource-group <resource-group> --name <resource-name> --query "[].name" --output tsv
 ```
 
-Use the **deployment name**, not the underlying model name. The endpoint must be the resource base,
-for example `https://<resource-name>.openai.azure.com/`, with no deployment, project, `/openai/v1`,
-chat-completions path or query. Use the resource's actual supported Azure OpenAI base endpoint.
+Use the **deployment name**, not the model name. Example base: `https://<resource-name>.openai.azure.com/`.
+The SDK uses this authority with `/`; path/query/fragment are removed, not silently sent as a second route.
 An authorized administrator can grant **Cognitive Services OpenAI User** at the resource scope;
 see [exact RBAC steps and error diagnosis](docs/review-current/poc-demo-review.md#azure-setup-templates).
 No login, role assignment or resource change was performed by this review.
@@ -315,15 +305,27 @@ Laptop connectivity/generation check, **executed but not yet verified as a succe
 ```powershell
 $env:BENCHMARK_REQUIRE_LIVE = "false"
 $env:HYPERLIGHT_PYTHON_GUEST_PATH = ""
-$env:BENCHMARK_MAX_TURNS = "12"
-$env:BENCHMARK_TIMEOUT_SECONDS = "60"
+$env:BENCHMARK_MAX_TURNS = "20"
+$env:BENCHMARK_TIMEOUT_SECONDS = "120"
 $benchmark = Join-Path src SterlingVale.Benchmark
-dotnet run -c Release --no-build --project $benchmark -- run --profile small --trials 1 --model live --log-level normal --payload-capture full
+dotnet run -c Release --no-build --project $benchmark -- run --profile small --trials 1 --households 1 --model live --log-level normal --payload-capture full
+dotnet run -c Release --no-build --project $benchmark -- run --profile small --trials 1 --households 3 --model live --log-level normal --payload-capture full
 ```
 
-Expect exit 1 without a guest: generation-only CodeAct is not a completed analysis. Full,
-unredacted, untruncated source lands in `codeact/generated-code-*.py`; otherwise capture flags explain
-why exact source is unavailable. Python is never executed by the laptop fallback.
+`--households N` selects the first N dataset households for both agents, warm-ups and oracle; default is all.
+Measured runs after warm-up, **live ARM64, CodeAct not executed**, no prompt changes:
+
+| N | Classic status / finish / turns | Input / output tokens | Duration ms | Oracle | CodeAct turns / input / output / Python bytes |
+| ---: | --- | ---: | ---: | --- | --- |
+| 1 | Completed / stop / 6 | 20,766 / 920 | 13,933.371 | Partial | 1 / 1,911 / 78 / 139 |
+| 3 | Completed / stop / 5 | 35,776 / 961 | 12,052.803 | Partial | 1 / 1,919 / 1,208 / 4,614 |
+
+Both Classic runs skipped `asset_class`. Full per-tool counts, final previews and historical capture
+limits are in [scoped live findings](docs/review-current/poc-demo-review.md#scoped-live-arm64-follow-up).
+Finish reason, last-response output tokens, a redacted 240-character preview and zero-inclusive counts
+are persisted in each run's `summary.json`, final event and comparison; generated-source events include byte counts.
+Safe live Python lands in `codeact/generated-code-*.py` even with metadata/none payload capture;
+redaction/size bounds still produce explicit markers. Python is never executed by the laptop fallback.
 Failure events contain a safe category, HTTP status/allowlisted service code and sanitized guidance,
 not raw provider error text. Live calls incur charges; old journals cannot recover omitted messages.
 
@@ -351,12 +353,12 @@ Nothing in the offline quickstart provisions resources, installs a guest, or cha
 
 | Area | Status and evidence |
 | --- | --- |
-| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles and reports; current suite has 205 passing tests. |
+| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles and reports; current suite has 220 passing tests. |
 | HTTP contract | Offline integration tests pass; a standalone live Classic request completed for one household, with valid schema/telemetry but no oracle score. |
 | Observability | Working offline: correlation, journals, capture policy, timelines, counts, reconciliation. |
 | Large payload capture | Bounded payloads with explicit flags; transcript records remain valid JSONL and retain later calls. Exact oversized payloads remain unavailable. |
 | Batched Classic | Offline tested; live quality and the changed comparison methodology remain unverified. |
-| Live Azure OpenAI | Connectivity and CodeAct Python capture verified after correcting endpoint; Classic returned an empty report. No valid live comparison. |
+| Live Azure OpenAI | Scoped N=1/N=3 Classic Completed but oracle Partial; CodeAct Python saved, not executed. No valid live comparison. |
 | Real Hyperlight | Six tests skipped here; x64 execution, callbacks, cancellation, and isolation unverified. |
 | Remote clone / Linux / macOS | Clean local-source clone verified; remote clone and other operating systems pending. |
 | Provision/bootstrap scripts | Reviewed, not executed; provisioning remains paused. |
@@ -374,8 +376,8 @@ with source commits/dates and **NOT RE-VERIFIED** labels, not as current verifie
 4. **Linux script verification:** fix the SSH-key regex rejecting valid ECDSA keys such as `ecdsa-sha2-nistp256`, then test approved setup/validation on x64; static review is not a KVM test.
 5. **Exercise new transcript captures live:** JSONL framing is fixed and regression-tested offline; confirm the per-field capture envelopes with real generated Python and callbacks on x64.
 6. **Revisit Classic batching only if needed:** measure the unbatched baseline first; any decomposition changes the experiment and needs an explicit label.
-7. **Verify dashboard appearance and CodeAct API hosting:** CLI/report tests and scoped Classic serving passed; browser appearance and standalone CodeAct serving remain unchecked.
-8. **Improve live Classic completion:** diagnose the empty report after successful tool calls; connectivity is fixed, analytical correctness is not.
+7. **Verify dashboard appearance and CodeAct API hosting:** reports and scoped Classic serving passed; browser appearance and standalone CodeAct serving remain unchecked.
+8. **Investigate live Classic correctness:** scoped reports stop normally but score Partial and skip classification; prompts stay unchanged pending approval.
 
 No larger orchestration change is required to show the offline demo. Approve such changes separately.
 

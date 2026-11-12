@@ -46,7 +46,9 @@ public static class ExecutionConsole
             var root = document.RootElement;
             data = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("toolName", out var name)
                 ? name.GetString() ?? string.Empty : string.Empty;
-            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("failure", out var failure))
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("byteCount", out var byteCount) && byteCount.ValueKind == JsonValueKind.Number)
+                data += $" {byteCount.GetInt32()} bytes";
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("failure", out var failure) && failure.ValueKind == JsonValueKind.Object)
             {
                 data += " " + failure.GetProperty("message").GetString();
             }

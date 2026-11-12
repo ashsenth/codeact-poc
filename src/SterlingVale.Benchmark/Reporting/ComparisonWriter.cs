@@ -58,11 +58,18 @@ public static class ComparisonWriter
         sb.AppendLine($"Completion: {outcome.CompletedRuns}/{outcome.TotalRuns}; correctness (Exact/WithinTolerance): {outcome.CorrectRuns}/{outcome.TotalRuns}");
         sb.AppendLine(outcome.Message);
         sb.AppendLine($"Execution kind: {report.ExecutionKind}");
+        sb.AppendLine($"Household scope: {report.ScopedHouseholdCount?.ToString(Invariant) ?? "all"} of {report.DatasetHouseholdCount?.ToString(Invariant) ?? "unknown"}");
         sb.AppendLine($"Fairness: {(report.Fairness.Matched ? "MATCHED" : "FAILED")}; telemetry: {(report.RawTrials.All(trial => trial.TelemetryValid) ? "VALID (accounting only, not success)" : "FAILED")}");
         foreach (var trial in report.RawTrials)
         {
             sb.AppendLine($"  {trial.Mode}: {trial.Status}; oracle={trial.Score.MatchClass}" +
                 (trial.Failure is null ? string.Empty : $"; {trial.Failure.Message}"));
+            if (trial.Diagnostics is { } diagnostic)
+            {
+                sb.AppendLine($"    {diagnostic.Summary}; final output tokens={diagnostic.FinalOutputTokens?.ToString(Invariant) ?? "unavailable"}");
+                sb.AppendLine($"    preview={diagnostic.FinalPreview ?? "unavailable"}");
+                sb.AppendLine($"    turns={trial.ModelTurnCount}; input/output tokens={trial.InputTokens}/{trial.OutputTokens}; duration={F(trial.DurationMs)} ms; generated code={diagnostic.GeneratedCodeBytes} bytes");
+            }
         }
         if (outcome.IsValid)
         {
@@ -78,7 +85,7 @@ public static class ComparisonWriter
         var sb = new StringBuilder();
         sb.Append("comparison_id,profile,dataset_hash,pair_id,order_in_pair,mode,duration_ms,status,");
         sb.Append("tool_calls,model_turns,execute_code_calls,total_tokens,estimated_cost_usd,match_class,");
-        sb.Append("flagged_precision,flagged_recall,breach_precision,breach_recall,allocation_mae,trade_notional_mae,max_allocation_error,execution_kind\n");
+        sb.Append("flagged_precision,flagged_recall,breach_precision,breach_recall,allocation_mae,trade_notional_mae,max_allocation_error,execution_kind,finish_reason,tool_calls_by_name,input_tokens,output_tokens,generated_code_bytes,final_preview\n");
         foreach (var t in report.RawTrials)
         {
             var s = t.Score;
@@ -103,7 +110,13 @@ public static class ComparisonWriter
             sb.Append(s.AllocationMae.ToString(Invariant)).Append(',');
             sb.Append(s.TradeNotionalMaeFraction.ToString(Invariant)).Append(',');
             sb.Append(s.MaxAllocationError.ToString(Invariant)).Append(',');
-            sb.Append(Csv(report.ExecutionKind)).Append('\n');
+            sb.Append(Csv(report.ExecutionKind)).Append(',');
+            sb.Append(Csv(t.Diagnostics?.FinishReason ?? "unavailable")).Append(',');
+            sb.Append(Csv(JsonSerializer.Serialize(t.Diagnostics?.ToolCallsByName, Json))).Append(',');
+            sb.Append(t.InputTokens?.ToString(Invariant)).Append(',');
+            sb.Append(t.OutputTokens?.ToString(Invariant)).Append(',');
+            sb.Append(t.Diagnostics?.GeneratedCodeBytes.ToString(Invariant)).Append(',');
+            sb.Append(Csv(t.Diagnostics?.FinalPreview ?? "unavailable")).Append('\n');
         }
 
         return sb.ToString();
@@ -144,6 +157,7 @@ public static class ComparisonWriter
         AppendHtmlHead(sb, $"Sterling Vale \u2014 {report.ComparisonId}");
         sb.Append("<h1>Sterling Vale &mdash; Classic vs CodeAct</h1>");
         sb.Append($"<p class=\"panel\">{Enc(report.Outcome.Message)}; completion {report.Outcome.CompletedRuns}/{report.Outcome.TotalRuns}; oracle correct {report.Outcome.CorrectRuns}/{report.Outcome.TotalRuns}</p>");
+        AppendTrialStatusTable(sb, report);
         sb.Append("<p class=\"disc\">SYNTHETIC analysis only &mdash; not investment advice. Measured numbers for a controlled A/B of orchestration only; no performance outcome is guaranteed.</p>");
         sb.Append($"<p class=\"panel\"><b>{Enc(ExecutionNotice(report))}</b></p>");
         sb.Append($"<p class=\"meta\">Comparison <code>{Enc(report.ComparisonId)}</code> &middot; profile <b>{Enc(report.Profile)}</b>{HouseholdsMeta(report)} &middot; {Enc(report.GeneratedAtUtc)}</p>");
@@ -229,11 +243,12 @@ public static class ComparisonWriter
 
     private static void AppendTrialStatusTable(StringBuilder sb, ComparisonReport report)
     {
-        sb.Append("<table><tr><th>Mode</th><th>Status</th><th>Oracle</th><th>Failure</th><th>Timeline</th></tr>");
+        sb.Append("<table><tr><th>Mode</th><th>Status</th><th>Oracle</th><th>Failure</th><th>Completion diagnostics</th><th>Timeline</th></tr>");
         foreach (var trial in report.RawTrials)
         {
             sb.Append($"<tr><td>{Enc(trial.Mode)}</td><td>{Enc(trial.Status)}</td><td>{Enc(trial.Score.MatchClass)}</td>" +
                 $"<td>{Enc(trial.Failure?.Message ?? trial.Failure?.Category ?? "none")}</td>" +
+                $"<td>{Enc(trial.Diagnostics?.Summary ?? "unavailable")}<br>preview: {Enc(trial.Diagnostics?.FinalPreview ?? "unavailable")}</td>" +
                 $"<td><a href=\"../runs/{Uri.EscapeDataString(trial.RunId)}/timeline.md\">timeline</a></td></tr>");
         }
         sb.Append("</table>");

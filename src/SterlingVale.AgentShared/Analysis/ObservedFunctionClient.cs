@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text;
 using Microsoft.Extensions.AI;
 using SterlingVale.Telemetry;
 
@@ -32,7 +33,10 @@ public sealed class ObservedFunctionClient(IChatClient inner) : FunctionInvoking
         if (code)
         {
             context.Arguments.TryGetValue("code", out var program);
-            var captured = session.Payloads.Capture(program?.ToString() ?? string.Empty);
+            var sourcePolicy = session.ModelIsLive
+                ? new PayloadPolicy(PayloadCaptureMode.Full, session.Payloads.MaximumCharacters) : session.Payloads;
+            var captured = sourcePolicy.Capture(program?.ToString() ?? string.Empty);
+            bool exact = captured.Content is not null && !captured.Truncated && !captured.Redacted;
             if (captured.Content is not null && !captured.Truncated && !captured.Redacted)
             {
                 session.WriteArtifact(reference!, captured.Content);
@@ -42,8 +46,11 @@ public sealed class ObservedFunctionClient(IChatClient inner) : FunctionInvoking
                 session.WriteArtifact($"codeact/generated-code-{number:D3}.capture.json", JsonSerializer.Serialize(captured, Json));
             }
 
-            session.Emit("CODE_GENERATED", captured.Content is null || captured.Truncated || captured.Redacted ? "exact-capture-unavailable" : "ok",
-                data: new { invocationId, modelTurn = context.Iteration + 1, reference, program = captured });
+            session.Emit("CODE_GENERATED", exact ? "ok" : "exact-capture-unavailable",
+                data: new { invocationId, modelTurn = context.Iteration + 1,
+                    reference = exact ? reference : $"codeact/generated-code-{number:D3}.capture.json",
+                    byteCount = exact ? (int?)Encoding.UTF8.GetByteCount(captured.Content!) : null,
+                    program = session.Payloads.Capture(program?.ToString() ?? string.Empty) });
             session.Emit("EXECUTE_CODE_CALL_STARTED", data: request);
             if (session.SandboxRuntime != "generation-only")
                 session.Emit(executionEventPrefix + "_STARTED", data: request);

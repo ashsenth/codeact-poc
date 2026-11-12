@@ -311,3 +311,100 @@ Invoke-RestMethod -Method Post -Uri ($base + '/api/v1/analyses') -ContentType 'a
 
 Stop the server after the check. A Completed response establishes non-empty schema-valid analysis,
 not independent oracle accuracy; inspect persisted metrics and source evidence separately.
+
+## Scoped live ARM64 follow-up
+
+November 11, 2026, 23:51-23:53 UTC. Live Azure model; Windows ARM64; no Hyperlight guest;
+CodeAct **not executed**. No prompt or model-request tuning was changed.
+
+### Original smoke artifacts: evidence cannot be recovered retroactively
+
+The user-reported Classic run's `classic/final-response.json` contains only an envelope:
+content null, original length 81 characters, capture mode metadata. Its last model-turn file records
+**34 output tokens** but neither finish reason nor text. It is not possible to determine whether
+that original message was prose, partial/empty JSON, length-truncated output or refusal. Neither
+the length nor low token count proves a stop reason. We did not reconstruct or invent the message.
+
+The user-reported CodeAct run has `generated-code-001.capture.json`, no `.py` file. Its event says
+metadata capture with original source length **5,521 characters** and null content, not a redaction
+or size-limit failure. The source cannot be restored from that marker. Old runs are not rewritten.
+New live runs save safe bounded source independently of the general payload-capture mode; exact
+source remains unavailable when redacted or oversized. The offline fake control preserves its
+previous metadata/none suppression behavior.
+
+### Commands and measured results
+
+The README's two explicit-live commands were executed with `--households 1` and `--households 3`,
+one measured pair after one warm-up per mode, batching disabled, max turns 20 and per-run timeout
+120 seconds. Both comparisons returned exit 1 because CodeAct was intentionally not executed;
+neither is a valid performance comparison. Warm-ups remain indexed but are not included below.
+All token values are real per-response provider usage; durations are individual run wall times,
+not aggregate medians or sandbox timing.
+
+| Scope N | Mode | Status | Finish reason | Model turns | Input tokens | Output tokens | Duration ms | Oracle | Saved Python bytes |
+| ---: | --- | --- | --- | ---: | ---: | ---: | ---: | --- | ---: |
+| 1 | Classic | Completed | stop | 6 | 20,766 | 920 | 13,933.371 | Partial | 0 |
+| 1 | CodeAct | NotExecuted | tool_calls | 1 | 1,911 | 78 | 2,262.295 | Not scoreable: no execution | 139 |
+| 3 | Classic | Completed | stop | 5 | 35,776 | 961 | 12,052.803 | Partial | 0 |
+| 3 | CodeAct | NotExecuted | tool_calls | 1 | 1,919 | 1,208 | 7,320.979 | Not scoreable: no execution | 4,614 |
+
+Final-response output tokens (distinct from total output across all turns): Classic N=1 **471**,
+Classic N=3 **232**. Both reports parsed and contained the requested household count, but neither
+was correct. N=1 breach precision/recall were zero and allocation MAE was 0.0860313060.
+N=3 flagged/breach recall were zero; numeric MAE zero does not establish correctness when risk
+sets are wrong. `Completed` establishes schema/non-empty output, not oracle success.
+
+| Scope N | Mode | list_households | get_policy | list_accounts | list_positions | get_price | get_fx | asset_class | execute_code |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | Classic | 1 | 1 | 1 | 3 | 13 | 3 | 0 | 0 |
+| 3 | Classic | 0 | 3 | 3 | 11 | 17 | 3 | 0 | 0 |
+| 1 | CodeAct | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+| 3 | CodeAct | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+
+Classic counts are model-facing requests by name, not unique securities/accounts; CodeAct
+granular callbacks are all zero because Python did not execute. `asset_class=0` is an observed
+skipped step even though positions carry classification. No explanation of model intent is inferred.
+
+New actual Classic preview excerpts:
+
+```json
+{"runId":"exposure-rebalance-2026-01-01","generatedAt":"2026-01-01T00:00:00.000Z","households":[{"householdId":"H0001","baseCurrency":"USD","totalValue":206,"flagged":true}]}
+```
+
+```json
+{"runId":"scenario-ExposureAndRebalance-small-H0001-H0002-H0003","households":[{"householdId":"H0001","baseCurrency":"USD","totalValue":0}]}
+```
+
+These are shortened excerpts with omitted fields/households, **not the original smoke run's message**,
+not complete report reproductions and not correct calculations. Full captures, exact source,
+last-response usage, safe previews and tool counts remain in the ignored run artifacts.
+
+Evidence roots: `artifacts/live-scoped-n1/` and `artifacts/live-scoped-n3/`, each with `index.md`
+and linked comparisons/run summaries/timelines/source. Both measured `.py` files were checked
+on disk; emitted byte counts matched file length. Source presence proves capture, not runnable
+or correct Python. In particular, the N=1 generated program is only 139 bytes.
+
+### Prompt decision: unchanged
+
+No prompt changes were made to make Classic finish. A possible future **shared** clarification,
+requiring approval, is: "Apply the task only to the explicitly requested household IDs. Before
+returning a report, verify that every position in that scope has price, required FX and classification
+evidence; do not emit placeholder or zero-valued reports when evidence is incomplete."
+It would apply to both modes' shared instructions, not just Classic. The shared body refers to
+households "in scope", while the Classic addendum says "EVERY household" and CodeAct's protocol
+slices the whole household list. A shared scope/evidence reminder could remove that tension, but
+would change the experimental prompt fingerprint and is **proposed only, not implemented**.
+The new N=1/N=3 outputs also show that merely finishing normally is not the core correctness fix.
+
+### Regression scope
+
+Tests cover stop/length/content-filter finish-reason preservation and redacted previews in failed-run
+events, zero-inclusive tool counts, metadata/none/full live source capture with actual byte lengths,
+redaction/oversize safety, endpoint normalization and its exact one-line notice, and scoped
+first-N oracle/report agreement for both modes. Invalid/oversized household counts are rejected.
+The expected non-live count is now **220**, with historical counts above retained as dated evidence.
+Final fresh TRX recount: **220 passed, 0 failed, 0 skipped across ten projects**. One earlier full
+attempt exposed an existing parallel-listener race in `TelemetryRedactionTests` (a shared List
+changed during enumeration); the isolated test and unchanged full-suite rerun passed. That
+unrelated test was not edited. Scoped fake CLI also returned Exact for both modes and rejected
+zero, negative, non-numeric and beyond-dataset household counts. Prompts are unchanged.

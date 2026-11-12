@@ -67,10 +67,10 @@ switch (command)
         return ValidateData.Run(new Composition().DataRoot);
 
     case "run":
-        return await RunAsync(options.GetValueOrDefault("profile", "medium"), TrialsFrom(options), open, selection.Mode);
+        return await RunAsync(options.GetValueOrDefault("profile", "medium"), TrialsFrom(options), open, selection.Mode, HouseholdsFrom(options));
 
     case "compare":
-        return await CompareAsync(TrialsFrom(options), selection.Mode);
+        return await CompareAsync(TrialsFrom(options), selection.Mode, HouseholdsFrom(options));
 
     case "report":
         return Report(options.GetValueOrDefault("comparison-id"), open);
@@ -90,7 +90,7 @@ catch (InvalidOperationException exception)
     return 1;
 }
 
-static async Task<int> RunAsync(string profile, int? trials, bool open, string modelMode)
+static async Task<int> RunAsync(string profile, int? trials, bool open, string modelMode, int? households)
 {
     using var composition = new Composition(modelMode);
     if (Environment.GetEnvironmentVariable("BENCHMARK_REQUIRE_LIVE") == "true" && (!composition.Live || !composition.Hyperlight.HasGuest))
@@ -105,7 +105,7 @@ static async Task<int> RunAsync(string profile, int? trials, bool open, string m
     }
 
     var harness = new BenchmarkHarness(composition);
-    var report = await harness.RunAsync(profile, trials ?? composition.Trials, CancellationToken.None);
+    var report = await harness.RunAsync(profile, trials ?? composition.Trials, CancellationToken.None, households);
     string path = ComparisonWriter.Write(report, composition.ArtifactsRoot);
     PrintSummary(report, path, composition.Live);
     if (open)
@@ -116,7 +116,7 @@ static async Task<int> RunAsync(string profile, int? trials, bool open, string m
     return report.Outcome.IsValid ? 0 : 1;
 }
 
-static async Task<int> CompareAsync(int? trials, string modelMode)
+static async Task<int> CompareAsync(int? trials, string modelMode, int? households)
 {
     using var composition = new Composition(modelMode);
     if (Environment.GetEnvironmentVariable("BENCHMARK_REQUIRE_LIVE") == "true" && (!composition.Live || !composition.Hyperlight.HasGuest))
@@ -128,7 +128,7 @@ static async Task<int> CompareAsync(int? trials, string modelMode)
     int exit = 0;
     foreach (var profile in composition.Snapshots.AvailableProfiles)
     {
-        var report = await harness.RunAsync(profile, trials ?? composition.Trials, CancellationToken.None);
+        var report = await harness.RunAsync(profile, trials ?? composition.Trials, CancellationToken.None, households);
         string path = ComparisonWriter.Write(report, composition.ArtifactsRoot);
         PrintSummary(report, path, composition.Live);
         if (!report.Outcome.IsValid)
@@ -261,6 +261,10 @@ static int? TrialsFrom(IReadOnlyDictionary<string, string> options) =>
     !options.TryGetValue("trials", out var raw) ? null :
     int.TryParse(raw, out var n) && n > 0 ? n : throw new InvalidOperationException("--trials must be a positive integer.");
 
+static int? HouseholdsFrom(IReadOnlyDictionary<string, string> options) =>
+    !options.TryGetValue("households", out var raw) ? null :
+    int.TryParse(raw, out var n) && n > 0 ? n : throw new InvalidOperationException("--households must be a positive integer.");
+
 static Dictionary<string, string> ParseOptions(string[] args)
 {
     var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -287,4 +291,5 @@ static void PrintUsage()
     Console.WriteLine("  benchmark visualize [--profiles small,medium,large] [--open]");
     Console.WriteLine("  execution options: --log-level minimal|normal|verbose|debug --payload-capture none|metadata|full");
     Console.WriteLine("  model selection: --model fake|live (default fake; environment never opts in)");
+    Console.WriteLine("  scope: --households N (first N dataset households, same scope and oracle for both modes)");
 }
