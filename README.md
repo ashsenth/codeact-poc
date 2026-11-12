@@ -200,7 +200,7 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Result: **220 passed, 0 failed, 0 skipped across ten projects**, including diagnostic, mode,
+Result: **221 passed, 0 failed, 0 skipped across ten projects**, including diagnostic, mode,
 scope, capture and normalization regressions. The separate Hyperlight group discovered six tests;
 all six skipped here, with zero executed. A skip is not sandbox evidence.
 
@@ -313,7 +313,7 @@ dotnet run -c Release --no-build --project $benchmark -- run --profile small --t
 ```
 
 `--households N` selects the first N dataset households for both agents, warm-ups and oracle; default is all.
-Measured runs after warm-up, **live ARM64, CodeAct not executed**, no prompt changes:
+Measured runs after warm-up, **live ARM64**, no prompt changes. CodeAct tokens: **first turn only, code not executed: not comparable to Classic totals**.
 
 | N | Classic status / finish / turns | Input / output tokens | Duration ms | Oracle | CodeAct turns / input / output / Python bytes |
 | ---: | --- | ---: | ---: | --- | --- |
@@ -353,7 +353,7 @@ Nothing in the offline quickstart provisions resources, installs a guest, or cha
 
 | Area | Status and evidence |
 | --- | --- |
-| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles and reports; current suite has 220 passing tests. |
+| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles and reports; current suite has 221 passing tests. |
 | HTTP contract | Offline integration tests pass; a standalone live Classic request completed for one household, with valid schema/telemetry but no oracle score. |
 | Observability | Working offline: correlation, journals, capture policy, timelines, counts, reconciliation. |
 | Large payload capture | Bounded payloads with explicit flags; transcript records remain valid JSONL and retain later calls. Exact oversized payloads remain unavailable. |
@@ -378,8 +378,7 @@ with source commits/dates and **NOT RE-VERIFIED** labels, not as current verifie
 6. **Revisit Classic batching only if needed:** measure the unbatched baseline first; any decomposition changes the experiment and needs an explicit label.
 7. **Verify dashboard appearance and CodeAct API hosting:** reports and scoped Classic serving passed; browser appearance and standalone CodeAct serving remain unchecked.
 8. **Investigate live Classic correctness:** scoped reports stop normally but score Partial and skip classification; prompts stay unchanged pending approval.
-
-No larger orchestration change is required to show the offline demo. Approve such changes separately.
+9. **Monitor the fixed telemetry-listener race:** `TelemetryRedactionTests.Tool_metrics_and_activity_expose_only_whitelisted_tags` now isolates its trace and uses concurrent collectors; keep parallel stress coverage to prevent recurrence.
 
 ## 11. Troubleshooting
 

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Collections.Concurrent;
 using SterlingVale.Telemetry;
 using SterlingVale.Tools;
 using Xunit;
@@ -20,8 +21,9 @@ public sealed class TelemetryRedactionTests
     public void Tool_metrics_and_activity_expose_only_whitelisted_tags()
     {
         using var meter = new Meter("SterlingVale.Test.Redaction");
-        var metricTags = new List<KeyValuePair<string, object?>>();
-        var activityTags = new List<KeyValuePair<string, object?>>();
+        var metricTags = new ConcurrentQueue<KeyValuePair<string, object?>>();
+        var activityTags = new ConcurrentQueue<KeyValuePair<string, object?>>();
+        using var parent = new Activity("redaction-test").SetIdFormat(ActivityIdFormat.W3C).Start();
 
         using var meterListener = new MeterListener
         {
@@ -41,35 +43,45 @@ public sealed class TelemetryRedactionTests
         {
             ShouldListenTo = source => source.Name == SterlingValeTelemetry.ActivitySourceName,
             Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
-            ActivityStopped = activity => activityTags.AddRange(activity.TagObjects),
+            ActivityStopped = activity =>
+            {
+                if (activity.TraceId == parent.TraceId && activity.ParentSpanId == parent.SpanId)
+                {
+                    foreach (var tag in activity.TagObjects) activityTags.Enqueue(tag);
+                }
+            },
         };
         ActivitySource.AddActivityListener(activityListener);
 
         var service = new PortfolioToolService(TestSnapshot.Build(), new ToolMetrics(meter));
         _ = service.GetPrice(SensitiveArgument);
+        Parallel.For(0, 32, _ => service.GetPrice(SensitiveArgument));
 
-        Assert.NotEmpty(metricTags);
-        Assert.NotEmpty(activityTags);
+        var recordedMetricTags = metricTags.ToArray();
+        var recordedActivityTags = activityTags.ToArray();
 
-        Assert.All(metricTags, tag => Assert.Contains(tag.Key, AllowedTagKeys));
-        Assert.All(activityTags, tag => Assert.Contains(tag.Key, AllowedTagKeys));
+        Assert.NotEmpty(recordedMetricTags);
+        Assert.NotEmpty(recordedActivityTags);
 
-        foreach (var tag in metricTags.Concat(activityTags))
+        Assert.All(recordedMetricTags, tag => Assert.Contains(tag.Key, AllowedTagKeys));
+        Assert.All(recordedActivityTags, tag => Assert.Contains(tag.Key, AllowedTagKeys));
+
+        foreach (var tag in recordedMetricTags.Concat(recordedActivityTags))
         {
             Assert.DoesNotContain(SensitiveArgument, tag.Value?.ToString() ?? string.Empty, StringComparison.Ordinal);
         }
 
-        Assert.Contains(metricTags, tag => tag is { Key: "tool.name", Value: "get_price" });
-        Assert.Contains(metricTags, tag => tag is { Key: "tool.status", Value: "ok" });
+        Assert.Contains(recordedMetricTags, tag => tag is { Key: "tool.name", Value: "get_price" });
+        Assert.Contains(recordedMetricTags, tag => tag is { Key: "tool.status", Value: "ok" });
     }
 
     private static void Capture(
         ReadOnlySpan<KeyValuePair<string, object?>> tags,
-        List<KeyValuePair<string, object?>> sink)
+        ConcurrentQueue<KeyValuePair<string, object?>> sink)
     {
         foreach (var tag in tags)
         {
-            sink.Add(tag);
+            sink.Enqueue(tag);
         }
     }
 }

@@ -9,6 +9,7 @@ namespace SterlingVale.Benchmark.Reporting;
 /// <summary>Serializes comparison reports to JSON and renders human-readable Markdown.</summary>
 public static class ComparisonWriter
 {
+    private const string GenerationOnlyTokenNotice = "first turn only, code not executed: not comparable to Classic totals";
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
     private static readonly JsonSerializerOptions Json = CreateJson();
@@ -70,6 +71,8 @@ public static class ComparisonWriter
                 sb.AppendLine($"    preview={diagnostic.FinalPreview ?? "unavailable"}");
                 sb.AppendLine($"    turns={trial.ModelTurnCount}; input/output tokens={trial.InputTokens}/{trial.OutputTokens}; duration={F(trial.DurationMs)} ms; generated code={diagnostic.GeneratedCodeBytes} bytes");
             }
+            if (report.ExecutionKind == "live-model-code-generation-only" && trial.Mode == "codeact")
+                sb.AppendLine($"    CodeAct tokens: {GenerationOnlyTokenNotice}");
         }
         if (outcome.IsValid)
         {
@@ -243,12 +246,15 @@ public static class ComparisonWriter
 
     private static void AppendTrialStatusTable(StringBuilder sb, ComparisonReport report)
     {
-        sb.Append("<table><tr><th>Mode</th><th>Status</th><th>Oracle</th><th>Failure</th><th>Completion diagnostics</th><th>Timeline</th></tr>");
+        sb.Append("<table><tr><th>Mode</th><th>Status</th><th>Oracle</th><th>Failure</th><th>Completion diagnostics</th><th>Input / output tokens</th><th>Timeline</th></tr>");
         foreach (var trial in report.RawTrials)
         {
             sb.Append($"<tr><td>{Enc(trial.Mode)}</td><td>{Enc(trial.Status)}</td><td>{Enc(trial.Score.MatchClass)}</td>" +
                 $"<td>{Enc(trial.Failure?.Message ?? trial.Failure?.Category ?? "none")}</td>" +
                 $"<td>{Enc(trial.Diagnostics?.Summary ?? "unavailable")}<br>preview: {Enc(trial.Diagnostics?.FinalPreview ?? "unavailable")}</td>" +
+                $"<td>{LongVal(trial.InputTokens)} / {LongVal(trial.OutputTokens)}" +
+                (report.ExecutionKind == "live-model-code-generation-only" && trial.Mode == "codeact"
+                    ? $"<br><b>{Enc(GenerationOnlyTokenNotice)}</b>" : string.Empty) + "</td>" +
                 $"<td><a href=\"../runs/{Uri.EscapeDataString(trial.RunId)}/timeline.md\">timeline</a></td></tr>");
         }
         sb.Append("</table>");

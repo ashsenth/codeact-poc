@@ -102,6 +102,9 @@ environment variables. APIs use `--model live` or `MODEL_MODE=live` for explicit
 Live no-guest CodeAct captures generated Python, does not invoke the stand-in, terminates after
 the current generated-call batch, and returns `NotExecuted` with an explicit missing-guest reason.
 It is not a completed analysis or a valid performance comparison.
+Generation-only CodeAct token figures are labelled "first turn only, code not executed: not
+comparable to Classic totals" in console/Markdown and HTML/scaling reports, next to the raw token
+counts. They are not a completed CodeAct workload or evidence of token savings.
 
 Failure events retain a safe category, HTTP status, allowlisted service code and synthesized
 guidance; raw provider messages/URLs/credentials are never copied. Normal console output prints

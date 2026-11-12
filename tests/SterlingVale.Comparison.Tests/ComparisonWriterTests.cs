@@ -48,6 +48,27 @@ public sealed class ComparisonWriterTests
     }
 
     [Fact]
+    public void Generation_only_tokens_are_labelled_in_reports_and_never_described_as_complete_totals()
+    {
+        var original = SampleReport();
+        var report = original with
+        {
+            ExecutionKind = "live-model-code-generation-only",
+            RawTrials = [original.RawTrials[0], original.RawTrials[1] with
+            {
+                Status = "NotExecuted", ModelTurnCount = 1, InputTokens = 1911, OutputTokens = 78,
+                Score = RunScore.ForFailure("NotExecuted", false, CorrectnessScorer.Match.InvalidSchema),
+            }],
+        };
+        const string notice = "first turn only, code not executed: not comparable to Classic totals";
+        foreach (string output in new[] { ComparisonWriter.RenderHtml(report), ComparisonWriter.RenderScalingHtml([report]),
+            ComparisonWriter.RenderConsoleSummary(report), ComparisonWriter.RenderMarkdown(report) })
+            Assert.Contains(notice, output);
+        Assert.Contains("1911 / 78", ComparisonWriter.RenderHtml(report));
+        Assert.DoesNotContain(notice, ComparisonWriter.RenderHtml(original with { ExecutionKind = "live-model-hyperlight" }));
+    }
+
+    [Fact]
     public void Failed_measured_run_invalidates_every_renderer_and_suppresses_aggregate_statistics()
     {
         var original = SampleReport() with { ExecutionKind = "live-model-hyperlight" };

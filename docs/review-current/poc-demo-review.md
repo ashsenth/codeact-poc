@@ -408,3 +408,41 @@ attempt exposed an existing parallel-listener race in `TelemetryRedactionTests` 
 changed during enumeration); the isolated test and unchanged full-suite rerun passed. That
 unrelated test was not edited. Scoped fake CLI also returned Exact for both modes and rejected
 zero, negative, non-numeric and beyond-dataset household counts. Prompts are unchanged.
+
+## Token comparability and telemetry test follow-up
+
+The branch through `dbb2c36` was pushed with approval; `git ls-remote` matched the local full SHA.
+Subsequent token-label/test changes are a separate local commit, not part of that push.
+
+Generation-only CodeAct counts now carry the explicit label **"first turn only, code not executed:
+not comparable to Classic totals"** in the README and HTML report (also console/Markdown/scaling).
+The N=1 and N=3 HTML reports were regenerated from existing captures, without new live model calls.
+The numerical evidence above is unchanged; neither token count represents completed CodeAct analysis.
+
+The 139-byte N=1 program is exactly:
+
+```python
+import json
+hh = call_tool("list_households")
+batch = [h for h in hh if h["id"] == "H0001"]
+print(json.dumps(batch, separators=(",", ":")))
+```
+
+It retrieves/filter-prints household metadata, not portfolio analysis. This is consistent with an
+exploratory first step that would need execution output and additional model turns to continue;
+the model's next action is unverified. Generation-only termination intentionally supplies neither.
+The 4,614-byte N=3 program begins full analysis over the requested households. Neither was executed.
+The shared-prompt proposal remains verbatim above and **unapplied**.
+
+The contained race fix is in
+`TelemetryRedactionTests.Tool_metrics_and_activity_expose_only_whitelisted_tags`: callback sinks
+now use concurrent queues and stable snapshots, and the activity listener only collects this
+test's trace/direct child activities. The metric listener was already restricted to its own
+meter. The test deliberately runs 32 additional concurrent tool calls to exercise collector
+safety while preserving redaction/allowed-tag assertions. No production telemetry behavior changed.
+README Next steps names the fixed test and retains monitoring/parallel stress as follow-up.
+The expected non-live suite count is **221**, including one new token-labelling regression.
+Validation: Release build zero warnings/errors; ten fresh TRX files confirm **221 passed,
+0 failed, 0 skipped**. Three additional complete tools-suite runs passed (40 tests each),
+including the concurrent collector stress. Both existing live HTML reports were regenerated
+and checked for the exact comparability label; no new model calls were made. Prompts remain unchanged.
