@@ -1,6 +1,6 @@
 # Optional x64 validation workflow
 
-**Status: partial VM validation; first live pair invalid.** Bootstrap and five guest tests now
+**Status: partial VM validation; initial live pair had a failed Classic task outcome.** Bootstrap and five guest tests now
 passed on Ubuntu x64. Native cancellation remains a labelled SDK limitation; see the dated
 [Phase B record](#phase-b-vm-validation-november-16-2026). Full-profile validation is not complete.
 The offline POC does not require this workflow. No command in this document authorizes resource
@@ -64,8 +64,9 @@ The Live preflight makes a small Azure call. Full Live mode restores/builds, req
 non-live passes and five actual guest passes, explicitly excluding `HyperlightKnownIssue`,
 then runs profiles sequentially. It requires exact
 oracle results, valid telemetry and actual code-execution completion without stand-in events.
-The benchmark now rejects incomplete/incorrect comparisons too; this helper additionally requires
-exact oracle matches and actual guest execution. Live benchmark commands explicitly select `--model live`.
+The benchmark now separates task outcomes from infrastructure validity; this optional stricter
+acceptance helper still requires exact oracle matches and actual guest execution. Live benchmark
+commands explicitly select `--model live`.
 
 If script execution is forbidden, do not bypass policy. Run the individual permitted dotnet
 commands in the README and inspect the same conditions explicitly. Full Linux PowerShell helper
@@ -183,9 +184,10 @@ CodeAct executed one saved 5,640-byte Python program: `CODE_EXECUTION_COMPLETED`
 exit code zero, stdout available, 49 real callbacks. Its report scored Exact: flagged/breach
 precision/recall 1 and allocation/trade errors zero. CodeAct usage now covers completed analysis,
 not the laptop's generation-only first turn. This single correct CodeAct run does **not** make
-the paired comparison valid or establish a performance advantage.
+the paired comparison valid under the policy in force at execution, or establish a performance
+advantage. The revised validity policy below supersedes that original classification.
 
-**STOP:** comparison exited 1, Classic failed. N=3 and full Small/Medium/Large were not run.
+**STOP (original policy):** comparison exited 1, Classic failed. N=3 and full Small/Medium/Large were not run in that initial attempt.
 The initial comparison JSON lost Classic's failure-category fields during worker JSON
 round-trip; the authoritative journal retains `InvalidModelOutput`. Case-insensitive failure
 deserialization and a transport regression fix this in code; original live artifacts are
@@ -194,3 +196,63 @@ retained unchanged. No model call was repeated to repair presentation.
 Ignored evidence root: `artifacts/phase-b-20261116-1721/`, containing clean clone/cache,
 fresh test logs/TRX, SDK snapshots/hashes, native probes, managed-identity preflight and
 `live-n1/` comparison/run evidence. Warm-ups are retained but excluded from the tables.
+
+## Three-trial sweep and revised validity (November 16, 2026)
+
+The approved baseline `ffffc5a3dd4737913cbf266601276878687fb90a` was pushed and the
+remote branch SHA verified before these changes. The user then approved N=1, N=3 and full Small,
+each with `--trials 3`, committing/pushing results after each profile. Medium/Large are not approved.
+
+The benchmark now treats **INVALID / stop sweep** as infrastructure/harness failure:
+auth/model-call errors, worker crash, missing guest, fairness/config/prompt-hash mismatch,
+missing/unpaired trials or telemetry reconciliation failure, including infrastructure errors
+in warm-ups. **VALID / recorded** task outcomes include InvalidSchema, Partial, declared
+incomplete, turn cap and TimedOut at the configured deadline. VALID is not model success.
+Every task outcome remains in medians. Efficiency deltas are withheld unless all measured
+trials are oracle-correct; correctness appears alongside any permitted deltas.
+The initial pair's artifacts are preserved with their original exit/classification; under the
+revised policy its Classic InvalidSchema is a recorded task outcome, not infrastructure invalidity.
+
+Before the sweep: Release build zero warnings/errors; focused comparison tests **63 passed**;
+full non-live suite **249 passed across ten fresh TRX files**, zero failed/skipped; supported
+real-Hyperlight gate **5 passed**, zero failed/skipped. After adding pricing configuration to
+the metadata envelope, the nine existing artifact tests passed. The retained sixth guest
+test remains explicitly excluded as `HyperlightKnownIssue`, not a pass.
+
+### Official pricing verification
+
+Read-only Azure deployment metadata identifies model GPT-4o **2024-11-20**, SKU
+**GlobalStandard**, resource region **eastus**. CLI metadata access initially reported a stale
+subscription context; refreshing the already-approved managed-identity login succeeded.
+No Azure resource settings changed. Credentials, resource identifiers and endpoints are omitted.
+
+On **2026-11-16**, the official [Azure Retail Prices API](https://prices.azure.com/api/retail/prices?%24filter=productName%20eq%20%27Azure%20OpenAI%27%20and%20armRegionName%20eq%20%27eastus%27%20and%20contains(meterName,%27gpt%204o%201120%27))
+returned these consumption meters, USD, units **1K**, effective **2024-12-01**:
+
+| Meter | Meter ID | USD / 1K | Configured USD / 1M |
+| --- | --- | ---: | ---: |
+| gpt 4o 1120 Inp glbl Tokens | 3ba7b4f7-d853-55b2-ab71-dcbee21a6277 | 0.0025 | 2.50 |
+| gpt 4o 1120 Outp glbl Tokens | 3336fed2-e64d-5639-951a-806ead2ede4b | 0.01 | 10.00 |
+
+Thus `PRICING_INPUT_PER_MILLION` / `PRICING_OUTPUT_PER_MILLION` remain unchanged.
+Source URL, verification date and basis are configured through the variables documented in
+[.env.example](../../.env.example), read identically by benchmark/API composition, and retained
+in each run's `pricingConfiguration`. The public response is retained in
+`artifacts/phase-b-sweep-20261116/pricing/azure-retail-20261116.json`.
+This is an **uncached retail token cost estimate**, not an invoice: cached-input discounts,
+negotiated rates, unreported usage and VM/infrastructure charges are excluded.
+The [official pricing overview](https://azure.microsoft.com/en-us/pricing/details/azure-openai/)
+also labels retail pricing as estimates.
+
+The sweep retains the same prompt hash
+`630a3a841752d3b4475fadde5050b2884c11b59b28f87e4c43a694fc57ebbc86`,
+20 turns, 120 seconds, temperature zero, 16,384 output tokens, parallel tool calls true,
+strict false, v2 output schema, full capture and batching zero. The VM/guest remain Ubuntu
+24.04 x64 Standard_D4s_v5 / Hyperlight Python 0.4.0, using managed identity. Each profile has
+one labelled unmeasured warm-up per mode, then three randomized measured pairs.
+Analysis duration excludes worker startup/transport; process-inclusive duration is retained
+separately. Medians are componentwise over every measured task outcome, not just successes.
+
+**API safety follow-up:** both standalone API hosts lack the benchmark worker watchdog.
+The pinned native cancellation limitation still affects direct API hosting; it is not protected
+by the benchmark's supervised process containment.

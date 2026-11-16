@@ -57,12 +57,18 @@ public sealed class BenchmarkHarness(Composition composition)
         long seed = SeedFromHash(datasetHash);
         var random = new Random((int)(seed & 0x7FFFFFFF));
 
-        // One unmeasured warm-up per mode; a warm-up failure is non-fatal (measured trials record it).
-        await WarmUpAsync("classic", request, comparisonId, cancellationToken).ConfigureAwait(false);
-        await WarmUpAsync("codeact", request, comparisonId, cancellationToken).ConfigureAwait(false);
+        var warmupFailures = new List<FailureInfo>();
+        foreach (string mode in new[] { "classic", "codeact" })
+        {
+            var failure = await WarmUpAsync(mode, request, comparisonId, cancellationToken).ConfigureAwait(false);
+            if (failure is null) continue;
+            warmupFailures.Add(failure);
+            break;
+        }
 
         var results = new List<TrialResult>();
-        for (int pair = 1; pair <= trials; pair++)
+        bool infrastructureFailed = warmupFailures.Count > 0;
+        for (int pair = 1; pair <= trials && !infrastructureFailed; pair++)
         {
             string trialId = Guid.NewGuid().ToString("N");
             bool classicFirst = random.Next(2) == 0;
@@ -79,17 +85,23 @@ public sealed class BenchmarkHarness(Composition composition)
                 }
                 catch (ClientResultException ex)
                 {
-                    // A provider rejection (e.g. Classic exceeding the tool-call cap on larger datasets)
-                    // is recorded as a failed trial so the paired comparison completes instead of aborting.
                     stopwatch.Stop();
                     var failure = FailureInfo.FromException(ex);
                     Console.Error.WriteLine($"[{mode}] provider error on pair {pair}: {failure.Message}");
                     results.Add(FailedTrial(pair, orderIndex, mode, stopwatch.Elapsed.TotalMilliseconds) with { Failure = failure });
-                    continue;
+                    infrastructureFailed = true;
+                    break;
                 }
 
                 stopwatch.Stop();
                 composition.RunStore.Save(record);
+                var expected = mode == "classic" ? classicFingerprints : codeactFingerprints;
+                var runFingerprints = record.Fingerprints.ToDictionary();
+                var runMismatches = expected.ToDictionary().Where(item =>
+                    runFingerprints.GetValueOrDefault(item.Key) != item.Value)
+                    .Select(item => $"{mode}:{item.Key}").ToArray();
+                if (runMismatches.Length > 0)
+                    fairness = fairness with { Matched = false, Mismatches = fairness.Mismatches.Concat(runMismatches).ToArray() };
 
                 var actualDto = record.Response.Report is null ? null : ReportJson.ToDto(record.Response.Report);
                 var score = CorrectnessScorer.Score(
@@ -113,12 +125,18 @@ public sealed class BenchmarkHarness(Composition composition)
                     Failure = FindFailure(record),
                     Diagnostics = record.Diagnostics,
                     InputTokens = m.InputTokens, OutputTokens = m.OutputTokens,
+                    AnalysisDurationMs = m.Duration.TotalMilliseconds,
                     ReportStatus = actualDto?.Status, MissingItems = actualDto?.MissingItems ?? [],
                     PricedPositionCount = priceEvidenceAvailable
                         ? scopedPositions.Count(position => pricedSymbols.Contains(position.Symbol.Value)) : null,
                     UnpricedSymbols = priceEvidenceAvailable ? scopedPositions.Select(position => position.Symbol.Value).Distinct(StringComparer.Ordinal)
                         .Where(symbol => !pricedSymbols.Contains(symbol)).Order(StringComparer.Ordinal).ToArray() : [],
                 });
+                if (results[^1].InfrastructureFailed || !m.TelemetryValid || !fairness.Matched)
+                {
+                    infrastructureFailed = true;
+                    break;
+                }
             }
         }
 
@@ -147,6 +165,7 @@ public sealed class BenchmarkHarness(Composition composition)
             ScopedPositionCount = scopedPositions.Length,
             ScopedSymbolCount = scopedPositions.Select(position => position.Symbol).Distinct().Count(),
             PromptRevision = Prompt.PromptId, PreviousPromptHash = Prompt.PreviousSharedHash,
+            WarmupFailures = warmupFailures,
         }.ForPresentation();
     }
 
@@ -265,23 +284,35 @@ public sealed class BenchmarkHarness(Composition composition)
         };
     }
 
-    private async Task WarmUpAsync(string mode, AnalysisRequest request, string comparisonId, CancellationToken cancellationToken)
+    private async Task<FailureInfo?> WarmUpAsync(string mode, AnalysisRequest request, string comparisonId, CancellationToken cancellationToken)
     {
         try
         {
             var record = await BenchmarkWorker.RunAsync(composition, mode, request, comparisonId, "warmup",
                 cancellationToken, isWarmup: true).ConfigureAwait(false);
             composition.RunStore.Save(record);
+            var failure = FindFailure(record);
+            if (!record.Response.Metrics.TelemetryValid)
+                return new FailureInfo("TelemetryReconciliationFailed", $"Warm-up {mode} telemetry did not reconcile.");
+            var score = RunScore.ForFailure(record.Response.Status.ToString(), false,
+                failure?.Category == "InvalidModelOutput" ? CorrectnessScorer.Match.InvalidSchema : CorrectnessScorer.Match.Failed);
+            var trial = FailedTrial(0, 0, mode, 0) with { Status = record.Response.Status.ToString(), Failure = failure, Score = score };
+            return trial.InfrastructureFailed ? failure ?? new FailureInfo(record.Response.Status.ToString(), $"Warm-up {mode} failed.") : null;
         }
-        catch (ClientResultException)
+        catch (ClientResultException exception)
         {
-            // Warm-up errors are non-fatal; measured trials capture provider failures.
+            return FailureInfo.FromException(exception);
         }
     }
 
     internal static FailureInfo? FindFailure(RunRecord record)
     {
-        var failed = record.Events.FirstOrDefault(entry => entry.ErrorCategory is not null);
+        var failed = record.Events.FirstOrDefault(entry => entry.EventType == "WORKER_TERMINATED" && entry.ErrorCategory != "TimedOut")
+            ?? record.Events.FirstOrDefault(entry => entry.EventType == "MODEL_REQUEST_FAILED" &&
+                !(record.Response.Status == RunStatus.TimedOut && entry.ErrorCategory is "Cancelled" or "TimedOut"))
+            ?? record.Events.FirstOrDefault(entry => entry.ErrorCategory is not null);
+        if (record.Response.Status == RunStatus.TimedOut && failed?.ErrorCategory is "Cancelled" or "OperationCanceledException")
+            return new FailureInfo("TimedOut", "The configured per-run deadline expired.");
         if (failed?.Data is not null)
         {
             var data = JsonSerializer.SerializeToElement(failed.Data);

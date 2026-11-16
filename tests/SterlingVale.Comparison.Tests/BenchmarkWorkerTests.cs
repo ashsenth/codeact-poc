@@ -118,6 +118,20 @@ public sealed class BenchmarkWorkerTests
             var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
             var transported = JsonSerializer.Deserialize<RunRecord>(JsonSerializer.Serialize(record, json), json)!;
             Assert.Equal("TimedOut", BenchmarkHarness.FindFailure(transported)!.Category);
+            var invalidOutput = record.Events[0] with
+            {
+                EventType = "RUN_FAILED", ErrorCategory = "InvalidModelOutput",
+                Data = new { failure = new FailureInfo("InvalidModelOutput", "Invalid report.") },
+            };
+            foreach (string type in new[] { "WORKER_TERMINATED", "MODEL_REQUEST_FAILED" })
+            {
+                var infrastructure = invalidOutput with
+                {
+                    EventType = type, ErrorCategory = "WorkerFailed",
+                    Data = new { failure = new FailureInfo("WorkerFailed", "Infrastructure failed.") },
+                };
+                Assert.Equal("WorkerFailed", BenchmarkHarness.FindFailure(record with { Events = [invalidOutput, infrastructure] })!.Category);
+            }
         }
         finally
         {

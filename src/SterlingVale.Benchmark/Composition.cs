@@ -50,6 +50,9 @@ public sealed class Composition : IDisposable
         {
             InputPerMillion = ParseDecimal(Environment.GetEnvironmentVariable("PRICING_INPUT_PER_MILLION"), 2.50m),
             OutputPerMillion = ParseDecimal(Environment.GetEnvironmentVariable("PRICING_OUTPUT_PER_MILLION"), 10.00m),
+            SourceUrl = Environment.GetEnvironmentVariable("PRICING_SOURCE_URL"),
+            VerifiedOn = Environment.GetEnvironmentVariable("PRICING_VERIFIED_ON"),
+            Basis = Environment.GetEnvironmentVariable("PRICING_BASIS"),
         };
 
         Hyperlight = new HyperlightOptions { GuestPath = Environment.GetEnvironmentVariable("HYPERLIGHT_PYTHON_GUEST_PATH") };

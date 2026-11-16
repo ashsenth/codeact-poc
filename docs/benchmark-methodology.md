@@ -58,8 +58,27 @@ normalized structured data matches — never because prose looks similar.
 
 ## Reporting
 
+- **Comparison INVALID / stop sweep** means infrastructure/harness failure: auth or model-call
+  errors, worker crash, missing guest, fairness/config/prompt-hash mismatch, missing/unpaired
+  trials or telemetry reconciliation failure. This includes infrastructure failures during
+  the unmeasured warm-ups. Raw evidence remains; aggregate performance statistics are suppressed.
+- **Comparison VALID / recorded** does not mean model success. InvalidSchema, Partial,
+  declared incomplete, turn cap and TimedOut at the configured deadline are task outcomes;
+  they do not stop the sweep when harness evidence reconciles.
 - `median`, `min`, `max`, and every individual trial are reported. **No trial is removed** (failed
-  or slow trials are kept).
+  or slow model task outcomes are kept). Correctness is shown first with both modes' full
+  per-trial metrics and medians. Unknown measurements stay unavailable, not zero.
+- Efficiency deltas are withheld unless every measured trial is Exact/WithinTolerance.
+  When displayed, both modes' correctness appears alongside token/latency/cost deltas.
+  Lower usage for an incorrect answer is not an efficiency win.
+- Analysis duration is the service's run metric; process-inclusive wall time additionally
+  includes worker startup/transport. Both modes use the same watchdog and accounting.
+- Cost is an estimate from observed tokens and configured retail USD rates, not an invoice.
+  Pricing provenance/date/basis are recorded in run metadata when configured. The verified
+  GPT-4o 2024-11-20 GlobalStandard East US rates on November 16, 2026 are USD 2.50 input /
+  10.00 output per million, from the official Azure Retail Prices API (see README and
+  `.env.example`). Cached-input discounts, negotiated rates, unreported usage and infrastructure
+  charges are not included.
 - Outputs: per-run artifacts under `artifacts/runs/{runId}/`, and
   `artifacts/comparisons/{comparisonId}.{json,md}`.
 

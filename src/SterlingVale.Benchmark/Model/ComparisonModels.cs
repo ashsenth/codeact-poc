@@ -34,6 +34,12 @@ public sealed record TrialResult(
     public IReadOnlyList<string> MissingItems { get; init; } = [];
     public int? PricedPositionCount { get; init; }
     public IReadOnlyList<string> UnpricedSymbols { get; init; } = [];
+    public double? AnalysisDurationMs { get; init; }
+
+    public bool InfrastructureFailed => Failure is { HttpStatus: not null } ||
+        Failure is { Category: not ("InvalidModelOutput" or "IncompleteEvidence" or "TurnLimit" or "TimedOut") } ||
+        Status is not ("Completed" or "Incomplete" or "Capped" or "TimedOut" or "Failed") ||
+        Status == "Failed" && Score.MatchClass != CorrectnessScorer.Match.InvalidSchema;
 }
 
 /// <summary>Median/min/max of a measured quantity (no trials removed).</summary>
@@ -119,12 +125,26 @@ public sealed record ComparisonReport(
         RawTrials.Count(trial => trial.Score.MatchClass is CorrectnessScorer.Match.Exact or CorrectnessScorer.Match.WithinTolerance),
         RawTrials.Where(trial => trial.Status != "Completed")
             .Select(trial => trial.Failure?.Category ?? trial.Status).Distinct(StringComparer.Ordinal).ToArray(),
-        Fairness.Matched && RawTrials.All(trial => trial.TelemetryValid));
+        Fairness.Matched && RawTrials.All(trial => trial.TelemetryValid),
+        InfrastructureFailures());
 
-    public ComparisonReport ForPresentation() => Outcome.IsValid ? this : this with
+    public ComparisonReport ForPresentation() => !Outcome.IsValid ? this with
     {
         Classic = SuppressStatistics(Classic), CodeAct = SuppressStatistics(CodeAct), Delta = null,
-    };
+    } : Outcome.CorrectRuns == Outcome.TotalRuns ? this : this with { Delta = null };
+
+    private IReadOnlyList<string> InfrastructureFailures()
+    {
+        var failures = RawTrials.Where(trial => trial.InfrastructureFailed)
+            .Select(trial => trial.Failure?.Category ?? trial.Status).Concat(WarmupFailures.Select(failure => failure.Category)).ToList();
+        if (!Fairness.Matched) failures.Add("FairnessMismatch: " + string.Join(", ", Fairness.Mismatches));
+        if (RawTrials.Any(trial => !trial.TelemetryValid)) failures.Add("TelemetryReconciliationFailed");
+        if (RawTrials.Count != MeasuredTrials * 2 ||
+            RawTrials.GroupBy(trial => trial.PairId).Any(pair => pair.Count() != 2 ||
+                pair.Count(trial => trial.Mode == "classic") != 1 || pair.Count(trial => trial.Mode == "codeact") != 1))
+            failures.Add("MissingOrUnpairedTrials");
+        return failures.Distinct(StringComparer.Ordinal).ToArray();
+    }
 
     private static ModeSummary SuppressStatistics(ModeSummary summary) => summary with
     {
@@ -143,14 +163,14 @@ public sealed record ComparisonReport(
     public string? ModelFingerprint => Fairness.ClassicFingerprints.GetValueOrDefault("model");
     public string? PreviousPromptHash { get; init; }
     public string? PromptRevision { get; init; }
+    public IReadOnlyList<FailureInfo> WarmupFailures { get; init; } = [];
 }
 
 public sealed record ComparisonOutcome(int CompletedRuns, int TotalRuns, int FailedRuns, int CorrectRuns,
-    IReadOnlyList<string> FailureCategories, bool EvidenceValid)
+    IReadOnlyList<string> FailureCategories, bool EvidenceValid, IReadOnlyList<string> InfrastructureFailureCategories)
 {
-    public bool IsValid => TotalRuns > 0 && FailedRuns == 0 && CorrectRuns == TotalRuns && EvidenceValid;
-    public string Message => FailedRuns > 0
-        ? $"COMPARISON INVALID: {FailedRuns} of {TotalRuns} runs failed ({string.Join(", ", FailureCategories)})"
-        : IsValid ? "COMPARISON VALID"
-        : "COMPARISON INVALID: correctness, fairness or telemetry requirements were not met";
+    public bool IsValid => TotalRuns > 0 && EvidenceValid && InfrastructureFailureCategories.Count == 0;
+    public string Message => IsValid
+        ? $"COMPARISON VALID: model task outcomes recorded; oracle correct {CorrectRuns}/{TotalRuns}"
+        : $"COMPARISON INVALID: infrastructure/harness failure ({string.Join(", ", InfrastructureFailureCategories)})";
 }

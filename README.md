@@ -5,7 +5,8 @@ wealth-management portfolio: call data tools directly, or write Python that call
 inside a Hyperlight sandbox. The project includes reproducible datasets, a reference calculation,
 paired comparisons, and inspectable execution artifacts. **The offline demo works on ARM64
 without Azure or a sandbox. Ubuntu x64 now has real Hyperlight execution and an Exact
-one-household live CodeAct result; the paired comparison is invalid because Classic failed.**
+one-household live CodeAct result. Classic's InvalidSchema is a recorded model task outcome,
+not an infrastructure-invalid comparison.**
 This is a POC, not a production service or investment advice.
 
 ## 1. Goal
@@ -146,7 +147,7 @@ More detail: [architecture](docs/architecture.md) and [security model](docs/secu
 
 **Verification scope:** the sequence below succeeded in a clean local-source clone on Windows
 ARM64. Ubuntu x64 additionally passed local-source clean-clone locked restore, Release build and
-231 non-live tests at `3088451`, using an empty NuGet cache. The amended working tree passes 236.
+231 non-live tests at `3088451`, using an empty NuGet cache. The current validity/reporting changes pass 249.
 The complete quickstart on Linux/macOS and a remote-origin clone are **not yet verified**.
 
 Clone setup template (**remote clone not yet verified**; replace the placeholder):
@@ -204,8 +205,8 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Current working-tree result: **236 passed, 0 failed, 0 skipped across ten projects**, including
-five worker containment/recovery regressions. On the ARM64 laptop the six Hyperlight tests
+Current result: **249 passed, 0 failed, 0 skipped across ten projects**, including
+worker containment/recovery and model-outcome/infrastructure-validity regressions. On the ARM64 laptop the six Hyperlight tests
 previously skipped; on Ubuntu x64 five pass, while native cancellation remains a labelled
 known issue. Neither a skip nor an excluded known issue is a pass.
 
@@ -266,9 +267,22 @@ Separate generated Python captures still require an unredacted, untruncated prog
 otherwise a `.capture.json` explicitly marks the unavailable exact source.
 Current evidence and IDs: [POC demo review](docs/review-current/poc-demo-review.md).
 
-Completion and oracle correctness come first in console/JSON/HTML summaries. If any measured run
-fails or is not executed, the comparison says `COMPARISON INVALID: N of M runs failed (<category>)`,
-exits nonzero, and suppresses aggregate medians/deltas/charts; raw attempts remain available.
+Correctness comes first in console/JSON/HTML summaries, alongside both modes' full metrics.
+Comparison validity is independent of model success:
+
+- **INVALID; stop the sweep:** infrastructure/harness failures, including auth/model-call
+  errors, worker crashes, missing guest/execution, fairness/config/prompt-hash mismatches,
+  missing/unpaired trials, or telemetry reconciliation failures. Warm-up infrastructure failures
+  also stop execution. Exit nonzero; suppress aggregate performance statistics, retain raw evidence.
+- **VALID; record and continue:** model task outcomes such as InvalidSchema, Partial, declared
+  incomplete, turn cap, or TimedOut at the configured deadline, with intact harness evidence.
+  Exit zero; retain every trial in medians, including failed/slow task outcomes. VALID is not a pass.
+
+Both modes' status/oracle, turns, named calls, input/output tokens, analysis duration, estimated
+cost, execute_code and callbacks are shown per trial and as medians. Unknown remains unavailable.
+Efficiency deltas are withheld unless every measured trial is oracle-correct; when shown,
+both modes' correctness appears alongside them. Lower tokens/latency on an incorrect report
+is never labelled a win. Process-inclusive timing remains separately available.
 Telemetry can reconcile a failed request: **VALID accounting is not successful analysis**.
 Warm-ups are persisted and labelled **WARM-UP, not measured**. Normal logs show full IDs at
 RUN STARTED, then an eight-character run prefix; verbose/debug and disk journals retain full IDs.
@@ -344,7 +358,8 @@ N=3's two CodeAct calls were distinct requests in one model response (159 + 1,45
 Safe live Python lands in `codeact/generated-code-*.py` even with metadata/none capture; unsafe/oversized source gets markers.
 Failure events contain safe category/status/code/guidance, not raw server text. Live calls incur charges.
 
-An x64 guest adds **actual Python execution, callbacks and a scoreable report**; pass all six runtime tests first.
+An x64 guest adds **actual Python execution, callbacks and a scoreable report**; pass the five
+supported runtime tests first, explicitly excluding the retained `HyperlightKnownIssue`.
 The optional `BENCHMARK_REQUIRE_LIVE=true` strict gate refuses a missing guest; leave it false
 for laptop code generation. It does not prove auth, capacity or correctness.
 
@@ -375,7 +390,7 @@ See the [x64 workflow](docs/review-current/x64-validation.md), approval-gated
 [validation helper](scripts/verify-observability.ps1), and older [VM helpers](scripts/vm/).
 Nothing in the offline quickstart provisions resources, installs a guest, or changes execution policy.
 
-### Current VM live result: stopped at the first invalid comparison
+### Initial VM live result: stopped under the previous validity rule
 
 Ubuntu 24.04 x64, Standard_D4s_v5; source `3088451dbbdc9e833e1cc990cf90b3b7666a89d0`
 plus the worker-safety working-tree changes present during execution. Existing `DefaultAzureCredential` selected
@@ -393,19 +408,36 @@ Small, `--households 1`, one measured pair after warm-ups; unchanged 20 turns, 1
 
 Classic fetched every required price but returned `totalValue: null` while declaring complete.
 CodeAct actually executed Python, completed 49 callbacks and matched the oracle.
-The pair is **INVALID**, not a performance win. N=3 and full profiles were not run.
+This pair exited **INVALID under the previous rule**; the current rule records it as a valid
+comparison with Classic's failed model outcome. It is not a performance win. The original
+artifacts are unchanged. N=3 and full profiles were not run in that initial attempt.
 See [per-tool counts, SDK evidence and validation details](docs/review-current/x64-validation.md#phase-b-vm-validation-november-16-2026).
+
+### Pricing provenance (verified November 16, 2026)
+
+Azure deployment metadata identifies GPT-4o **2024-11-20**, **GlobalStandard**, resource region
+**East US**. The official [Azure Retail Prices API](https://prices.azure.com/api/retail/prices?%24filter=productName%20eq%20%27Azure%20OpenAI%27%20and%20armRegionName%20eq%20%27eastus%27%20and%20contains(meterName,%27gpt%204o%201120%27))
+lists `gpt 4o 1120 Inp glbl Tokens` at USD **0.0025/1K** and `gpt 4o 1120 Outp glbl Tokens`
+at USD **0.01/1K**, effective December 1, 2024. Thus the existing
+`PRICING_INPUT_PER_MILLION=2.50` / `PRICING_OUTPUT_PER_MILLION=10.00` values are unchanged.
+Source, verification date and basis are in [.env.example](.env.example); set the corresponding
+`PRICING_SOURCE_URL`, `PRICING_VERIFIED_ON` and `PRICING_BASIS` variables to preserve provenance
+in each run's pricing configuration. Reverify for another model version, deployment type or region.
+
+All costs are **estimates**, not Azure invoices: observed input/output tokens times uncached
+USD retail rates, excluding cached-input discounts, negotiated rates, unreported usage and
+VM/infrastructure charges. See the [official pricing overview](https://azure.microsoft.com/en-us/pricing/details/azure-openai/).
 
 ## 9. Project status
 
 | Area | Status and evidence |
 | --- | --- |
-| Offline POC demo | Working: local-source clean clones; current working tree has 236 non-live passes. |
+| Offline POC demo | Working: local-source clean clones; current validity/reporting changes have 249 non-live passes. |
 | HTTP contract | Offline integration tests pass; a standalone live Classic request completed for one household, with valid schema/telemetry but no oracle score. |
 | Observability | Working offline: correlation, journals, capture policy, timelines, counts, reconciliation. |
 | Large payload capture | Bounded payloads with explicit flags; transcript records remain valid JSONL and retain later calls. Exact oversized payloads remain unavailable. |
 | Batched Classic | Offline tested; live quality and the changed comparison methodology remain unverified. |
-| Live Azure OpenAI | VM managed-identity call succeeded; N=1 CodeAct Exact with real execution, Classic InvalidSchema. Pair invalid; N=3/full profiles stopped. |
+| Live Azure OpenAI | VM managed-identity call succeeded; initial N=1 CodeAct Exact with real execution, Classic InvalidSchema. That is a recorded model outcome under the current validity rule, not an efficiency win. |
 | Real Hyperlight | Five runtime tests pass on x64. Native cancellation is a retained known issue; benchmark workers provide external deadline containment. |
 | Remote clone / Linux / macOS | Ubuntu x64 local-source clean-clone restore/build/tests verified; remote-origin clone and macOS pending. |
 | Provision/bootstrap scripts | VM bootstrap ran with approval November 13; KVM access verified after reconnect. Provisioning script remains unexecuted here. |
@@ -418,14 +450,15 @@ with source commits/dates and **NOT RE-VERIFIED** labels, not as current verifie
 ## 10. Next steps
 
 1. **Native cancellation:** retain the `HyperlightKnownIssue` test until a supported SDK interrupt exists; benchmark watchdog containment is not an SDK fix.
-2. **Live Small, Medium, Large pairs:** retain every trial and inspect oracle/telemetry scores; answer the POC's real question.
-3. **Remote clean-clone check:** repeat the quickstart with an empty checkout/package environment; local cached restore is narrower evidence.
-4. **Linux script verification:** fix the SSH-key regex rejecting valid ECDSA keys such as `ecdsa-sha2-nistp256`, then test approved setup/validation on x64; static review is not a KVM test.
-5. **Exercise new transcript captures live:** JSONL framing is fixed and regression-tested offline; confirm the per-field capture envelopes with real generated Python and callbacks on x64.
-6. **Revisit Classic batching only if needed:** measure the unbatched baseline first; any decomposition changes the experiment and needs an explicit label.
-7. **Verify dashboard appearance and CodeAct API hosting:** reports and scoped Classic serving passed; browser appearance and standalone CodeAct serving remain unchecked.
-8. **Investigate live Classic correctness:** approved shared v2 did not fix fabricated/zero reports or false completion; validate arithmetic, schema and self-reported missing evidence, not redundant classification calls.
-9. **Monitor the fixed telemetry-listener race:** `TelemetryRedactionTests.Tool_metrics_and_activity_expose_only_whitelisted_tags` now isolates its trace and uses concurrent collectors; keep parallel stress coverage to prevent recurrence.
+2. **API watchdog gap:** the Classic and CodeAct API hosts lack the benchmark worker watchdog; native execution can still hang a direct API request. Add equivalent containment before treating live API hosting as protected.
+3. **Live sweep:** three paired trials at N=1, N=3, then full Small are approved; record all task outcomes and stop on infrastructure invalidity. Medium/Large require separate approval.
+4. **Remote clean-clone check:** repeat the quickstart with an empty checkout/package environment; local cached restore is narrower evidence.
+5. **Linux script verification:** fix the SSH-key regex rejecting valid ECDSA keys such as `ecdsa-sha2-nistp256`, then test approved setup/validation on x64; static review is not a KVM test.
+6. **Exercise new transcript captures live:** JSONL framing is fixed and regression-tested offline; confirm the per-field capture envelopes with real generated Python and callbacks on x64.
+7. **Revisit Classic batching only if needed:** measure the unbatched baseline first; any decomposition changes the experiment and needs an explicit label.
+8. **Verify dashboard appearance and CodeAct API hosting:** reports and scoped Classic serving passed; browser appearance and standalone CodeAct serving remain unchecked.
+9. **Investigate live Classic correctness:** approved shared v2 did not fix fabricated/zero reports or false completion; validate arithmetic, schema and self-reported missing evidence, not redundant classification calls.
+10. **Monitor the fixed telemetry-listener race:** `TelemetryRedactionTests.Tool_metrics_and_activity_expose_only_whitelisted_tags` now isolates its trace and uses concurrent collectors; keep parallel stress coverage to prevent recurrence.
 
 ## 11. Troubleshooting
 
@@ -439,7 +472,7 @@ with source commits/dates and **NOT RE-VERIFIED** labels, not as current verifie
 | Old transcript cannot be parsed | Regenerate artifacts after the framing fix. Old files are not rewritten; new per-field capture envelopes explicitly flag partial payloads. |
 | Azure 404 / 403 | 404 was reproduced with a path-bearing endpoint; base address fixed connectivity. For 403 check the resource-scoped OpenAI User role and networking. |
 | Azure configured but fake selected | Intentional safe default. Pass `--model live`; environment variables alone never opt in. |
-| INVALID comparison with VALID telemetry | The request accounting reconciled, but analysis failed/not executed. Read category/status and timeline; no medians are published. |
+| INVALID comparison with VALID telemetry | Inspect infrastructure failure, worker/guest availability, fairness and trial-pair evidence. A task's InvalidSchema/Partial/Incomplete/TimedOut alone is VALID and recorded, not successful analysis. |
 | Dashboard disagrees with a recent run | Check comparison ID, execution kind, and timestamp. Old reports are not rewritten automatically. |
 | Locked restore fails | Check SDK selection and authorized feed access; do not silently regenerate lock files to conceal a failure. |
 

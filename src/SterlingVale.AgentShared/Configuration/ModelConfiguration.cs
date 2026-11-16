@@ -68,6 +68,10 @@ public sealed record PricingConfiguration
     /// <summary>USD per million output tokens.</summary>
     public decimal OutputPerMillion { get; init; }
 
+    public string? SourceUrl { get; init; }
+    public string? VerifiedOn { get; init; }
+    public string? Basis { get; init; }
+
     /// <summary>Estimates cost in USD for the given token counts, or null when usage is unknown.</summary>
     public decimal? EstimateCost(long? inputTokens, long? outputTokens)
     {

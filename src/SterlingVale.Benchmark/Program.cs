@@ -130,7 +130,6 @@ static async Task<int> CompareAsync(int? trials, string modelMode, int? househol
         return 1;
     }
     var harness = new BenchmarkHarness(composition);
-    int exit = 0;
     foreach (var profile in composition.Snapshots.AvailableProfiles)
     {
         var report = await harness.RunAsync(profile, trials ?? composition.Trials, CancellationToken.None, households);
@@ -138,11 +137,11 @@ static async Task<int> CompareAsync(int? trials, string modelMode, int? househol
         PrintSummary(report, path, composition.Live);
         if (!report.Outcome.IsValid)
         {
-            exit = 1;
+            return 1;
         }
     }
 
-    return exit;
+    return 0;
 }
 
 static int Report(string? comparisonId, bool open)
@@ -265,7 +264,7 @@ static void PrintSummary(ComparisonReport report, string path, bool live)
 
     if (report.Outcome.IsValid && report.ExecutionKind == "live-model-hyperlight" && report.Delta is not null)
     {
-        Console.WriteLine($"  delta (codeact vs classic): {ComparisonWriter.FormatDeltaSummary(report.Delta)}");
+        Console.WriteLine($"  delta (codeact vs classic): {ComparisonWriter.FormatDeltaSummary(report)}");
     }
 
     Console.WriteLine($"  written: {path}");

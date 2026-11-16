@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SterlingVale.Benchmark.Model;
+using SterlingVale.Benchmark.Scoring;
 using SterlingVale.Infrastructure.Runs;
 
 namespace SterlingVale.Benchmark.Reporting;
@@ -54,14 +55,17 @@ public static class ComparisonWriter
 
     public static string RenderConsoleSummary(ComparisonReport report)
     {
+        report = report.ForPresentation();
         var outcome = report.Outcome;
         var sb = new StringBuilder();
-        sb.AppendLine($"Completion: {outcome.CompletedRuns}/{outcome.TotalRuns}; correctness (Exact/WithinTolerance): {outcome.CorrectRuns}/{outcome.TotalRuns}");
+        sb.AppendLine($"Correctness (Exact/WithinTolerance): {outcome.CorrectRuns}/{outcome.TotalRuns}; completion: {outcome.CompletedRuns}/{outcome.TotalRuns}");
         sb.AppendLine(outcome.Message);
         sb.AppendLine($"Execution kind: {report.ExecutionKind}");
         sb.AppendLine($"Shared prompt: {report.PromptRevision ?? "historical"}; hash={report.PromptHash ?? "unavailable"}; previous={report.PreviousPromptHash ?? "unavailable"}");
         sb.AppendLine($"Household scope: {report.ScopedHouseholdCount?.ToString(Invariant) ?? "all"} of {report.DatasetHouseholdCount?.ToString(Invariant) ?? "unknown"}");
         sb.AppendLine($"Fairness: {(report.Fairness.Matched ? "MATCHED" : "FAILED")}; telemetry: {(report.RawTrials.All(trial => trial.TelemetryValid) ? "VALID (accounting only, not success)" : "FAILED")}");
+        foreach (var failure in report.WarmupFailures)
+            sb.AppendLine($"  WARM-UP infrastructure failure (not measured): {failure.Category}; {failure.Message}");
         foreach (var trial in report.RawTrials)
         {
             sb.AppendLine($"  {trial.Mode}: {trial.Status}; oracle={trial.Score.MatchClass}" +
@@ -72,15 +76,20 @@ public static class ComparisonWriter
             {
                 sb.AppendLine($"    {diagnostic.Summary}; final output tokens={diagnostic.FinalOutputTokens?.ToString(Invariant) ?? "unavailable"}");
                 sb.AppendLine($"    preview={diagnostic.FinalPreview ?? "unavailable"}");
-                sb.AppendLine($"    turns={trial.ModelTurnCount}; input/output tokens={trial.InputTokens}/{trial.OutputTokens}; duration={F(trial.DurationMs)} ms; generated code={diagnostic.GeneratedCodeBytes} bytes");
+                sb.AppendLine($"    turns={trial.ModelTurnCount}; input/output tokens={trial.InputTokens}/{trial.OutputTokens}; analysis={F(trial.AnalysisDurationMs)} ms; process-inclusive={F(trial.DurationMs)} ms; estimated USD={CostVal(trial.EstimatedCostUsd)}; execute_code={trial.ExecuteCodeCallCount}; callbacks={trial.SandboxCallbacks}; generated code={diagnostic.GeneratedCodeBytes} bytes");
             }
             if (report.ExecutionKind == "live-model-code-generation-only" && trial.Mode == "codeact")
                 sb.AppendLine($"    CodeAct tokens: {GenerationOnlyTokenNotice}");
         }
-        if (outcome.IsValid)
+        sb.AppendLine("| Trial | Mode | Status / oracle | Turns | Tool calls by name | Input / output tokens | Analysis ms | Est. USD | execute_code | Callbacks |");
+        sb.AppendLine("|---|---|---|---:|---|---:|---:|---:|---:|---:|");
+        foreach (var row in MetricRows(report))
+            sb.AppendLine("| " + string.Join(" | ", row) + " |");
+        if (outcome.IsValid && outcome.CorrectRuns < outcome.TotalRuns)
         {
-            sb.AppendLine($"  classic duration median {F(report.Classic.DurationMs.Median)} ms; codeact duration median {F(report.CodeAct.DurationMs.Median)} ms");
+            sb.AppendLine("Measurements include every task outcome. Efficiency deltas withheld: not every trial was oracle-correct; no efficiency winner is inferred.");
         }
+        sb.AppendLine("Costs are retail token estimates, not invoices; cached-input discounts, unreported usage and infrastructure charges are excluded.");
         return sb.ToString();
     }
 
@@ -91,7 +100,7 @@ public static class ComparisonWriter
         var sb = new StringBuilder();
         sb.Append("comparison_id,profile,dataset_hash,pair_id,order_in_pair,mode,duration_ms,status,");
         sb.Append("tool_calls,model_turns,execute_code_calls,total_tokens,estimated_cost_usd,match_class,");
-        sb.Append("flagged_precision,flagged_recall,breach_precision,breach_recall,allocation_mae,trade_notional_mae,max_allocation_error,execution_kind,finish_reason,tool_calls_by_name,input_tokens,output_tokens,generated_code_bytes,final_preview,report_status,missing_items,prompt_hash,previous_prompt_hash,scoped_positions,priced_positions\n");
+        sb.Append("flagged_precision,flagged_recall,breach_precision,breach_recall,allocation_mae,trade_notional_mae,max_allocation_error,execution_kind,finish_reason,tool_calls_by_name,input_tokens,output_tokens,generated_code_bytes,final_preview,report_status,missing_items,prompt_hash,previous_prompt_hash,scoped_positions,priced_positions,analysis_duration_ms,sandbox_callbacks,comparison_valid,infrastructure_failed\n");
         foreach (var t in report.RawTrials)
         {
             var s = t.Score;
@@ -128,17 +137,24 @@ public static class ComparisonWriter
             sb.Append(Csv(report.PromptHash ?? "unavailable")).Append(',');
             sb.Append(Csv(report.PreviousPromptHash ?? "unavailable")).Append(',');
             sb.Append(report.ScopedPositionCount?.ToString(Invariant)).Append(',');
-            sb.Append(t.PricedPositionCount?.ToString(Invariant)).Append('\n');
+            sb.Append(t.PricedPositionCount?.ToString(Invariant)).Append(',');
+            sb.Append(t.AnalysisDurationMs?.ToString("0.###", Invariant)).Append(',');
+            sb.Append(t.SandboxCallbacks.ToString(Invariant)).Append(',');
+            sb.Append(report.Outcome.IsValid).Append(',').Append(t.InfrastructureFailed).Append('\n');
         }
 
         return sb.ToString();
     }
 
     /// <summary>A one-line CodeAct-vs-Classic delta summary for console output.</summary>
-    public static string FormatDeltaSummary(ComparisonDelta delta)
+    public static string FormatDeltaSummary(ComparisonReport report)
     {
-        ArgumentNullException.ThrowIfNull(delta);
-        return $"duration {Pct(delta.DurationDeltaFraction)}{Speedup(delta.DurationSpeedupFactor)}, " +
+        ArgumentNullException.ThrowIfNull(report);
+        var delta = report.ForPresentation().Delta;
+        if (delta is null) return "Efficiency deltas unavailable; inspect correctness and every recorded task outcome.";
+        return $"oracle correct classic {CorrectCount(report, "classic")}/{TrialCount(report, "classic")}, " +
+               $"codeact {CorrectCount(report, "codeact")}/{TrialCount(report, "codeact")}; " +
+               $"duration {Pct(delta.DurationDeltaFraction)}{Speedup(delta.DurationSpeedupFactor)}, " +
                $"tokens {Pct(delta.TokenDeltaFraction)}, cost {Pct(delta.CostDeltaFraction)}, " +
                $"tools {Pct(delta.ToolCallDeltaFraction)}; exact \u0394 {delta.ExactCountDelta}";
     }
@@ -147,6 +163,7 @@ public static class ComparisonWriter
     public static string RenderHtml(ComparisonReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
+        report = report.ForPresentation();
         if (!report.Outcome.IsValid)
         {
             var invalid = new StringBuilder();
@@ -221,14 +238,14 @@ public static class ComparisonWriter
         sb.Append("</div>");
 
         // Charts.
-        sb.Append("<h2>Measured medians</h2>");
+        sb.Append("<h2>Measured medians (all task outcomes included)</h2>");
         sb.Append("<section class=\"charts\">");
-        sb.Append(SvgBars("Duration median (ms)", c.DurationMs.Median, a.DurationMs.Median, v => v.ToString("0.#", Invariant)));
+        sb.Append(SvgBars("Process-inclusive duration median (ms)", c.DurationMs.Median, a.DurationMs.Median, v => v.ToString("0.#", Invariant)));
         sb.Append(SvgBars("Total tokens median", (double?)c.TotalTokens.Median, (double?)a.TotalTokens.Median, v => v.ToString("0", Invariant)));
         sb.Append(SvgBars("Tool calls median", c.RoundTrips?.MedianToolCalls, a.RoundTrips?.MedianToolCalls, v => v.ToString("0.#", Invariant)));
-        sb.Append(SvgBars("Cost median (USD)", (double?)c.Cost?.Median, (double?)a.Cost?.Median, v => v.ToString("0.######", Invariant)));
+        sb.Append(SvgBars("Estimated cost median (USD)", (double?)c.Cost?.Median, (double?)a.Cost?.Median, v => v.ToString("0.######", Invariant)));
         sb.Append("</section>");
-        sb.Append("<p class=\"disc\">A bar shown as <b>n/a</b> means no valid measurement. Failed attempts are not efficiency baselines. Tool calls count granular host invocations, including real sandbox callbacks; execute_code calls are separate. Offline control measurements are not agent performance.</p>");
+        sb.Append("<p class=\"disc\">A bar shown as <b>n/a</b> means no valid measurement. Every task outcome is retained, not an efficiency win. Cost is a retail token estimate, not an invoice; excludes cached-input discounts, unreported usage and infrastructure charges. Tool calls count granular host invocations, including real sandbox callbacks; execute_code calls are separate. Offline control measurements are not agent performance.</p>");
 
         sb.Append("<h2>Per-trial duration (ms)</h2>");
         sb.Append(SvgStrip(report));
@@ -236,7 +253,7 @@ public static class ComparisonWriter
         // Every trial, with a plain-language note instead of a bare status code.
         sb.Append("<h2>Every trial</h2>");
         sb.Append("<table><thead><tr><th>Pair</th><th>Mode</th><th>Status</th><th>Duration (ms)</th>");
-        sb.Append("<th>Tools</th><th>Turns</th><th>execute_code</th><th>Tokens</th><th>Cost (USD)</th><th>What the run produced</th></tr></thead><tbody>");
+        sb.Append("<th>Tools</th><th>Turns</th><th>execute_code</th><th>Tokens</th><th>Est. cost (USD)</th><th>What the run produced</th></tr></thead><tbody>");
         foreach (var t in report.RawTrials)
         {
             bool ok = string.Equals(t.Status, "Completed", StringComparison.Ordinal);
@@ -270,7 +287,50 @@ public static class ComparisonWriter
                 $"<td><a href=\"../runs/{Uri.EscapeDataString(trial.RunId)}/timeline.md\">timeline</a></td></tr>");
         }
         sb.Append("</table>");
+        sb.Append("<h3>Correctness-first metrics (all measured attempts)</h3><table><tr><th>Trial</th><th>Mode</th><th>Status / oracle</th><th>Turns</th><th>Tool calls by name</th><th>Input / output tokens</th><th>Analysis ms</th><th>Est. USD</th><th>execute_code</th><th>Callbacks</th></tr>");
+        foreach (var row in MetricRows(report))
+            sb.Append("<tr>" + string.Concat(row.Select(value => $"<td>{Enc(value)}</td>")) + "</tr>");
+        sb.Append("</table>");
     }
+
+    private static IEnumerable<string[]> MetricRows(ComparisonReport report)
+    {
+        foreach (var trial in report.RawTrials)
+            yield return [trial.PairId.ToString(Invariant), trial.Mode, $"{trial.Status} / {trial.Score.MatchClass}",
+                trial.ModelTurnCount.ToString(Invariant),
+                trial.Diagnostics is null ? "unavailable" : string.Join(", ", trial.Diagnostics.ToolCallsByName.Select(tool => $"{tool.Key}={tool.Value}")),
+                $"{LongVal(trial.InputTokens)} / {LongVal(trial.OutputTokens)}", F(trial.AnalysisDurationMs),
+                CostVal(trial.EstimatedCostUsd), trial.ExecuteCodeCallCount.ToString(Invariant), trial.SandboxCallbacks.ToString(Invariant)];
+        if (!report.Outcome.IsValid) yield break;
+        foreach (string mode in new[] { "classic", "codeact" })
+        {
+            var trials = report.RawTrials.Where(trial => trial.Mode == mode).ToArray();
+            string tools = string.Join(", ", trials.SelectMany(trial => trial.Diagnostics?.ToolCallsByName.Keys ?? [])
+                .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(name =>
+                    $"{name}={MedianValue(trials, trial => trial.Diagnostics?.ToolCallsByName.GetValueOrDefault(name))}"));
+            string outcomes = string.Join(", ", trials.GroupBy(trial => $"{trial.Status}/{trial.Score.MatchClass}")
+                .Select(group => $"{group.Key}={group.Count()}"));
+            yield return ["median", mode, $"correct {CorrectCount(report, mode)}/{trials.Length}; {outcomes}",
+                MedianValue(trials, trial => trial.ModelTurnCount), tools,
+                $"{MedianValue(trials, trial => trial.InputTokens)} / {MedianValue(trials, trial => trial.OutputTokens)}",
+                MedianValue(trials, trial => trial.AnalysisDurationMs),
+                MedianValue(trials, trial => (double?)trial.EstimatedCostUsd, "0.######"),
+                MedianValue(trials, trial => trial.ExecuteCodeCallCount), MedianValue(trials, trial => trial.SandboxCallbacks)];
+        }
+    }
+
+    private static string MedianValue(IReadOnlyList<TrialResult> trials, Func<TrialResult, double?> select, string format = "0.###")
+    {
+        var values = trials.Select(select).Order().ToArray();
+        if (values.Length == 0 || values.Any(value => value is null)) return "unavailable";
+        int middle = values.Length / 2;
+        double? median = values.Length % 2 == 1 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
+        return median!.Value.ToString(format, Invariant);
+    }
+
+    private static int CorrectCount(ComparisonReport report, string mode) =>
+        report.RawTrials.Count(trial => trial.Mode == mode &&
+            trial.Score.MatchClass is CorrectnessScorer.Match.Exact or CorrectnessScorer.Match.WithinTolerance);
 
     private static int CompletedCount(ComparisonReport r, string mode) =>
         r.RawTrials.Count(t => string.Equals(t.Mode, mode, StringComparison.Ordinal)
@@ -327,9 +387,7 @@ public static class ComparisonWriter
             {
                 "Exact" => "exact match to the reference report",
                 "WithinTolerance" => "correct within numeric tolerance",
-                "Partial" => t.Score.FlaggedPrecision >= 1d && t.Score.BreachPrecision >= 1d
-                    ? "correct \u2014 identified every flagged household and breach (minor numeric rounding only)"
-                    : "usable report; partially correct",
+                "Partial" => "partially correct; not an oracle pass",
                 _ => "completed",
             };
         }
@@ -361,6 +419,7 @@ public static class ComparisonWriter
     public static string RenderScalingHtml(IReadOnlyList<ComparisonReport> reports)
     {
         ArgumentNullException.ThrowIfNull(reports);
+        reports = reports.Select(report => report.ForPresentation()).ToArray();
         if (reports.Count > 1 && (reports.Any(report => report.PromptHash is null) ||
             reports.Select(report => report.PromptHash).Distinct(StringComparer.Ordinal).Count() != 1))
             throw new InvalidOperationException("Cannot compare runs with different or unavailable shared-prompt hashes. Select one prompt revision.");
@@ -418,7 +477,7 @@ public static class ComparisonWriter
             int cN = TrialCount(r, "classic"), cDone = CompletedCount(r, "classic");
             int aN = TrialCount(r, "codeact"), aDone = CompletedCount(r, "codeact");
             sb.Append($"<tr><td><b>{Enc(r.Profile)}</b></td><td>{r.DatasetHouseholdCount?.ToString(Invariant) ?? "n/a"}</td>");
-            sb.Append($"<td>{StatusBadge(cDone, cN)}</td><td>{StatusBadge(aDone, aN)}</td></tr>");
+            sb.Append($"<td>{StatusBadge(cDone, cN)}<br>oracle correct {CorrectCount(r, "classic")}/{cN}</td><td>{StatusBadge(aDone, aN)}<br>oracle correct {CorrectCount(r, "codeact")}/{aN}</td></tr>");
         }
 
         sb.Append("</tbody></table>");
@@ -442,7 +501,7 @@ public static class ComparisonWriter
         // 4. Per-dataset detail table.
         sb.Append("<h2>Per-dataset detail</h2>");
         sb.Append("<p class=\"disc\">Deltas are CodeAct vs Classic and are shown only for live-model/Hyperlight reports where both modes completed at least one trial; otherwise they read <b>n/a</b>. Oracle correctness and telemetry still need checking.</p>");
-        sb.Append("<table><thead><tr><th>Profile</th><th>Households</th><th>Classic completed</th><th>CodeAct completed</th><th>Duration</th><th>Tokens</th><th>Cost</th><th>Tool calls</th><th>Exact &Delta;</th></tr></thead><tbody>");
+        sb.Append("<table><thead><tr><th>Profile</th><th>Households</th><th>Classic completed / oracle correct</th><th>CodeAct completed / oracle correct</th><th>Duration</th><th>Tokens</th><th>Est. cost</th><th>Tool calls</th><th>Exact &Delta;</th></tr></thead><tbody>");
         foreach (var r in ordered)
         {
             var dd = r.Delta;
@@ -450,8 +509,8 @@ public static class ComparisonWriter
             int aN = TrialCount(r, "codeact"), aDone = CompletedCount(r, "codeact");
             bool comparable = r.ExecutionKind == "live-model-hyperlight" && cDone > 0 && aDone > 0;
             sb.Append($"<tr><td>{Enc(r.Profile)}</td><td>{r.DatasetHouseholdCount?.ToString(Invariant) ?? "n/a"}</td>");
-            sb.Append($"<td class=\"{(cDone == 0 ? "st-bad" : cDone == cN ? "st-ok" : string.Empty)}\">{cDone}/{cN}</td>");
-            sb.Append($"<td class=\"{(aDone == 0 ? "st-bad" : aDone == aN ? "st-ok" : string.Empty)}\">{aDone}/{aN}</td>");
+            sb.Append($"<td class=\"{(cDone == 0 ? "st-bad" : cDone == cN ? "st-ok" : string.Empty)}\">{cDone}/{cN} / {CorrectCount(r, "classic")}/{cN}</td>");
+            sb.Append($"<td class=\"{(aDone == 0 ? "st-bad" : aDone == aN ? "st-ok" : string.Empty)}\">{aDone}/{aN} / {CorrectCount(r, "codeact")}/{aN}</td>");
             sb.Append($"<td>{(comparable && dd is not null ? Pct(dd.DurationDeltaFraction) : "n/a")}</td>");
             sb.Append($"<td>{(comparable && dd is not null ? Pct(dd.TokenDeltaFraction) : "n/a")}</td>");
             sb.Append($"<td>{(comparable && dd is not null ? Pct(dd.CostDeltaFraction) : "n/a")}</td>");
@@ -603,6 +662,7 @@ public static class ComparisonWriter
     public static string RenderMarkdown(ComparisonReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
+        report = report.ForPresentation();
         if (!report.Outcome.IsValid)
         {
             return "# Sterling Vale comparison\n\n" + RenderConsoleSummary(report) + "\n\n" +
@@ -646,7 +706,7 @@ public static class ComparisonWriter
         AppendRow(sb, "Duration min (ms)", F(report.Classic.DurationMs.Min), F(report.CodeAct.DurationMs.Min));
         AppendRow(sb, "Duration max (ms)", F(report.Classic.DurationMs.Max), F(report.CodeAct.DurationMs.Max));
         AppendRow(sb, "Total tokens median", Tokens(report.Classic.TotalTokens), Tokens(report.CodeAct.TotalTokens));
-        AppendRow(sb, "Cost median (USD)", CostVal(report.Classic.Cost?.Median), CostVal(report.CodeAct.Cost?.Median));
+        AppendRow(sb, "Estimated cost median (USD)", CostVal(report.Classic.Cost?.Median), CostVal(report.CodeAct.Cost?.Median));
         AppendRow(sb, "Tool calls median", Rt(report.Classic.RoundTrips?.MedianToolCalls), Rt(report.CodeAct.RoundTrips?.MedianToolCalls));
         AppendRow(sb, "Model turns median", Rt(report.Classic.RoundTrips?.MedianModelTurns), Rt(report.CodeAct.RoundTrips?.MedianModelTurns));
         AppendRow(sb, "execute_code median", Rt(report.Classic.RoundTrips?.MedianExecuteCodeCalls), Rt(report.CodeAct.RoundTrips?.MedianExecuteCodeCalls));
@@ -663,7 +723,7 @@ public static class ComparisonWriter
         sb.Append('\n');
         AppendMechanism(sb, report);
         sb.Append("## Raw trials (none removed)\n\n");
-        sb.Append("| Pair | Order | Mode | Duration (ms) | Status | Tools | Turns | execute_code | Tokens | Cost (USD) | Match |\n");
+        sb.Append("| Pair | Order | Mode | Duration (ms) | Status | Tools | Turns | execute_code | Tokens | Est. cost (USD) | Match |\n");
         sb.Append("|---|---|---|---|---|---|---|---|---|---|---|\n");
         foreach (var t in report.RawTrials)
         {
@@ -687,7 +747,7 @@ public static class ComparisonWriter
 
         if (report.Delta is null)
         {
-            sb.Append("_Delta metrics unavailable for this comparison (generated before delta support); re-run to populate._\n\n");
+            sb.Append("Efficiency deltas unavailable or withheld because not every trial was oracle-correct. Full measurements and model task outcomes remain recorded.\n\n");
             return;
         }
 
@@ -696,9 +756,10 @@ public static class ComparisonWriter
         var a = report.CodeAct;
         sb.Append("> CodeAct relative to Classic (baseline). Negative = CodeAct lower.\n\n");
         sb.Append("| Metric | Change | Classic → CodeAct |\n|---|---|---|\n");
+        sb.Append($"| Correctness (Exact / WithinTolerance) | measured outcomes | {CorrectCount(report, "classic")}/{TrialCount(report, "classic")} vs {CorrectCount(report, "codeact")}/{TrialCount(report, "codeact")} |\n");
         sb.Append($"| Duration | {Pct(d.DurationDeltaFraction)}{Speedup(d.DurationSpeedupFactor)} | {F(c.DurationMs.Median)} → {F(a.DurationMs.Median)} ms |\n");
         sb.Append($"| Total tokens | {Pct(d.TokenDeltaFraction)} | {LongVal(c.TotalTokens.Median)} → {LongVal(a.TotalTokens.Median)} |\n");
-        sb.Append($"| Cost (USD) | {Pct(d.CostDeltaFraction)} | {CostVal(c.Cost?.Median)} → {CostVal(a.Cost?.Median)} |\n");
+        sb.Append($"| Estimated cost (USD) | {Pct(d.CostDeltaFraction)} | {CostVal(c.Cost?.Median)} → {CostVal(a.Cost?.Median)} |\n");
         sb.Append($"| Tool calls | {Pct(d.ToolCallDeltaFraction)} | {Rt(c.RoundTrips?.MedianToolCalls)} → {Rt(a.RoundTrips?.MedianToolCalls)} |\n");
         sb.Append($"| Model turns | {Pct(d.ModelTurnDeltaFraction)} | {Rt(c.RoundTrips?.MedianModelTurns)} → {Rt(a.RoundTrips?.MedianModelTurns)} |\n");
         sb.Append($"| Correctness (Exact) | Δ {d.ExactCountDelta} | {c.Correctness.ExactCount} vs {a.Correctness.ExactCount} |\n\n");

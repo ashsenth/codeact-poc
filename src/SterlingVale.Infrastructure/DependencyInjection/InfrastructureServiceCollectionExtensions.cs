@@ -67,6 +67,9 @@ public static class InfrastructureServiceCollectionExtensions
         {
             InputPerMillion = benchmark.PricingInputPerMillion,
             OutputPerMillion = benchmark.PricingOutputPerMillion,
+            SourceUrl = configuration["PRICING_SOURCE_URL"],
+            VerifiedOn = configuration["PRICING_VERIFIED_ON"],
+            Basis = configuration["PRICING_BASIS"],
         };
 
         var hyperlight = new HyperlightOptions

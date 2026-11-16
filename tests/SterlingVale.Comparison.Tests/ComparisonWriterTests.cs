@@ -1,6 +1,7 @@
 using SterlingVale.Benchmark.Model;
 using SterlingVale.Benchmark.Reporting;
 using SterlingVale.Benchmark.Scoring;
+using SterlingVale.AgentShared.Analysis;
 using Xunit;
 
 namespace SterlingVale.Comparison.Tests;
@@ -83,8 +84,10 @@ public sealed class ComparisonWriterTests
             Assert.Contains("SYN001", output);
             Assert.Contains("aaaa", output);
             Assert.Contains("old-prompt", output);
-            Assert.DoesNotContain("duration median", output);
         }
+        Assert.True(report.Outcome.IsValid);
+        Assert.Contains("| median |", ComparisonWriter.RenderMarkdown(report));
+        Assert.Null(report.ForPresentation().Delta);
     }
 
     [Fact]
@@ -121,7 +124,7 @@ public sealed class ComparisonWriterTests
                 new Dictionary<string, int> { ["get_price"] = 0, ["get_fx"] = 0, ["asset_class"] = 0 }, 0, "INCOMPLETE: model stopped before pricing"),
         };
         var report = original with { RawTrials = [original.RawTrials[0], failed] };
-        const string message = "COMPARISON INVALID: 1 of 2 runs failed (ClientResultException)";
+        const string message = "COMPARISON INVALID: infrastructure/harness failure (ClientResultException)";
         foreach (string output in new[] { ComparisonWriter.RenderConsoleSummary(report), ComparisonWriter.RenderHtml(report),
             ComparisonWriter.RenderMarkdown(report), ComparisonWriter.RenderScalingHtml([report]) })
         {
@@ -190,7 +193,7 @@ public sealed class ComparisonWriterTests
         string md = ComparisonWriter.RenderMarkdown(SampleReport());
         Assert.Contains("## Headline", md, StringComparison.Ordinal);
         Assert.Contains("## Calls and turns", md, StringComparison.Ordinal);
-        Assert.Contains("Cost median (USD)", md, StringComparison.Ordinal);
+        Assert.Contains("Estimated cost median (USD)", md, StringComparison.Ordinal);
         Assert.Contains("Model turns median", md, StringComparison.Ordinal);
     }
 
@@ -232,11 +235,82 @@ public sealed class ComparisonWriterTests
     [Fact]
     public void Delta_summary_line_names_each_metric()
     {
-        string line = ComparisonWriter.FormatDeltaSummary(SampleReport().Delta!);
+        string line = ComparisonWriter.FormatDeltaSummary(SampleReport());
         Assert.Contains("duration", line, StringComparison.Ordinal);
         Assert.Contains("tokens", line, StringComparison.Ordinal);
         Assert.Contains("cost", line, StringComparison.Ordinal);
         Assert.Contains("tools", line, StringComparison.Ordinal);
+        Assert.Contains("oracle correct classic 1/1, codeact 1/1", line, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Failed", "InvalidSchema", "InvalidModelOutput")]
+    [InlineData("Completed", "Partial", null)]
+    [InlineData("Incomplete", "Partial", "IncompleteEvidence")]
+    [InlineData("TimedOut", "TimedOut", "TimedOut")]
+    [InlineData("Capped", "Capped", "TurnLimit")]
+    public void Model_task_outcomes_remain_valid_with_all_metrics_but_no_efficiency_win(string status, string match, string? category)
+    {
+        var original = SampleReport() with { ExecutionKind = "live-model-hyperlight" };
+        var outcome = original.RawTrials[0] with
+        {
+            Status = status, Score = Exact with { MatchClass = match },
+            Failure = category is null ? null : new(category, "Recorded model task outcome."),
+            InputTokens = 80, OutputTokens = 20, AnalysisDurationMs = 3.25,
+            Diagnostics = new("stop", 20, "captured", new Dictionary<string, int> { ["get_price"] = 13 }, 0, null),
+        };
+        var report = original with { RawTrials = [outcome, original.RawTrials[1]] };
+        Assert.True(report.Outcome.IsValid);
+        Assert.False(outcome.InfrastructureFailed);
+        Assert.NotNull(report.ForPresentation().Classic.DurationMs.Median);
+        Assert.Null(report.ForPresentation().Delta);
+        foreach (string output in new[] { ComparisonWriter.RenderConsoleSummary(report), ComparisonWriter.RenderHtml(report),
+            ComparisonWriter.RenderMarkdown(report), ComparisonWriter.RenderScalingHtml([report]) })
+        {
+            Assert.DoesNotContain("COMPARISON INVALID", output);
+            Assert.DoesNotContain("faster", output);
+        }
+        string markdown = ComparisonWriter.RenderMarkdown(report);
+        Assert.Contains($"{status} / {match}", markdown);
+        Assert.Contains("| median | classic | correct 0/1", markdown);
+        Assert.Contains("get_price=13", markdown);
+        Assert.Contains("80 / 20", markdown);
+        Assert.Contains("3.25", markdown);
+        Assert.Contains("Est. USD", markdown);
+        Assert.Contains("Callbacks", markdown);
+    }
+
+    [Theory]
+    [InlineData("model-call")]
+    [InlineData("worker-crash")]
+    [InlineData("auth-with-invalid-schema")]
+    [InlineData("prompt")]
+    [InlineData("model")]
+    [InlineData("telemetry")]
+    [InlineData("missing-trial")]
+    [InlineData("warmup-auth")]
+    public void Infrastructure_or_harness_failures_invalidate_even_with_correct_or_model_task_output(string failure)
+    {
+        var report = SampleReport();
+        report = failure switch
+        {
+            "model-call" => report with { RawTrials = [report.RawTrials[0] with { Failure = new("HttpRequestException", "Transport failed.") }, report.RawTrials[1]] },
+            "worker-crash" => report with { RawTrials = [report.RawTrials[0] with { Failure = new("WorkerFailed", "Worker crashed.") }, report.RawTrials[1]] },
+            "auth-with-invalid-schema" => report with { RawTrials = [report.RawTrials[0] with
+            {
+                Status = "Failed", Score = Exact with { MatchClass = "InvalidSchema" },
+                Failure = new("ClientResultException", "Forbidden.", 403),
+            }, report.RawTrials[1]] },
+            "prompt" or "model" => report with { Fairness = report.Fairness with { Matched = false, Mismatches = [failure] } },
+            "telemetry" => report with { RawTrials = [report.RawTrials[0] with { TelemetryValid = false }, report.RawTrials[1]] },
+            "missing-trial" => report with { RawTrials = [report.RawTrials[0]] },
+            "warmup-auth" => report with { WarmupFailures = [new("ClientResultException", "Forbidden in warm-up.", 403)] },
+            _ => throw new InvalidOperationException("Unknown test failure."),
+        };
+        Assert.False(report.Outcome.IsValid);
+        Assert.Contains("infrastructure/harness failure", report.Outcome.Message);
+        Assert.Null(report.ForPresentation().Delta);
+        Assert.Null(report.ForPresentation().Classic.DurationMs.Median);
     }
 
     [Fact]
