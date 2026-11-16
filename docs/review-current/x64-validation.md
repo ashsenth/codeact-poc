@@ -49,6 +49,40 @@ record medians and correctness-contextual deltas.
 Log: `artifacts/v3-sweep-20261116/n1.log`; comparison and trial evidence:
 `artifacts/v3-sweep-20261116/n1/`. Historical v2 artifacts were not rewritten.
 
+### v3 Small N=3 stopped during warm-up
+
+Source commit: `d8c76c87fdc4543200e3733e94b2d83e4d28c5aa`.
+`nohup` process exited 1. Comparison
+`small-20261116205402-85294096917f4740ad11516dcccee948` is INVALID with
+`ToolArgumentException` and `MissingOrUnpairedTrials`; **zero measured trials**.
+Both warm-up records and all generated code/events remain saved.
+
+CodeAct warm-up `317344e395ff4c2f9c6df668eb8c7fa5` first failed with Python
+`KeyError: 'baseCurrency'`, then called `get_fx(fromCurrency="JPY", toCurrency="Unknown")`
+and subsequently with null `toCurrency`. The host correctly rejected those invalid arguments.
+The agent later returned a schema-valid placeholder report (zero total, empty components),
+and the run ended Completed with valid telemetry. This is not a correctness pass.
+
+The existing `BenchmarkHarness.FindFailure` selects the first event with an error category
+when no worker/model-call failure exists; `TrialResult.InfrastructureFailed` treats
+ToolArgumentException as infrastructure. `WarmUpAsync` therefore promoted a recoverable
+model tool-argument error into a harness-invalid comparison. No Azure/auth/worker outage
+was observed. Classification was **not changed** and no attempt was rerun or discarded.
+Full Small was not started; Medium/Large remain unauthorized. No benchmark workers remain.
+
+Log: `artifacts/v3-sweep-20261116/n3.log`; comparison, warm-up timelines and raw evidence:
+`artifacts/v3-sweep-20261116/n3/`. The regenerated v3 summary includes the blocked scope with
+no invented measured rates/medians. README Results records the stop and N=1's full medians.
+
+After the stop, the summary renderer was corrected to label scopes with no measured trials
+as "not measured" / "unassessed", displaying INVALID and its failure category directly
+in the outcomes column rather than an empty label or `0/0 (unavailable%)`.
+This is reporting-only; no classification, prompt, scoring, model configuration or live
+evidence was changed. A focused regression covers this pre-measurement failure case.
+Final Release build: zero warnings/errors; final full non-live suite:
+**263 passed, zero failed/skipped**, ten projects. TRX:
+`artifacts/v3-sweep-20261116/tests-final/`.
+
 **Status: partial VM validation; initial live pair had a failed Classic task outcome.** Bootstrap and five guest tests now
 passed on Ubuntu x64. Native cancellation remains a labelled SDK limitation; see the dated
 [Phase B record](#phase-b-vm-validation-november-16-2026). Full-profile validation is not complete.

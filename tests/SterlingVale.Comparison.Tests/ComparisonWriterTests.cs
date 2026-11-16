@@ -345,6 +345,31 @@ public sealed class ComparisonWriterTests
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }
 
+    [Fact]
+    public void Sweep_summary_labels_warmup_stop_without_inventing_measured_rates()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "sv-warmup-stop-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var report = SummaryReport(3) with
+            {
+                RawTrials = [], WarmupFailures = [new("WorkerFailed", "Warm-up worker crashed.")],
+            };
+            SweepSummaryWriter.Write([ComparisonWriter.Write(report, root)], root);
+            foreach (string format in new[] { "md", "html" })
+            {
+                string text = File.ReadAllText(Path.Combine(root, "summary." + format));
+                Assert.Contains("not measured", text);
+                Assert.Contains("unassessed (no measured trials)", text);
+                Assert.Contains("COMPARISON INVALID", text);
+                Assert.Contains("WorkerFailed", text);
+                Assert.DoesNotContain("unavailable%", text);
+                Assert.DoesNotContain("0/0", text);
+            }
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
     [Theory]
     [InlineData("prompt")]
     [InlineData("model")]

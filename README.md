@@ -147,7 +147,7 @@ More detail: [architecture](docs/architecture.md) and [security model](docs/secu
 
 **Verification scope:** the sequence below succeeded in a clean local-source clone on Windows
 ARM64. Ubuntu x64 additionally passed local-source clean-clone locked restore, Release build and
-231 non-live tests at `3088451`, using an empty NuGet cache. The current v3 changes pass 262.
+231 non-live tests at `3088451`, using an empty NuGet cache. The current v3 changes pass 263.
 The complete quickstart on Linux/macOS and a remote-origin clone are **not yet verified**.
 
 Clone setup template (**remote clone not yet verified**; replace the placeholder):
@@ -205,7 +205,7 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Current result: **262 passed, 0 failed, 0 skipped across ten projects**, including
+Current result: **263 passed, 0 failed, 0 skipped across ten projects**, including
 worker containment/recovery and model-outcome/infrastructure-validity regressions. On the ARM64 laptop the six Hyperlight tests
 previously skipped; on Ubuntu x64 five pass, while native cancellation remains a labelled
 known issue. Neither a skip nor an excluded known issue is a pass.
@@ -249,6 +249,17 @@ Unearned counts are over all trials; capped/schema-invalid outputs are unassesse
 | --- | --- | --- | --- | --- | ---: | ---: | ---: |
 | N=1 | Classic | 0/5 (0%) | 4/5 (assessed 4/5) | Unearned 4, Capped 1 | 25,302 | 0.0690825 | 16.432 |
 | N=1 | CodeAct | 2/5 (40%) | 2/5 (assessed 4/5) | Exact 2, Unearned 2, InvalidSchema 1 | 9,955 | 0.0380500 | 12.288 |
+| N=3 | Both | Not measured | Unassessed | INVALID during CodeAct warm-up: ToolArgumentException promoted by harness | unavailable | unavailable | unavailable |
+| Full Small | Both | Not run | Unassessed | Stopped after N=3 harness classification blocker | unavailable | unavailable | unavailable |
+
+**Sweep stopped at N=3; no full Small or Medium/Large live run started.** The CodeAct warm-up
+called `get_fx` with `"Unknown"` and then null as `toCurrency`, later finishing with a
+schema-valid placeholder report and valid telemetry. The existing harness promotes the first
+error-category event (even a recoverable model-generated tool-argument error) to a run failure;
+warm-up classification then marks the comparison INVALID before measured trials start.
+This is a **harness classification blocker**, not an observed Azure/auth/worker outage.
+The stopped attempt is retained, no automatic rerun was made, and validity rules were not
+silently relaxed. N=3/full Small have no measured rates or medians.
 
 Descriptive CodeAct-minus-Classic changes; no correctness-equivalent efficiency win:
 

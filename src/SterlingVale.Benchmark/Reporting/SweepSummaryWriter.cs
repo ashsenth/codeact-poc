@@ -49,7 +49,7 @@ public static class SweepSummaryWriter
             var codeact = Measure(report, "codeact");
             foreach (var row in new[] { classic, codeact })
             {
-                string[] cells = [scope, row.Mode, $"{row.Correct}/{row.Trials} ({Format(row.Trials == 0 ? null : 100m * row.Correct / row.Trials, "0.0")}%)",
+                string[] cells = [scope, row.Mode, row.Trials == 0 ? "not measured" : $"{row.Correct}/{row.Trials} ({Format(100m * row.Correct / row.Trials, "0.0")}%)",
                     row.Unearned, row.Outcomes, Format(row.Tokens, "0"), Format(row.Cost, "0.0000000"), Format(row.AnalysisMs / 1000m, "0.000")];
                 var trials = report.RawTrials.Where(trial => trial.Mode == row.Mode).OrderBy(trial => trial.PairId).ToArray();
                 string Timeline(TrialResult trial) => Link(artifactsRoot, Path.Combine(Path.GetDirectoryName(comparisonPaths[index])!,
@@ -92,10 +92,12 @@ public static class SweepSummaryWriter
     {
         var trials = report.RawTrials.Where(trial => trial.Mode == mode).ToArray();
         bool valid = report.Outcome.IsValid;
+        string outcomes = string.Join(", ", trials.GroupBy(trial => trial.Score.MatchClass)
+            .OrderBy(group => group.Key, StringComparer.Ordinal).Select(group => $"{group.Key}={group.Count()}"));
         return new(mode, trials.Count(trial => trial.Score.MatchClass is CorrectnessScorer.Match.Exact or CorrectnessScorer.Match.WithinTolerance),
-            trials.Length, $"{trials.Count(trial => trial.Score.MatchClass == CorrectnessScorer.Match.UnearnedCompleteness)}/{trials.Length} (assessed {trials.Count(trial => trial.Score.CompletenessAssessed)}/{trials.Length})",
-            string.Join(", ", trials.GroupBy(trial => trial.Score.MatchClass)
-                .OrderBy(group => group.Key, StringComparer.Ordinal).Select(group => $"{group.Key}={group.Count()}")),
+            trials.Length, trials.Length == 0 ? "unassessed (no measured trials)" :
+                $"{trials.Count(trial => trial.Score.MatchClass == CorrectnessScorer.Match.UnearnedCompleteness)}/{trials.Length} (assessed {trials.Count(trial => trial.Score.CompletenessAssessed)}/{trials.Length})",
+            valid ? outcomes : $"{report.Outcome.Message}; {outcomes}",
             valid ? Median(trials.Select(trial => (decimal?)trial.TotalTokens)) : null,
             valid ? Median(trials.Select(trial => trial.EstimatedCostUsd)) : null,
             valid ? Median(trials.Select(trial => (decimal?)trial.AnalysisDurationMs)) : null);
