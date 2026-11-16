@@ -37,26 +37,62 @@ public sealed class ExecutionSession : IDisposable
     private readonly ExecutionLogLevel _logLevel;
 
     public ExecutionSession(string artifactsRoot, string agentMode, string datasetProfile,
-        string? comparisonId = null, string? trialId = null, PayloadPolicy? payloads = null, bool isWarmup = false)
+        string? comparisonId = null, string? trialId = null, PayloadPolicy? payloads = null, bool isWarmup = false,
+        string? runId = null, bool resume = false)
     {
         _logLevel = Enum.TryParse<ExecutionLogLevel>(Environment.GetEnvironmentVariable("EXECUTION_LOG_LEVEL"), true, out var level) ? level : ExecutionLogLevel.Normal;
         Payloads = payloads ?? new PayloadPolicy(
             Enum.TryParse<PayloadCaptureMode>(Environment.GetEnvironmentVariable("EXECUTION_PAYLOAD_CAPTURE"), true, out var capture) ? capture : PayloadCaptureMode.Metadata);
         _previous = Ambient.Value;
-        _activity = SterlingValeTelemetry.ActivitySource.StartActivity("agent.run", ActivityKind.Internal)
-            ?? new Activity("agent.run").SetIdFormat(ActivityIdFormat.W3C).Start();
-        Context = new ExecutionContext(comparisonId ?? Guid.NewGuid().ToString("N"),
-            trialId ?? Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N"),
+        string id = runId ?? Guid.NewGuid().ToString("N");
+        RunDirectory = Path.Combine(artifactsRoot, "runs", id);
+        var recoveredContext = resume
+            ? JsonSerializer.Deserialize<ExecutionContext>(File.ReadAllText(Path.Combine(RunDirectory, "metadata.json")), Json)
+                ?? throw new InvalidDataException("Missing worker execution context.")
+            : null;
+        var parent = recoveredContext is null ? default :
+            new ActivityContext(ActivityTraceId.CreateFromString(recoveredContext.TraceId),
+                ActivitySpanId.CreateFromString(recoveredContext.SpanId), ActivityTraceFlags.Recorded);
+        _activity = SterlingValeTelemetry.ActivitySource.StartActivity("agent.run", ActivityKind.Internal, parent)
+            ?? (recoveredContext is null ? new Activity("agent.run").SetIdFormat(ActivityIdFormat.W3C).Start()
+                : new Activity("agent.run").SetParentId(parent.TraceId, parent.SpanId, parent.TraceFlags).Start());
+        Context = recoveredContext ?? new ExecutionContext(comparisonId ?? Guid.NewGuid().ToString("N"),
+            trialId ?? Guid.NewGuid().ToString("N"), id,
             Guid.NewGuid().ToString("N"), _activity.TraceId.ToString(), _activity.SpanId.ToString(),
             agentMode, datasetProfile) { IsWarmup = isWarmup };
         _activity.SetTag("run.id", Context.RunId);
         _activity.SetTag("correlation.id", Context.CorrelationId);
-        RunDirectory = Path.Combine(artifactsRoot, "runs", Context.RunId);
         Directory.CreateDirectory(RunDirectory);
-        _writer = new StreamWriter(new FileStream(Path.Combine(RunDirectory, "events.jsonl"),
-            FileMode.CreateNew, FileAccess.Write, FileShare.Read), new UTF8Encoding(false)) { AutoFlush = true };
-        Ambient.Value = this;
+        string journal = Path.Combine(RunDirectory, "events.jsonl");
+        bool interruptedWrite = false;
+        if (resume)
+        {
+            byte[] bytes = File.ReadAllBytes(journal);
+            if (bytes.Length > 0 && bytes[^1] != (byte)'\n')
+            {
+                int completeLength = Array.LastIndexOf(bytes, (byte)'\n') + 1;
+                File.WriteAllBytes(Path.Combine(RunDirectory, "events.interrupted-fragment.bin"), bytes[completeLength..]);
+                using var stream = new FileStream(journal, FileMode.Open, FileAccess.Write);
+                stream.SetLength(completeLength);
+                interruptedWrite = true;
+            }
+            foreach (string line in File.ReadLines(journal))
+            {
+                var entry = JsonSerializer.Deserialize<ExecutionEvent>(line, Json)
+                    ?? throw new InvalidDataException("Invalid worker execution event.");
+                _events.Add(entry);
+                if (entry.EventType == "MODEL_USAGE_RECORDED")
+                    _usage.Add(JsonSerializer.Deserialize<ModelUsage>(JsonSerializer.Serialize(entry.Data, Json), Json)
+                        ?? throw new InvalidDataException("Invalid worker usage event."));
+            }
+        }
         WriteArtifact("metadata.json", JsonSerializer.Serialize(Context, Json));
+        _writer = new StreamWriter(new FileStream(Path.Combine(RunDirectory, "events.jsonl"),
+            resume ? FileMode.Append : FileMode.CreateNew, FileAccess.Write, FileShare.Read), new UTF8Encoding(false)) { AutoFlush = true };
+        Ambient.Value = this;
+        if (interruptedWrite)
+            Emit("JOURNAL_WRITE_INTERRUPTED", "incomplete",
+                data: new { fragmentReference = "events.interrupted-fragment.bin" });
     }
 
     public static ExecutionSession? Current => Ambient.Value;

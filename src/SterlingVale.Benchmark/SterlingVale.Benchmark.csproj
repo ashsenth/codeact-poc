@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <InternalsVisibleTo Include="SterlingVale.Comparison.Tests" />
+  </ItemGroup>
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>

@@ -63,6 +63,9 @@ try
 {
 switch (command)
 {
+    case "analysis-worker":
+        return await BenchmarkWorker.ExecuteAsync(options["request"], selection.Mode);
+
     case "validate-data":
         return ValidateData.Run(new Composition().DataRoot);
 

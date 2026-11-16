@@ -46,6 +46,7 @@ public sealed class HyperlightObservabilityTests : IDisposable
     }
 
     [SkippableFact]
+    [Trait("Category", "HyperlightKnownIssue")]
     public async Task Real_running_program_observes_cancellation_and_retains_source()
     {
         string guest = RequireGuest();

@@ -46,8 +46,6 @@ public sealed class BenchmarkHarness(Composition composition)
 
         var classicFactory = new ClassicAgentFactory();
         var codeactFactory = new CodeActAgentFactory(composition.Hyperlight);
-        var classicService = composition.ServiceFor(classicFactory);
-        var codeactService = composition.ServiceFor(codeactFactory);
 
         var toolService = new PortfolioToolService(snapshot, composition.ToolMetrics);
         var classicFingerprints = FairnessFingerprints.Create(
@@ -60,26 +58,24 @@ public sealed class BenchmarkHarness(Composition composition)
         var random = new Random((int)(seed & 0x7FFFFFFF));
 
         // One unmeasured warm-up per mode; a warm-up failure is non-fatal (measured trials record it).
-        await WarmUpAsync(classicService, request, comparisonId, cancellationToken).ConfigureAwait(false);
-        await WarmUpAsync(codeactService, request, comparisonId, cancellationToken).ConfigureAwait(false);
+        await WarmUpAsync("classic", request, comparisonId, cancellationToken).ConfigureAwait(false);
+        await WarmUpAsync("codeact", request, comparisonId, cancellationToken).ConfigureAwait(false);
 
         var results = new List<TrialResult>();
         for (int pair = 1; pair <= trials; pair++)
         {
             string trialId = Guid.NewGuid().ToString("N");
             bool classicFirst = random.Next(2) == 0;
-            (string Mode, AnalysisService Service)[] order = classicFirst
-                ? [("classic", classicService), ("codeact", codeactService)]
-                : [("codeact", codeactService), ("classic", classicService)];
+            string[] order = classicFirst ? ["classic", "codeact"] : ["codeact", "classic"];
 
             for (int orderIndex = 0; orderIndex < order.Length; orderIndex++)
             {
-                var (mode, service) = order[orderIndex];
+                string mode = order[orderIndex];
                 var stopwatch = Stopwatch.StartNew();
                 RunRecord record;
                 try
                 {
-                    record = await RunModeAsync(mode, service, request, householdIds, comparisonId, trialId, cancellationToken).ConfigureAwait(false);
+                    record = await RunModeAsync(mode, request, householdIds, comparisonId, trialId, cancellationToken).ConfigureAwait(false);
                 }
                 catch (ClientResultException ex)
                 {
@@ -158,20 +154,21 @@ public sealed class BenchmarkHarness(Composition composition)
     // returns an empty array at scale). When a batch size is set, run Classic once per batch of
     // households and merge, so direct tool-calling can complete; metrics are summed across the batches.
     private async Task<RunRecord> RunModeAsync(
-        string mode, AnalysisService service, AnalysisRequest request, IReadOnlyList<string> householdIds,
+        string mode, AnalysisRequest request, IReadOnlyList<string> householdIds,
         string comparisonId, string trialId, CancellationToken cancellationToken)
     {
         int batchSize = composition.ClassicBatchSize;
         if (mode != "classic" || batchSize <= 0 || householdIds.Count <= batchSize)
         {
-            return await service.AnalyzeAsync(request, cancellationToken, comparisonId, trialId).ConfigureAwait(false);
+            return await BenchmarkWorker.RunAsync(composition, mode, request, comparisonId, trialId, cancellationToken).ConfigureAwait(false);
         }
 
         var batches = new List<RunRecord>();
         for (int i = 0; i < householdIds.Count; i += batchSize)
         {
             var ids = householdIds.Skip(i).Take(batchSize).ToList();
-            batches.Add(await service.AnalyzeAsync(request with { HouseholdIds = ids }, cancellationToken, comparisonId, trialId).ConfigureAwait(false));
+            batches.Add(await BenchmarkWorker.RunAsync(composition, mode, request with { HouseholdIds = ids },
+                comparisonId, trialId, cancellationToken).ConfigureAwait(false));
         }
 
         return MergeBatches(batches);
@@ -268,11 +265,12 @@ public sealed class BenchmarkHarness(Composition composition)
         };
     }
 
-    private async Task WarmUpAsync(AnalysisService service, AnalysisRequest request, string comparisonId, CancellationToken cancellationToken)
+    private async Task WarmUpAsync(string mode, AnalysisRequest request, string comparisonId, CancellationToken cancellationToken)
     {
         try
         {
-            var record = await service.AnalyzeAsync(request, cancellationToken, comparisonId, "warmup", isWarmup: true).ConfigureAwait(false);
+            var record = await BenchmarkWorker.RunAsync(composition, mode, request, comparisonId, "warmup",
+                cancellationToken, isWarmup: true).ConfigureAwait(false);
             composition.RunStore.Save(record);
         }
         catch (ClientResultException)
@@ -281,14 +279,14 @@ public sealed class BenchmarkHarness(Composition composition)
         }
     }
 
-    private static FailureInfo? FindFailure(RunRecord record)
+    internal static FailureInfo? FindFailure(RunRecord record)
     {
         var failed = record.Events.FirstOrDefault(entry => entry.ErrorCategory is not null);
         if (failed?.Data is not null)
         {
             var data = JsonSerializer.SerializeToElement(failed.Data);
             if (data.TryGetProperty("failure", out var failure))
-                return failure.Deserialize<FailureInfo>();
+                return failure.Deserialize<FailureInfo>(JsonSerializerOptions.Web);
         }
         if (failed is not null)
             return new FailureInfo(failed.ErrorCategory!, "See the run timeline for failure evidence.");

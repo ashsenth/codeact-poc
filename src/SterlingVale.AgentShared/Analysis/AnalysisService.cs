@@ -27,12 +27,12 @@ public sealed class AnalysisService(
 
     /// <summary>Runs an analysis and returns the complete run record.</summary>
     public async Task<RunRecord> AnalyzeAsync(AnalysisRequest request, CancellationToken cancellationToken,
-        string? comparisonId = null, string? trialId = null, bool isWarmup = false)
+        string? comparisonId = null, string? trialId = null, bool isWarmup = false, string? runId = null)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         using var execution = new ExecutionSession(executionOptions?.ArtifactsRoot ?? Environment.GetEnvironmentVariable("ARTIFACTS_ROOT") ?? "artifacts",
-            agentFactory.Mode, request.DatasetProfile, comparisonId, trialId, isWarmup: isWarmup);
+            agentFactory.Mode, request.DatasetProfile, comparisonId, trialId, isWarmup: isWarmup, runId: runId);
         execution.ModelIsLive = chatClientProvider.IsLive;
         execution.Emit("RUN_STARTED");
         execution.Emit("EXECUTION_CONFIGURATION", data: new { model = chatClientProvider.IsLive ? "live" : "deterministic-fake",
@@ -42,18 +42,18 @@ public sealed class AnalysisService(
         var snapshot = snapshots.GetSnapshot(request.DatasetProfile);
         string datasetHash = snapshots.GetDatasetHash(request.DatasetProfile);
         var toolService = new PortfolioToolService(snapshot, toolMetrics);
-        string runId = execution.Context.RunId;
+        string executionRunId = execution.Context.RunId;
 
         string toolFingerprint = agentFactory.ComputeToolFingerprint(toolService);
         var fingerprints = FairnessFingerprints.Create(toolFingerprint, datasetHash, model, pricing);
 
         using var chatClient = new ObservedFunctionClient(new ObservedChatClient(
-            chatClientProvider.CreateChatClient(new ChatClientRequest(snapshot, request, runId, agentFactory.Mode))));
+            chatClientProvider.CreateChatClient(new ChatClientRequest(snapshot, request, executionRunId, agentFactory.Mode))));
         using var bundle = agentFactory.Create(chatClient, toolService, model);
 
         var context = new RunContext
         {
-            RunId = runId,
+            RunId = executionRunId,
             Mode = agentFactory.Mode,
             UserMessage = BuildUserMessage(request),
             Model = model,

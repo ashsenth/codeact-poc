@@ -4,7 +4,8 @@ A .NET proof of concept comparing two ways an AI agent can analyze the same synt
 wealth-management portfolio: call data tools directly, or write Python that calls those tools
 inside a Hyperlight sandbox. The project includes reproducible datasets, a reference calculation,
 paired comparisons, and inspectable execution artifacts. **The offline demo works on ARM64
-without Azure or a sandbox; real model and Hyperlight results remain unverified on this branch.**
+without Azure or a sandbox. Ubuntu x64 now has real Hyperlight execution and an Exact
+one-household live CodeAct result; the paired comparison is invalid because Classic failed.**
 This is a POC, not a production service or investment advice.
 
 ## 1. Goal
@@ -137,13 +138,16 @@ More detail: [architecture](docs/architecture.md) and [security model](docs/secu
 
 ### Prerequisites
 
-- Git and .NET 9 SDK per [global.json](global.json); validated with SDK **9.0.320** and configured roll-forward.
+- Git and .NET 9 SDK per [global.json](global.json); validated with SDK **9.0.320** on the laptop
+  and pinned **9.0.317** on Ubuntu x64, with configured roll-forward.
 - A terminal running PowerShell: Windows PowerShell works here; PowerShell 7 is available
   for Windows, Linux, and macOS. No Python, Azure account, guest image, or virtualization required.
 - Package-feed access for the first restore. Allow a few minutes for initial downloads.
 
-**Verification scope:** the commands below succeeded in a clean local-source clone on Windows
-ARM64. Linux/macOS execution and a remote-origin clone are **not yet verified**.
+**Verification scope:** the sequence below succeeded in a clean local-source clone on Windows
+ARM64. Ubuntu x64 additionally passed local-source clean-clone locked restore, Release build and
+231 non-live tests at `3088451`, using an empty NuGet cache. The amended working tree passes 236.
+The complete quickstart on Linux/macOS and a remote-origin clone are **not yet verified**.
 
 Clone setup template (**remote clone not yet verified**; replace the placeholder):
 
@@ -200,9 +204,10 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Result: **231 passed, 0 failed, 0 skipped across ten projects**, including diagnostic, mode,
-scope, capture and normalization regressions. The separate Hyperlight group discovered six tests;
-all six skipped here, with zero executed. A skip is not sandbox evidence.
+Current working-tree result: **236 passed, 0 failed, 0 skipped across ten projects**, including
+five worker containment/recovery regressions. On the ARM64 laptop the six Hyperlight tests
+previously skipped; on Ubuntu x64 five pass, while native cancellation remains a labelled
+known issue. Neither a skip nor an excluded known issue is a pass.
 
 ## 6. What the results show
 
@@ -328,7 +333,8 @@ incorrect computation despite price coverage. Both CodeAct runs were NotExecuted
 V2 requires `status` and `missingItems`; explicit `incomplete` is **Partial, never Exact**, even with exact values.
 Classic runs with parallel tool calls enabled (model default); disabling it would multiply Classic's turns and isn't how the pattern is used in practice.
 Both modes explicitly set `parallel_tool_calls=true`, non-strict `json_schema` (`strict=false`), and a 16,384-token output cap.
-The schema guides output; full local v2 validation, not server-side strict guarantees, decides acceptance. **Not live-verified.**
+The schema guides output; full local v2 validation, not server-side strict guarantees, decides acceptance.
+The scoped VM result below exercises these settings; full-profile correctness remains unverified.
 Startup prints the format, parallel and strict choices for both modes.
 Settings and both schema hashes are recorded; scaling rejects mixed prompt/model configurations.
 See [prompt boundary, per-tool tables and prior results](docs/review-current/poc-demo-review.md#approved-shared-prompt-v2-live-follow-up).
@@ -347,7 +353,20 @@ This is a separate experimental variant: the aggregate references child runs, no
 
 ## 8. Running real Hyperlight on x64 (optional)
 
-**Not yet verified; VM work is paused.** Use an x64 Linux host with accessible KVM/MSHV or
+**Ubuntu x64 runtime validation, November 16, 2026:** all five supported runtime checks pass.
+The sixth test, `Real_running_program_observes_cancellation_and_retains_source`, remains unchanged
+except for an additional `HyperlightKnownIssue` category: the pinned SDK cannot interrupt running
+native code. The gate explicitly selects `Category=Hyperlight&Category!=HyperlightKnownIssue`;
+it does not claim six passes. See [SDK evidence](docs/sdk-findings.md#native-execution-cancellation-november-16-2026).
+
+Benchmarks now supervise a separate process for **every** analysis in both modes, including
+warm-ups and Classic batches. A configured per-run deadline kills and reaps only that worker
+process tree, records `TimedOut`/INCOMPLETE and retains source, usage and the failure timeline.
+No background native guest is left running by merely abandoning its Task. The deadline includes
+worker startup; trial duration includes process overhead, while run metrics retain analysis duration.
+Direct API hosting has no process watchdog and still has the SDK cancellation limitation.
+
+Use an x64 Linux host with accessible KVM/MSHV or
 Windows x64 with WHP, plus the version-matched Python guest. ARM64 is not a supported substitute.
 There is no claim that an ordinary container or hosted development environment supplies virtualization.
 
@@ -356,19 +375,40 @@ See the [x64 workflow](docs/review-current/x64-validation.md), approval-gated
 [validation helper](scripts/verify-observability.ps1), and older [VM helpers](scripts/vm/).
 Nothing in the offline quickstart provisions resources, installs a guest, or changes execution policy.
 
+### Current VM live result: stopped at the first invalid comparison
+
+Ubuntu 24.04 x64, Standard_D4s_v5; source `3088451dbbdc9e833e1cc990cf90b3b7666a89d0`
+plus the worker-safety working-tree changes present during execution. Existing `DefaultAzureCredential` selected
+`ManagedIdentityCredential`; one minimal call succeeded on its first attempt. No credential-chain
+or laptop behavior changed. Shared prompt SHA-256:
+`630a3a841752d3b4475fadde5050b2884c11b59b28f87e4c43a694fc57ebbc86`.
+
+Small, `--households 1`, one measured pair after warm-ups; unchanged 20 turns, 120 seconds,
+`parallel_tool_calls=true`, `strict=false`, v2 schema and 16,384-token output cap:
+
+| Mode | Status / oracle | Finish | Turns | Input / output tokens | Trial / analysis seconds | execute_code | Callbacks |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Classic | Failed / InvalidSchema | stop | 6 | 23,739 / 518 | 15.476 / 14.815 | 0 | 0 |
+| CodeAct | Completed / Exact | stop | 2 | 8,235 / 1,923 | 13.267 / 12.556 | 1 | 49 |
+
+Classic fetched every required price but returned `totalValue: null` while declaring complete.
+CodeAct actually executed Python, completed 49 callbacks and matched the oracle.
+The pair is **INVALID**, not a performance win. N=3 and full profiles were not run.
+See [per-tool counts, SDK evidence and validation details](docs/review-current/x64-validation.md#phase-b-vm-validation-november-16-2026).
+
 ## 9. Project status
 
 | Area | Status and evidence |
 | --- | --- |
-| Offline POC demo | Working: clean local clone, locked restore, Release build, all profiles and reports; current suite has 231 passing tests. |
+| Offline POC demo | Working: local-source clean clones; current working tree has 236 non-live passes. |
 | HTTP contract | Offline integration tests pass; a standalone live Classic request completed for one household, with valid schema/telemetry but no oracle score. |
 | Observability | Working offline: correlation, journals, capture policy, timelines, counts, reconciliation. |
 | Large payload capture | Bounded payloads with explicit flags; transcript records remain valid JSONL and retain later calls. Exact oversized payloads remain unavailable. |
 | Batched Classic | Offline tested; live quality and the changed comparison methodology remain unverified. |
-| Live Azure OpenAI | Shared v2: N=1 Classic invalid schema, N=3 Partial despite full price coverage; CodeAct Python saved, not executed. No valid live comparison. |
-| Real Hyperlight | Six tests skipped here; x64 execution, callbacks, cancellation, and isolation unverified. |
-| Remote clone / Linux / macOS | Clean local-source clone verified; remote clone and other operating systems pending. |
-| Provision/bootstrap scripts | Reviewed, not executed; provisioning remains paused. |
+| Live Azure OpenAI | VM managed-identity call succeeded; N=1 CodeAct Exact with real execution, Classic InvalidSchema. Pair invalid; N=3/full profiles stopped. |
+| Real Hyperlight | Five runtime tests pass on x64. Native cancellation is a retained known issue; benchmark workers provide external deadline containment. |
+| Remote clone / Linux / macOS | Ubuntu x64 local-source clean-clone restore/build/tests verified; remote-origin clone and macOS pending. |
+| Provision/bootstrap scripts | VM bootstrap ran with approval November 13; KVM access verified after reconnect. Provisioning script remains unexecuted here. |
 
 The original [observability acceptance audit](docs/review-current/execution-observability.md)
 retains the TRX recount, acceptance matrix, and SKU findings as historical deep detail.
@@ -377,7 +417,7 @@ with source commits/dates and **NOT RE-VERIFIED** labels, not as current verifie
 
 ## 10. Next steps
 
-1. **Real Hyperlight on supported x64:** run all six guest tests; establish actual execution rather than a stand-in.
+1. **Native cancellation:** retain the `HyperlightKnownIssue` test until a supported SDK interrupt exists; benchmark watchdog containment is not an SDK fix.
 2. **Live Small, Medium, Large pairs:** retain every trial and inspect oracle/telemetry scores; answer the POC's real question.
 3. **Remote clean-clone check:** repeat the quickstart with an empty checkout/package environment; local cached restore is narrower evidence.
 4. **Linux script verification:** fix the SSH-key regex rejecting valid ECDSA keys such as `ecdsa-sha2-nistp256`, then test approved setup/validation on x64; static review is not a KVM test.
@@ -391,7 +431,7 @@ with source commits/dates and **NOT RE-VERIFIED** labels, not as current verifie
 
 | Symptom | What to do |
 | --- | --- |
-| ARM64 / no guest; six Hyperlight tests skip | Expected on this laptop. Leave the guest unset for offline use; move real execution to supported x64. |
+| ARM64 / no guest; Hyperlight tests skip | Expected on the laptop. For the supported x64 gate explicitly exclude `HyperlightKnownIssue`; an unfiltered guest run can hang in the retained cancellation test. |
 | PowerShell script blocked by policy | Paste the individual quickstart commands into an approved terminal. Do not change execution policy or bypass it. |
 | OneDrive paths contain spaces or files are locked | Run from the repo root, quote paths, and avoid concurrent writers. The local clone check used an unsynchronized workspace. |
 | TRX total looks too high | Use a fresh results directory and literal-path reads for filenames containing brackets; clear the XML variable before each read. Historical 297 was an invalid recount of 197. |

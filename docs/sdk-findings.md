@@ -6,7 +6,53 @@
 > published NuGet packages and the `microsoft/agent-framework` source, or a local
 > compilation/restore probe (`codeact-poc/_probe`).
 
-Last verified: 2026-08-31.
+Original verification: 2026-08-31. Pinned cancellation investigation added 2026-11-16.
+
+## Native execution cancellation (November 16, 2026)
+
+Verified against the installed **Microsoft.Agents.AI.Hyperlight
+1.19.0-preview.260822.1** net9.0 binary/XML and **Hyperlight.HyperlightSandbox.Api /
+PInvoke 0.4.0**, not inferred from newer documentation:
+
+- The provider's `Internal.ExecuteCodeFunction.InvokeCoreAsync` forwards the token to
+  `SandboxExecutor.ExecuteAsync`. Decompilation of that exact binary shows the executor using
+  it only for `SemaphoreSlim.WaitAsync`, then calling synchronous `Sandbox.Run(code)`.
+  Neither the public provider options nor the sandbox API exposes an execution timeout,
+  interrupt or kill method.
+- The host package's nuspec identifies source commit
+  `3d8171e7a9e706da0f2a5837c0bcf2ed942643af`.
+  [Sandbox.RunAsync documentation and implementation, lines 339-357](https://github.com/hyperlight-dev/hyperlight-sandbox/blob/3d8171e7a9e706da0f2a5837c0bcf2ed942643af/src/sdk/dotnet/core/Api/Sandbox.cs#L339-L357)
+  explicitly state that cancellation only prevents scheduling and cannot cancel in-progress FFI.
+  The provider calls `Run`, not this async wrapper.
+- [Sandbox.Run, lines 309-336](https://github.com/hyperlight-dev/hyperlight-sandbox/blob/3d8171e7a9e706da0f2a5837c0bcf2ed942643af/src/sdk/dotnet/core/Api/Sandbox.cs#L309-L336)
+  and [Dispose, lines 530-545](https://github.com/hyperlight-dev/hyperlight-sandbox/blob/3d8171e7a9e706da0f2a5837c0bcf2ed942643af/src/sdk/dotnet/core/Api/Sandbox.cs#L530-L545)
+  acquire the same lock. Disposing from a cancellation callback cannot interrupt an infinite
+  run. [SandboxBuilder](https://github.com/hyperlight-dev/hyperlight-sandbox/blob/3d8171e7a9e706da0f2a5837c0bcf2ed942643af/src/sdk/dotnet/core/Api/SandboxBuilder.cs)
+  and [FFISandboxOptions](https://github.com/hyperlight-dev/hyperlight-sandbox/blob/3d8171e7a9e706da0f2a5837c0bcf2ed942643af/src/sdk/dotnet/core/PInvoke/SandboxOptions.cs)
+  provide memory/backend/filesystem settings, not execution deadlines.
+
+Binary SHA-256 evidence:
+
+| Binary | SHA-256 |
+| --- | --- |
+| Microsoft.Agents.AI.Hyperlight.dll (net9.0) | `7f69060fb7678e57a2a25cbe55ad14f81c86066570500482215cb8366eaed363` |
+| HyperlightSandbox.Api.dll (net8.0) | `e173db75007b53718ced87fe0be94e1f8e56b1ef1a9e830426efce2c8e9938dd` |
+
+On the VM, `while True: pass` exceeded the existing test's five-second cancellation and ran
+for over six minutes until the test process was externally terminated. All original assertions
+remain. The test additionally carries `HyperlightKnownIssue`; the runtime gate explicitly
+excludes that category and requires **five actual passes**, never six.
+
+The approved benchmark workaround is supervised process isolation for both modes, warm-ups
+and Classic batches. At the configured per-run wall-time deadline the supervisor kills/reaps
+the worker process tree, appends explicit interruption/failure events and saves `TimedOut`,
+source and usage. Interrupted final journal bytes are retained separately with an explicit
+marker. This does not make SDK cancellation work. It does not protect standalone API hosting.
+A real infinite-Python probe using this watchdog was killed/reaped in **5.095 seconds** for a
+five-second probe deadline; the benchmark's configured limit remains 120 seconds.
+
+Exact binary decompilation, public source snapshots, hashes and probe logs are retained in the
+ignored `artifacts/phase-b-20261116-1721/` evidence directory. No dependency was upgraded.
 
 ---
 
