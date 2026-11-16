@@ -76,6 +76,13 @@ normalized structured data matches — never because prose looks similar.
   errors, worker crash, missing guest, fairness/config/prompt-hash mismatch, missing/unpaired
   trials or telemetry reconciliation failure. This includes infrastructure failures during
   the unmeasured warm-ups. Raw evidence remains; aggregate performance statistics are suppressed.
+- Explicit tool input errors (`ToolArgumentException` / `ToolNotFoundException`) returned to
+  the model with a subsequent model request are model behavior, not infrastructure. Their
+  `toolArgumentErrors` count is recorded per trial, deduplicating host/model wrapper events;
+  totals appear beside correctness in summaries. Other tool implementation exceptions and
+  actual sandbox/runtime faults remain infrastructure even when the agent later continues.
+  Warm-up task outcomes/counts are recorded separately and do not stop the sweep. Errors
+  without evidence of model continuation are not silently exempted.
 - **Comparison VALID / recorded** does not mean model success. InvalidSchema, Partial,
   UnearnedCompleteness, declared incomplete, turn cap and TimedOut at the configured deadline are task outcomes;
   they do not stop the sweep when harness evidence reconciles.
@@ -103,6 +110,11 @@ normalized structured data matches — never because prose looks similar.
   10.00 output per million, from the official Azure Retail Prices API (see README and
   `.env.example`). Cached-input discounts, negotiated rates, unreported usage and infrastructure
   charges are not included.
+- Pricing fingerprints normalize decimal numeric values (`2.50` equals `2.5`); changing a
+  numeric rate still changes the hash. Historical raw hashes/data are never rewritten.
+  `reclassify --comparison <json> --source-root <root>` derives a separate comparison from raw
+  events and pricing metadata, preserving the original comparison, statuses, correctness scores
+  and measurements. An explicit reference prevents mixing prompt cohorts.
 - Outputs: per-run artifacts under `artifacts/runs/{runId}/`, and
   `artifacts/comparisons/{comparisonId}.{json,md}`.
 

@@ -32,14 +32,15 @@ public static class SweepSummaryWriter
         markdown.AppendLine("\nMedians include every measured task outcome; warm-ups excluded. Unknown stays unavailable. Analysis time excludes worker startup/transport.");
         markdown.AppendLine("Costs are retail token estimates, not invoices; cached-input discounts, unreported usage and infrastructure charges are excluded.");
         markdown.AppendLine("\nUnearnedCompleteness means claimed complete but missing required components. Detection only: no feedback/retries. Unassessed trials are disclosed; historical v2 reports are not rescored.");
-        markdown.AppendLine("\n| Profile / scope | Mode | Correctness | UnearnedCompleteness | Outcomes | Median tokens | Median est. USD | Median analysis s | Individual trials (timelines) |");
-        markdown.AppendLine("|---|---|---|---|---|---:|---:|---:|---|");
+        markdown.AppendLine("\n| Profile / scope | Mode | Correctness | UnearnedCompleteness | toolArgumentErrors (total) | Outcomes | Median tokens | Median est. USD | Median analysis s | Individual trials (timelines) |");
+        markdown.AppendLine("|---|---|---|---|---:|---|---:|---:|---:|---|");
         var html = new StringBuilder("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Cross-profile results</title><style>body{font-family:system-ui;margin:2rem;color:#172033}table{border-collapse:collapse;font-size:.9rem}th,td{border:1px solid #bbb;padding:.5rem;text-align:left}code{overflow-wrap:anywhere}a{color:#0645ad}</style></head><body><h1>Cross-profile results</h1>");
         html.Append($"<p>Shared prompt hash: <code>{Enc(reports[0].PromptHash!)}</code>. Execution kind: {Enc(reports[0].ExecutionKind)}.</p>");
         html.Append("<p>Correct means Exact/WithinTolerance, not merely Completed. All measured outcomes remain in medians; warm-ups excluded. Unknown stays unavailable. Analysis excludes worker startup/transport. Costs are retail token estimates, not invoices; cached-input discounts, unreported usage and infrastructure charges are excluded.</p>");
         html.Append("<p>UnearnedCompleteness means claimed complete but missing required components. Detection only: no feedback/retries. Unassessed trials are disclosed; historical v2 reports are not rescored.</p>");
-        html.Append("<table><tr><th>Profile / scope</th><th>Mode</th><th>Correctness</th><th>UnearnedCompleteness</th><th>Outcomes</th><th>Median tokens</th><th>Median est. USD</th><th>Median analysis s</th><th>Individual trials (timelines)</th></tr>");
+        html.Append("<table><tr><th>Profile / scope</th><th>Mode</th><th>Correctness</th><th>UnearnedCompleteness</th><th>toolArgumentErrors (total)</th><th>Outcomes</th><th>Median tokens</th><th>Median est. USD</th><th>Median analysis s</th><th>Individual trials (timelines)</th></tr>");
         var deltas = new List<string[]>();
+        var warmups = new List<string[]>();
         for (int index = 0; index < reports.Length; index++)
         {
             var report = reports[index];
@@ -50,7 +51,7 @@ public static class SweepSummaryWriter
             foreach (var row in new[] { classic, codeact })
             {
                 string[] cells = [scope, row.Mode, row.Trials == 0 ? "not measured" : $"{row.Correct}/{row.Trials} ({Format(100m * row.Correct / row.Trials, "0.0")}%)",
-                    row.Unearned, row.Outcomes, Format(row.Tokens, "0"), Format(row.Cost, "0.0000000"), Format(row.AnalysisMs / 1000m, "0.000")];
+                    row.Unearned, row.ToolErrors, row.Outcomes, Format(row.Tokens, "0"), Format(row.Cost, "0.0000000"), Format(row.AnalysisMs / 1000m, "0.000")];
                 var trials = report.RawTrials.Where(trial => trial.Mode == row.Mode).OrderBy(trial => trial.PairId).ToArray();
                 string Timeline(TrialResult trial) => Link(artifactsRoot, Path.Combine(Path.GetDirectoryName(comparisonPaths[index])!,
                     "..", "runs", trial.RunId, "timeline.md"));
@@ -67,14 +68,25 @@ public static class SweepSummaryWriter
                         ? "both Partial; not a correctness-equivalent win"
                         : $"Classic {classic.Outcomes} ({classic.Correct}/{classic.Trials} correct), CodeAct {codeact.Outcomes} ({codeact.Correct}/{codeact.Trials} correct); not a correctness-equivalent win";
             context += $"; UnearnedCompleteness Classic {classic.Unearned}, CodeAct {codeact.Unearned}";
+            context += $"; toolArgumentErrors Classic {classic.ToolErrors}, CodeAct {codeact.ToolErrors}";
             deltas.Add([scope, Delta(classic.Tokens, codeact.Tokens, "tokens", context),
                 Delta(classic.Cost, codeact.Cost, "est. cost", context),
                 Delta(classic.AnalysisMs, codeact.AnalysisMs, "analysis time", context)]);
+            foreach (var trial in report.WarmupTrials)
+                warmups.Add([scope, trial.Mode, $"{trial.Status} / {trial.Score.MatchClass}",
+                    trial.ToolArgumentErrors?.ToString(Invariant) ?? "unavailable"]);
         }
         html.Append("</table><h2>Descriptive deltas: CodeAct relative to Classic</h2><p>Each delta carries its correctness context. Lower resource use for an incorrect answer is not an efficiency win.</p><table><tr><th>Profile / scope</th><th>Tokens</th><th>Est. cost</th><th>Analysis time</th></tr>");
         markdown.AppendLine("\n## Descriptive deltas: CodeAct relative to Classic\n\nEach delta carries its correctness context. Lower resource use for an incorrect answer is not an efficiency win.\n");
         markdown.AppendLine("| Profile / scope | Tokens | Est. cost | Analysis time |\n|---|---|---|---|");
         foreach (var row in deltas)
+        {
+            markdown.AppendLine("| " + string.Join(" | ", row) + " |");
+            html.Append("<tr>" + string.Concat(row.Select(value => $"<td>{Enc(value)}</td>")) + "</tr>");
+        }
+        html.Append("</table><h2>Warm-up outcomes (not measured)</h2><table><tr><th>Scope</th><th>Mode</th><th>Status / oracle</th><th>toolArgumentErrors</th></tr>");
+        markdown.AppendLine("\n## Warm-up outcomes (not measured)\n\n| Scope | Mode | Status / oracle | toolArgumentErrors |\n|---|---|---|---:|");
+        foreach (var row in warmups)
         {
             markdown.AppendLine("| " + string.Join(" | ", row) + " |");
             html.Append("<tr>" + string.Concat(row.Select(value => $"<td>{Enc(value)}</td>")) + "</tr>");
@@ -85,7 +97,7 @@ public static class SweepSummaryWriter
         File.WriteAllText(Path.Combine(artifactsRoot, "summary.html"), html.ToString(), new UTF8Encoding(false));
     }
 
-    private sealed record Measurements(string Mode, int Correct, int Trials, string Unearned, string Outcomes,
+    private sealed record Measurements(string Mode, int Correct, int Trials, string Unearned, string ToolErrors, string Outcomes,
         decimal? Tokens, decimal? Cost, decimal? AnalysisMs);
 
     private static Measurements Measure(ComparisonReport report, string mode)
@@ -97,6 +109,8 @@ public static class SweepSummaryWriter
         return new(mode, trials.Count(trial => trial.Score.MatchClass is CorrectnessScorer.Match.Exact or CorrectnessScorer.Match.WithinTolerance),
             trials.Length, trials.Length == 0 ? "unassessed (no measured trials)" :
                 $"{trials.Count(trial => trial.Score.MatchClass == CorrectnessScorer.Match.UnearnedCompleteness)}/{trials.Length} (assessed {trials.Count(trial => trial.Score.CompletenessAssessed)}/{trials.Length})",
+            trials.Length == 0 || trials.Any(trial => trial.ToolArgumentErrors is null) ? "unavailable" :
+                trials.Sum(trial => trial.ToolArgumentErrors!.Value).ToString(Invariant),
             valid ? outcomes : $"{report.Outcome.Message}; {outcomes}",
             valid ? Median(trials.Select(trial => (decimal?)trial.TotalTokens)) : null,
             valid ? Median(trials.Select(trial => trial.EstimatedCostUsd)) : null,

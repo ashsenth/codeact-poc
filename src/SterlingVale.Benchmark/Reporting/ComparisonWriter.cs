@@ -67,12 +67,15 @@ public static class ComparisonWriter
         sb.AppendLine($"Fairness: {(report.Fairness.Matched ? "MATCHED" : "FAILED")}; telemetry: {(report.RawTrials.All(trial => trial.TelemetryValid) ? "VALID (accounting only, not success)" : "FAILED")}");
         foreach (var failure in report.WarmupFailures)
             sb.AppendLine($"  WARM-UP infrastructure failure (not measured): {failure.Category}; {failure.Message}");
+        foreach (var trial in report.WarmupTrials)
+            sb.AppendLine($"  WARM-UP (not measured) {trial.Mode}: {trial.Status}; oracle={trial.Score.MatchClass}; toolArgumentErrors={trial.ToolArgumentErrors?.ToString(Invariant) ?? "unavailable"}; run={trial.RunId}");
         foreach (var trial in report.RawTrials)
         {
             sb.AppendLine($"  {trial.Mode}: {trial.Status}; oracle={trial.Score.MatchClass}" +
                 (trial.Failure is null ? string.Empty : $"; {trial.Failure.Message}"));
             sb.AppendLine($"    report status={trial.ReportStatus ?? "unavailable"}; missingItems={JsonSerializer.Serialize(trial.MissingItems, Json)}");
             sb.AppendLine($"    missing components by household (detection only): {CompletenessDetails(trial.Score)}");
+            sb.AppendLine($"    toolArgumentErrors={trial.ToolArgumentErrors?.ToString(Invariant) ?? "unavailable"}");
             sb.AppendLine($"    get_price calls={trial.Diagnostics?.ToolCallsByName.GetValueOrDefault("get_price")}; positions in scope={report.ScopedPositionCount}; priced positions={trial.PricedPositionCount}; distinct symbols in scope={report.ScopedSymbolCount}");
             if (trial.Diagnostics is { } diagnostic)
             {
@@ -102,7 +105,7 @@ public static class ComparisonWriter
         var sb = new StringBuilder();
         sb.Append("comparison_id,profile,dataset_hash,pair_id,order_in_pair,mode,duration_ms,status,");
         sb.Append("tool_calls,model_turns,execute_code_calls,total_tokens,estimated_cost_usd,match_class,");
-        sb.Append("flagged_precision,flagged_recall,breach_precision,breach_recall,allocation_mae,trade_notional_mae,max_allocation_error,execution_kind,finish_reason,tool_calls_by_name,input_tokens,output_tokens,generated_code_bytes,final_preview,report_status,missing_items,prompt_hash,previous_prompt_hash,scoped_positions,priced_positions,analysis_duration_ms,sandbox_callbacks,comparison_valid,infrastructure_failed\n");
+        sb.Append("flagged_precision,flagged_recall,breach_precision,breach_recall,allocation_mae,trade_notional_mae,max_allocation_error,execution_kind,finish_reason,tool_calls_by_name,input_tokens,output_tokens,generated_code_bytes,final_preview,report_status,missing_items,prompt_hash,previous_prompt_hash,scoped_positions,priced_positions,analysis_duration_ms,sandbox_callbacks,comparison_valid,infrastructure_failed,tool_argument_errors\n");
         foreach (var t in report.RawTrials)
         {
             var s = t.Score;
@@ -142,7 +145,8 @@ public static class ComparisonWriter
             sb.Append(t.PricedPositionCount?.ToString(Invariant)).Append(',');
             sb.Append(t.AnalysisDurationMs?.ToString("0.###", Invariant)).Append(',');
             sb.Append(t.SandboxCallbacks.ToString(Invariant)).Append(',');
-            sb.Append(report.Outcome.IsValid).Append(',').Append(t.InfrastructureFailed).Append('\n');
+            sb.Append(report.Outcome.IsValid).Append(',').Append(t.InfrastructureFailed).Append(',');
+            sb.Append(t.ToolArgumentErrors?.ToString(Invariant)).Append('\n');
         }
 
         return sb.ToString();
@@ -279,10 +283,11 @@ public static class ComparisonWriter
         sb.Append("<p>Detection and reporting only; no validation feedback or retries. Missing numeric components are unavailable, never zero error. Historical/unusable reports are unassessed.</p>");
         foreach (string mode in new[] { "classic", "codeact" })
             sb.Append($"<p>{mode}: {report.RawTrials.Count(trial => trial.Mode == mode && trial.Score.MatchClass == CorrectnessScorer.Match.UnearnedCompleteness)}/{TrialCount(report, mode)} UnearnedCompleteness</p>");
-        sb.Append("<table><tr><th>Mode</th><th>Status</th><th>Oracle</th><th>Failure</th><th>Completion diagnostics</th><th>Input / output tokens</th><th>Timeline</th></tr>");
+        sb.Append("<table><tr><th>Mode</th><th>Status</th><th>Oracle</th><th>toolArgumentErrors</th><th>Failure</th><th>Completion diagnostics</th><th>Input / output tokens</th><th>Timeline</th></tr>");
         foreach (var trial in report.RawTrials)
         {
             sb.Append($"<tr><td>{Enc(trial.Mode)}</td><td>{Enc(trial.Status)}</td><td>{Enc(trial.Score.MatchClass)}</td>" +
+                $"<td>{trial.ToolArgumentErrors?.ToString(Invariant) ?? "unavailable"}</td>" +
                 $"<td>{Enc(trial.Failure?.Message ?? trial.Failure?.Category ?? "none")}</td>" +
                 $"<td>{Enc(trial.Diagnostics?.Summary ?? "unavailable")}<br>preview: {Enc(trial.Diagnostics?.FinalPreview ?? "unavailable")}" +
                 $"<br>report status: {Enc(trial.ReportStatus ?? "unavailable")}; missingItems: {Enc(JsonSerializer.Serialize(trial.MissingItems, Json))}" +
@@ -294,6 +299,10 @@ public static class ComparisonWriter
                 $"<td><a href=\"../runs/{Uri.EscapeDataString(trial.RunId)}/timeline.md\">timeline</a></td></tr>");
         }
         sb.Append("</table>");
+        sb.Append("<h3>Warm-ups (not measured; model outcomes do not stop the sweep)</h3><ul>");
+        foreach (var trial in report.WarmupTrials)
+            sb.Append($"<li>{Enc(trial.Mode)}: {Enc(trial.Status)} / {Enc(trial.Score.MatchClass)}; toolArgumentErrors={trial.ToolArgumentErrors?.ToString(Invariant) ?? "unavailable"}; <a href=\"../runs/{Uri.EscapeDataString(trial.RunId)}/timeline.md\">timeline</a></li>");
+        sb.Append("</ul>");
         sb.Append("<h3>Correctness-first metrics (all measured attempts)</h3><table><tr><th>Trial</th><th>Mode</th><th>Status / oracle</th><th>Turns</th><th>Tool calls by name</th><th>Input / output tokens</th><th>Analysis ms</th><th>Est. USD</th><th>execute_code</th><th>Callbacks</th></tr>");
         foreach (var row in MetricRows(report))
             sb.Append("<tr>" + string.Concat(row.Select(value => $"<td>{Enc(value)}</td>")) + "</tr>");

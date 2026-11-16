@@ -147,7 +147,7 @@ More detail: [architecture](docs/architecture.md) and [security model](docs/secu
 
 **Verification scope:** the sequence below succeeded in a clean local-source clone on Windows
 ARM64. Ubuntu x64 additionally passed local-source clean-clone locked restore, Release build and
-231 non-live tests at `3088451`, using an empty NuGet cache. The current v3 changes pass 263.
+231 non-live tests at `3088451`, using an empty NuGet cache. The current v3 changes pass 275.
 The complete quickstart on Linux/macOS and a remote-origin clone are **not yet verified**.
 
 Clone setup template (**remote clone not yet verified**; replace the placeholder):
@@ -205,7 +205,7 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Current result: **263 passed, 0 failed, 0 skipped across ten projects**, including
+Current result: **275 passed, 0 failed, 0 skipped across ten projects**, including
 worker containment/recovery and model-outcome/infrastructure-validity regressions. On the ARM64 laptop the six Hyperlight tests
 previously skipped; on Ubuntu x64 five pass, while native cancellation remains a labelled
 known issue. Neither a skip nor an excluded known issue is a pass.
@@ -238,28 +238,102 @@ model task outcomes remain recorded. Medium/Large are not authorized. v3 results
 contextual deltas are recorded separately in
 [v3 summary Markdown](artifacts/v3-sweep-20261116/summary.md) and
 [HTML](artifacts/v3-sweep-20261116/summary.html); no v2 trials are mixed or retroactively rescored.
-The v3 launcher serialized the unchanged USD 2.50/10.00 rates as 2.5/10.0. The current
-fingerprinter preserves decimal scale, so its pricing hash differs from v2 despite identical
-rates and provenance; all v3 profiles retain the same representation.
+The first v3 launcher serialized the unchanged USD 2.50/10.00 rates as 2.5/10.0.
+Pricing fingerprints now normalize decimal values; actual v2/v3 rates and full provenance
+were verified equal. Their normalized fingerprint is
+`1d3ecc56b26a79ade912464e4e17a7d00548faeb991f10846bb3a8e06a2ad41c`.
+Historical raw fingerprints are preserved, not edited.
 
 Five measured pairs per completed scope; all outcomes remain in the medians, warm-ups excluded.
 Unearned counts are over all trials; capped/schema-invalid outputs are unassessed.
 
-| Small scope | Mode | Oracle-correct | UnearnedCompleteness | Outcomes | Median tokens | Median est. USD | Median analysis s |
-| --- | --- | --- | --- | --- | ---: | ---: | ---: |
-| N=1 | Classic | 0/5 (0%) | 4/5 (assessed 4/5) | Unearned 4, Capped 1 | 25,302 | 0.0690825 | 16.432 |
-| N=1 | CodeAct | 2/5 (40%) | 2/5 (assessed 4/5) | Exact 2, Unearned 2, InvalidSchema 1 | 9,955 | 0.0380500 | 12.288 |
-| N=3 | Both | Not measured | Unassessed | INVALID during CodeAct warm-up: ToolArgumentException promoted by harness | unavailable | unavailable | unavailable |
-| Full Small | Both | Not run | Unassessed | Stopped after N=3 harness classification blocker | unavailable | unavailable | unavailable |
+| Small scope | Mode | Oracle-correct | UnearnedCompleteness | toolArgumentErrors | Outcomes | Median tokens | Median est. USD | Median analysis s |
+| --- | --- | --- | --- | ---: | --- | ---: | ---: | ---: |
+| N=1 | Classic | 0/5 (0%) | 4/5 (assessed 4/5) | 0 | Unearned 4, Capped 1 | 25,302 | 0.0690825 | 16.432 |
+| N=1 | CodeAct | 2/5 (40%) | 2/5 (assessed 4/5) | 0 | Exact 2, Unearned 2, InvalidSchema 1 | 9,955 | 0.0380500 | 12.288 |
+| N=3 | Both | Pending rerun | Unassessed | unavailable | Original attempt stopped during warm-up; preserved separately | unavailable | unavailable | unavailable |
+| Full Small | Both | Pending N=3 | Unassessed | unavailable | Authorized after N=3 succeeds as infrastructure evidence | unavailable | unavailable | unavailable |
 
-**Sweep stopped at N=3; no full Small or Medium/Large live run started.** The CodeAct warm-up
+**The original sweep stopped at N=3 before measured trials.** The CodeAct warm-up
 called `get_fx` with `"Unknown"` and then null as `toCurrency`, later finishing with a
 schema-valid placeholder report and valid telemetry. The existing harness promotes the first
 error-category event (even a recoverable model-generated tool-argument error) to a run failure;
 warm-up classification then marks the comparison INVALID before measured trials start.
-This is a **harness classification blocker**, not an observed Azure/auth/worker outage.
-The stopped attempt is retained, no automatic rerun was made, and validity rules were not
-silently relaxed. N=3/full Small have no measured rates or medians.
+This was a **harness classification blocker**, not an observed Azure/auth/worker outage.
+The approved correction now treats explicit tool input errors returned to the model with
+subsequent model continuation as model behavior in both modes and in warm-ups.
+`toolArgumentErrors` counts explicit tool argument/not-found validation failures once per
+invocation (not duplicate model/host wrapper events); it is unavailable in unassessed historical
+reports. Warm-up outcomes/counts are saved separately and excluded from measured aggregates.
+Provider/auth failures, exhausted HTTP requests, non-timeout worker termination, actual runtime
+failures, tool implementation exceptions, fairness/config mismatch and telemetry failure still stop.
+
+N=1 was reclassified from saved events into a separate `-reclassified` comparison, **without
+rerunning or modifying the raw artifacts or original comparison** (all source SHA-256s verified).
+Validity, all ten match labels, correctness/unearned counts and every median are unchanged;
+all ten measured tool-argument counts are zero. Old warm-up oracle scores remain unassessed.
+
+N=1 CodeAct's three non-correct trials:
+- Pair 2: complete claim with total zero and empty allocations/drifts, all four required breaches
+  and required Cash/Crypto trades missing.
+- Pair 4: valuation present, but all four required breaches omitted and `flagged:true`
+  inconsistent with an empty breach list.
+- Pair 5: schema-invalid because `baseCurrency:null` is not a currency string; empty analytical
+  components would also be incomplete even if that schema error were repaired.
+
+##### Reproducing v3 runs and derived reports
+
+Use the committed [runner](scripts/vm/run-v3-profile.py) and
+[checker](scripts/vm/check-v3-profile.py), not session-state files or the older VM launcher.
+Python 3 standard library only. Run from the repository root after a Release build and clean
+commit/push. Set `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT_NAME`,
+`HYPERLIGHT_PYTHON_GUEST_PATH`, `DATASET_ROOT` (an existing generated data root), and
+`ARTIFACTS_ROOT` (the sweep root). Authentication uses the app's existing Azure credential
+configuration; never put credentials in scripts or commits.
+
+The runner refuses to overwrite a profile, records its source commit in `launch.json`, and
+holds 5 pairs, 20 turns, 120 seconds, no Classic batching, model and pricing/provenance fixed
+to the explicit reference. Dataset validation makes no model calls. The checker verifies
+raw event counts, telemetry, scope, fingerprints, model and numeric pricing/provenance.
+
+```bash
+export ARTIFACTS_ROOT="artifacts/v3-sweep-20261116"
+reference="$ARTIFACTS_ROOT/n1/comparisons/small-20261116204456-a702d6024c2a4eb1afcc742408d492f0-reclassified.json"
+# After tests and push, preserve the stopped n3 directory/log under aborted-<UTC timestamp>.
+nohup python3 scripts/vm/run-v3-profile.py n3 --reference-comparison "$reference" \
+  > "$ARTIFACTS_ROOT/n3.log" 2>&1 < /dev/null &
+# Wait for exit; stop on infrastructure failure, retain all model outcomes.
+python3 scripts/vm/check-v3-profile.py n3 --reference-comparison "$reference" --summarize
+# Commit/push the N=3 record before launching the next profile.
+nohup python3 scripts/vm/run-v3-profile.py full-small --reference-comparison "$reference" \
+  > "$ARTIFACTS_ROOT/full-small.log" 2>&1 < /dev/null &
+python3 scripts/vm/check-v3-profile.py full-small --reference-comparison "$reference" --summarize
+```
+
+`--summarize` selects only the named `n1`, `n3`, `full-small` directories (preferring an explicit
+reclassification), never `aborted-*`; it rejects ambiguous comparisons and mixed cohorts.
+It preserves v2 and all raw trial data. Reclassification itself is an offline command that
+writes a new comparison rather than repairing the source:
+
+```bash
+dotnet src/SterlingVale.Benchmark/bin/Release/net9.0/SterlingVale.Benchmark.dll reclassify \
+  --comparison <original-comparison.json> --source-root <its-artifacts-root>
+```
+
+The earlier sample/diagnosis helpers are now portable too:
+[export_sample.py](scripts/vm/export_sample.py) exports one selected pair's condensed timelines,
+input excerpt, reports and unchanged Python; it rejects obvious endpoint/path/credential
+content, but all generated samples still need human review before sharing.
+[Diagnosis](scripts/vm/Diagnosis/Program.cs) renders that pair's HTML or an offline oracle:
+
+```bash
+python3 scripts/vm/export_sample.py --comparison <comparison.json> \
+  --dataset-profile <data-root/small> --output <new-sample-dir> --household H0001 --pair 1
+dotnet run -c Release --project scripts/vm/Diagnosis -- sample \
+  <comparison.json> <new-sample-dir/comparisons/sample.html> 1
+dotnet run -c Release --project scripts/vm/Diagnosis -- oracle \
+  <data-root/small> <oracle.json> H0001
+```
 
 Descriptive CodeAct-minus-Classic changes; no correctness-equivalent efficiency win:
 

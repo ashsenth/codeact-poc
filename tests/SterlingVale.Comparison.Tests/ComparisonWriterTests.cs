@@ -370,6 +370,59 @@ public sealed class ComparisonWriterTests
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }
 
+    [Fact]
+    public void Reclassification_reads_raw_evidence_without_rewriting_it_and_reports_argument_counts()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "sv-reclassify-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var source = SummaryReport(1);
+            source = source with { MeasuredTrials = 1, RawTrials = source.RawTrials.Where(trial => trial.PairId == 1).ToArray() };
+            foreach (var trial in source.RawTrials.Concat(source.RawTrials.Select(trial => trial with { RunId = trial.RunId + "-warmup" })))
+            {
+                using var session = new SterlingVale.Telemetry.ExecutionSession(root, trial.Mode, "small",
+                    comparisonId: source.ComparisonId, runId: trial.RunId,
+                    isWarmup: trial.RunId.EndsWith("-warmup", StringComparison.Ordinal));
+                session.Emit("TOOL_CALL_FAILED", "error", errorCategory: "ToolArgumentException");
+                session.Emit("MODEL_REQUEST_STARTED");
+                session.Emit("RUN_FAILED", "error", errorCategory: "InvalidModelOutput");
+                File.WriteAllText(Path.Combine(session.RunDirectory, "metrics.json"),
+                    System.Text.Json.JsonSerializer.Serialize(new SterlingVale.Domain.Analysis.RunMetrics
+                    {
+                        Duration = TimeSpan.FromSeconds(1), TelemetryValid = true, SchemaValid = false,
+                    }, System.Text.Json.JsonSerializerOptions.Web));
+                File.WriteAllText(Path.Combine(session.RunDirectory, "result.json"),
+                    System.Text.Json.JsonSerializer.Serialize(new { runId = trial.RunId, status = "Failed" }));
+                File.WriteAllText(Path.Combine(session.RunDirectory, "metadata.json"),
+                    System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        configuration = new { mode = trial.Mode },
+                        pricingConfiguration = new { inputPerMillion = trial.Mode == "classic" ? 2.50m : 2.5m,
+                            outputPerMillion = 10.00m },
+                    }));
+            }
+            string path = ComparisonWriter.Write(source, root);
+            var before = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                .ToDictionary(file => file, File.ReadAllBytes);
+            var report = ComparisonReclassifier.Reclassify(ComparisonWriter.Read(path), root);
+            Assert.True(report.Outcome.IsValid);
+            Assert.Equal(2, report.WarmupTrials.Count);
+            Assert.All(report.WarmupTrials, trial => Assert.False(trial.InfrastructureFailed));
+            Assert.Equal(source.ComparisonId, report.ReclassifiedFrom);
+            Assert.All(report.RawTrials, trial => Assert.Equal(1, trial.ToolArgumentErrors));
+            Assert.Equal(report.Fairness.ClassicFingerprints["pricing"], report.Fairness.CodeActFingerprints["pricing"]);
+            ComparisonWriter.Write(report, root);
+            foreach (var (file, bytes) in before.Where(pair => !pair.Key.EndsWith("index.md", StringComparison.Ordinal) &&
+                !pair.Key.EndsWith("index.html", StringComparison.Ordinal)))
+                Assert.Equal(bytes, File.ReadAllBytes(file));
+            Assert.Contains("toolArgumentErrors", ComparisonWriter.RenderHtml(report));
+            SweepSummaryWriter.Write([Path.Combine(root, "comparisons", report.ComparisonId + ".json")], root);
+            foreach (string format in new[] { "md", "html" })
+                Assert.Contains("toolArgumentErrors", File.ReadAllText(Path.Combine(root, "summary." + format)));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
     [Theory]
     [InlineData("prompt")]
     [InlineData("model")]

@@ -81,6 +81,17 @@ switch (command)
     case "visualize":
         return Visualize(options, open);
 
+    case "reclassify":
+        if (!options.TryGetValue("comparison", out var sourcePath) || !options.TryGetValue("source-root", out var sourceRoot))
+            throw new InvalidOperationException("--comparison and --source-root are required for reclassification.");
+        var reclassified = ComparisonReclassifier.Reclassify(ComparisonWriter.Read(sourcePath), sourceRoot);
+        string destination = Path.GetFullPath(sourceRoot);
+        if (File.Exists(Path.Combine(destination, "comparisons", reclassified.ComparisonId + ".json")))
+            throw new InvalidOperationException("Reclassified output already exists; preserve it and select a fresh source copy.");
+        Console.WriteLine(ComparisonWriter.Write(reclassified, destination));
+        Console.Write(ComparisonWriter.RenderConsoleSummary(reclassified));
+        return reclassified.Outcome.IsValid ? 0 : 1;
+
     case "summarize":
         if (!options.TryGetValue("comparisons", out var comparisons))
             throw new InvalidOperationException("--comparisons requires comma-separated comparison JSON paths.");
@@ -315,6 +326,7 @@ static void PrintUsage()
     Console.WriteLine("  benchmark report --comparison-id <id> [--open]");
     Console.WriteLine("  benchmark visualize [--profiles small,medium,large] [--open]");
     Console.WriteLine("  benchmark summarize --comparisons <comparison.json,comparison.json,...>");
+    Console.WriteLine("  benchmark reclassify --comparison <comparison.json> --source-root <artifacts-root>");
     Console.WriteLine("  execution options: --log-level minimal|normal|verbose|debug --payload-capture none|metadata|full");
     Console.WriteLine("  model selection: --model fake|live (default fake; environment never opts in)");
     Console.WriteLine("  scope: --households N (first N dataset households, same scope and oracle for both modes)");

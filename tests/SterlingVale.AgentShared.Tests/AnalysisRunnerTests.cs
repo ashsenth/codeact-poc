@@ -19,6 +19,16 @@ public sealed class AnalysisRunnerTests
 {
     private const string FinalJson = "{\"households\":[]}";
 
+    [Fact]
+    public void Pricing_fingerprint_uses_numeric_values_not_decimal_scale()
+    {
+        var v2 = new PricingConfiguration { InputPerMillion = 2.50m, OutputPerMillion = 10.00m };
+        var v3 = new PricingConfiguration { InputPerMillion = 2.5m, OutputPerMillion = 10.0m };
+        Assert.Equal(v2.Fingerprint(), v3.Fingerprint());
+        Assert.Equal(v2.EstimateCost(123, 456), v3.EstimateCost(123, 456));
+        Assert.NotEqual(v2.Fingerprint(), (v3 with { InputPerMillion = 2.6m }).Fingerprint());
+    }
+
     private static readonly PricingConfiguration Pricing = new()
     {
         InputPerMillion = 2.50m,

@@ -62,12 +62,17 @@ public sealed class BenchmarkHarness(Composition composition)
         var random = new Random((int)(seed & 0x7FFFFFFF));
 
         var warmupFailures = new List<FailureInfo>();
+        var warmupTrials = new List<TrialResult>();
         foreach (string mode in new[] { "classic", "codeact" })
         {
-            var failure = await WarmUpAsync(mode, request, comparisonId, cancellationToken).ConfigureAwait(false);
-            if (failure is null) continue;
-            warmupFailures.Add(failure);
-            break;
+            var warmup = await WarmUpAsync(mode, request, comparisonId, oracleDto, policyTargetClasses,
+                mode == "classic" ? classicFingerprints : codeactFingerprints, cancellationToken).ConfigureAwait(false);
+            warmupTrials.Add(warmup);
+            if (warmup.InfrastructureFailed || !warmup.TelemetryValid)
+            {
+                warmupFailures.Add(warmup.Failure ?? new("TelemetryReconciliationFailed", "Warm-up telemetry did not reconcile."));
+                break;
+            }
         }
 
         var results = new List<TrialResult>();
@@ -127,6 +132,7 @@ public sealed class BenchmarkHarness(Composition composition)
                     GranularToolCalls = m.GranularToolCallCount, SandboxCallbacks = m.SandboxCallbackCount,
                     ChildRunIds = record.ChildRuns.Select(child => child.Response.RunId).ToArray(),
                     Failure = FindFailure(record),
+                    ToolArgumentErrors = ToolArgumentErrors(record),
                     Diagnostics = record.Diagnostics,
                     InputTokens = m.InputTokens, OutputTokens = m.OutputTokens,
                     AnalysisDurationMs = m.Duration.TotalMilliseconds,
@@ -170,6 +176,7 @@ public sealed class BenchmarkHarness(Composition composition)
             ScopedSymbolCount = scopedPositions.Select(position => position.Symbol).Distinct().Count(),
             PromptRevision = Prompt.PromptId, PreviousPromptHash = Prompt.PreviousSharedHash,
             WarmupFailures = warmupFailures,
+            WarmupTrials = warmupTrials,
         }.ForPresentation();
     }
 
@@ -288,46 +295,57 @@ public sealed class BenchmarkHarness(Composition composition)
         };
     }
 
-    private async Task<FailureInfo?> WarmUpAsync(string mode, AnalysisRequest request, string comparisonId, CancellationToken cancellationToken)
+    private async Task<TrialResult> WarmUpAsync(string mode, AnalysisRequest request, string comparisonId,
+        ExposureReportDto oracle, IReadOnlyDictionary<string, IReadOnlyList<string>> policyTargetClasses,
+        FairnessFingerprints expected, CancellationToken cancellationToken)
     {
         try
         {
             var record = await BenchmarkWorker.RunAsync(composition, mode, request, comparisonId, "warmup",
                 cancellationToken, isWarmup: true).ConfigureAwait(false);
             composition.RunStore.Save(record);
-            var failure = FindFailure(record);
-            if (!record.Response.Metrics.TelemetryValid)
-                return new FailureInfo("TelemetryReconciliationFailed", $"Warm-up {mode} telemetry did not reconcile.");
-            var score = RunScore.ForFailure(record.Response.Status.ToString(), false,
-                failure?.Category == "InvalidModelOutput" ? CorrectnessScorer.Match.InvalidSchema : CorrectnessScorer.Match.Failed);
-            var trial = FailedTrial(0, 0, mode, 0) with { Status = record.Response.Status.ToString(), Failure = failure, Score = score };
-            return trial.InfrastructureFailed ? failure ?? new FailureInfo(record.Response.Status.ToString(), $"Warm-up {mode} failed.") : null;
+            var trial = AssessWarmup(record, oracle, policyTargetClasses);
+            if (!expected.ToDictionary().OrderBy(item => item.Key).SequenceEqual(
+                    record.Fingerprints.ToDictionary().OrderBy(item => item.Key)))
+                trial = trial with { Failure = new("FairnessMismatch", "Warm-up configuration differs from the comparison.") };
+            return trial;
         }
         catch (ClientResultException exception)
         {
-            return FailureInfo.FromException(exception);
+            return FailedTrial(0, 0, mode, 0) with { Failure = FailureInfo.FromException(exception) };
         }
     }
 
     internal static FailureInfo? FindFailure(RunRecord record)
     {
-        var failed = record.Events.FirstOrDefault(entry => entry.EventType == "WORKER_TERMINATED" && entry.ErrorCategory != "TimedOut")
-            ?? record.Events.FirstOrDefault(entry => entry.EventType == "MODEL_REQUEST_FAILED" &&
-                !(record.Response.Status == RunStatus.TimedOut && entry.ErrorCategory is "Cancelled" or "TimedOut"))
-            ?? record.Events.FirstOrDefault(entry => entry.ErrorCategory is not null);
-        if (record.Response.Status == RunStatus.TimedOut && failed?.ErrorCategory is "Cancelled" or "OperationCanceledException")
-            return new FailureInfo("TimedOut", "The configured per-run deadline expired.");
-        if (failed?.Data is not null)
-        {
-            var data = JsonSerializer.SerializeToElement(failed.Data);
-            if (data.TryGetProperty("failure", out var failure))
-                return failure.Deserialize<FailureInfo>(JsonSerializerOptions.Web);
-        }
-        if (failed is not null)
-            return new FailureInfo(failed.ErrorCategory!, "See the run timeline for failure evidence.");
+        var failures = record.ChildRuns.Select(FindFailure).Prepend(
+            RunValidity.FindFailure(record.Response.Status.ToString(), record.Events)).OfType<FailureInfo>().ToArray();
+        if (failures.Length > 0)
+            return failures.FirstOrDefault(failure => !RunValidity.IsModelOutcome(failure)) ?? failures[0];
         if (record.Response.Status == RunStatus.NotExecuted)
             return new FailureInfo("NoHyperlightGuest", "not executed: no Hyperlight guest");
-        return record.ChildRuns.Select(FindFailure).FirstOrDefault(failure => failure is not null);
+        return null;
+    }
+
+    private static int ToolArgumentErrors(RunRecord record) => RunValidity.ToolArgumentErrors(record.Events) +
+        record.ChildRuns.Sum(ToolArgumentErrors);
+
+    internal static TrialResult AssessWarmup(RunRecord record, ExposureReportDto oracle,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> policyTargetClasses)
+    {
+        var m = record.Response.Metrics;
+        var actual = record.Response.Report is null ? null : ReportJson.ToDto(record.Response.Report);
+        return new(0, 0, record.Mode, m.Duration.TotalMilliseconds, record.Response.Status.ToString(),
+            m.ToolCallCount, m.ModelTurnCount, m.ExecuteCodeCallCount, m.TotalTokens, m.EstimatedCostUsd,
+            record.Response.RunId, CorrectnessScorer.Score(actual, oracle, record.Response.Status.ToString(),
+                m.SchemaValid, policyTargetClasses))
+        {
+            Failure = FindFailure(record), TelemetryValid = m.TelemetryValid,
+            ToolArgumentErrors = ToolArgumentErrors(record), Diagnostics = record.Diagnostics,
+            InputTokens = m.InputTokens, OutputTokens = m.OutputTokens, AnalysisDurationMs = m.Duration.TotalMilliseconds,
+            SandboxCallbacks = m.SandboxCallbackCount, ReportStatus = actual?.Status,
+            MissingItems = actual?.MissingItems ?? [],
+        };
     }
 
     private static TrialResult FailedTrial(int pair, int orderIndex, string mode, double durationMs) =>

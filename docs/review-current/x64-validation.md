@@ -1,5 +1,45 @@
 # Optional x64 validation workflow
 
+## Approved v3 continuation gate (November 16, 2026)
+
+The recovered tool-input-error validity fix is shared by Classic, CodeAct, warm-ups and
+offline reclassification. Explicit input validation errors followed by model continuation
+are recorded model behavior. Per-trial `toolArgumentErrors` deduplicates host/model wrapper
+events; warm-up records remain separate and unmeasured. Infrastructure/runtime/implementation
+faults retain precedence over model task failures.
+
+Pricing fingerprints now use normalized numeric decimal values. Actual v2/v3 metadata has
+identical rates and complete pricing provenance, verified against the new .NET fingerprint
+`1d3ecc56b26a79ade912464e4e17a7d00548faeb991f10846bb3a8e06a2ad41c`.
+No raw pricing fields or fingerprints were edited.
+
+N=1 reclassification wrote a separate
+`small-20261116204456-a702d6024c2a4eb1afcc742408d492f0-reclassified` comparison.
+Every original raw file and the original comparison passed SHA-256 verification against
+`artifacts/v3-sweep-20261116/n1-raw-before.sha256`. All ten match labels, comparison validity,
+correctness/unearned counts, task outcomes, usage, cost and timing measurements are unchanged.
+All ten measured tool-argument counts are zero. Old warm-up oracle scores are unassessed;
+their validity/counts are derived from raw events without a replay.
+
+The three non-correct N=1 CodeAct trials are documented in README Results: pair 2 is a
+zero/empty placeholder; pair 4 omits all four required breaches and has an inconsistent flag;
+pair 5's null baseCurrency fails the schema before semantic completeness can be assessed.
+No prompt text changed.
+
+Reproducibility helpers now live in committed `scripts/vm/`: run/check profiles, sample export
+and the Diagnosis oracle/sample project. No hard-coded VM paths/endpoints/credentials remain
+in these helpers. The new checker was run against N=1 and independently verified raw counts,
+model configuration, pricing/provenance, fingerprints, scope and timelines. Oracle/sample
+helpers were built and exercised against historical synthetic evidence without live calls.
+
+Pre-live validation: Release solution and Diagnosis builds, zero warnings/errors;
+**275 non-live tests passed, zero failed/skipped**, ten projects. TRX:
+`artifacts/v3-sweep-20261116/tests-validity-fix/`.
+After commit/push, preserve the stopped N=3 directory/log under `aborted-<UTC timestamp>`,
+then run new N=3 and full Small with the committed scripts, five pairs each under nohup.
+Archive directories are excluded from summaries. Commit/push after each profile;
+stop on infrastructure failures only. Medium/Large remain unauthorized.
+
 ## v3 implementation gate (November 16, 2026)
 
 The approved shared-prompt v3 additions are scope-aware and identical across modes.

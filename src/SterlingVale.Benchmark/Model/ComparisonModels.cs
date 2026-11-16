@@ -35,9 +35,10 @@ public sealed record TrialResult(
     public int? PricedPositionCount { get; init; }
     public IReadOnlyList<string> UnpricedSymbols { get; init; } = [];
     public double? AnalysisDurationMs { get; init; }
+    public int? ToolArgumentErrors { get; init; }
 
     public bool InfrastructureFailed => Failure is { HttpStatus: not null } ||
-        Failure is { Category: not ("InvalidModelOutput" or "IncompleteEvidence" or "TurnLimit" or "TimedOut") } ||
+        Failure is { } failure && !RunValidity.IsModelOutcome(failure) ||
         Status is not ("Completed" or "Incomplete" or "Capped" or "TimedOut" or "Failed") ||
         Status == "Failed" && Score.MatchClass != CorrectnessScorer.Match.InvalidSchema;
 }
@@ -128,7 +129,7 @@ public sealed record ComparisonReport(
         RawTrials.Count(trial => trial.Score.MatchClass is CorrectnessScorer.Match.Exact or CorrectnessScorer.Match.WithinTolerance),
         RawTrials.Where(trial => trial.Status != "Completed")
             .Select(trial => trial.Failure?.Category ?? trial.Status).Distinct(StringComparer.Ordinal).ToArray(),
-        Fairness.Matched && RawTrials.All(trial => trial.TelemetryValid),
+        Fairness.Matched && RawTrials.Concat(WarmupTrials).All(trial => trial.TelemetryValid),
         InfrastructureFailures());
 
     public ComparisonReport ForPresentation() => !Outcome.IsValid ? this with
@@ -138,10 +139,10 @@ public sealed record ComparisonReport(
 
     private IReadOnlyList<string> InfrastructureFailures()
     {
-        var failures = RawTrials.Where(trial => trial.InfrastructureFailed)
+        var failures = RawTrials.Concat(WarmupTrials).Where(trial => trial.InfrastructureFailed)
             .Select(trial => trial.Failure?.Category ?? trial.Status).Concat(WarmupFailures.Select(failure => failure.Category)).ToList();
         if (!Fairness.Matched) failures.Add("FairnessMismatch: " + string.Join(", ", Fairness.Mismatches));
-        if (RawTrials.Any(trial => !trial.TelemetryValid)) failures.Add("TelemetryReconciliationFailed");
+        if (RawTrials.Concat(WarmupTrials).Any(trial => !trial.TelemetryValid)) failures.Add("TelemetryReconciliationFailed");
         if (RawTrials.Count != MeasuredTrials * 2 ||
             RawTrials.GroupBy(trial => trial.PairId).Any(pair => pair.Count() != 2 ||
                 pair.Count(trial => trial.Mode == "classic") != 1 || pair.Count(trial => trial.Mode == "codeact") != 1))
@@ -167,6 +168,8 @@ public sealed record ComparisonReport(
     public string? PreviousPromptHash { get; init; }
     public string? PromptRevision { get; init; }
     public IReadOnlyList<FailureInfo> WarmupFailures { get; init; } = [];
+    public IReadOnlyList<TrialResult> WarmupTrials { get; init; } = [];
+    public string? ReclassifiedFrom { get; init; }
 }
 
 public sealed record ComparisonOutcome(int CompletedRuns, int TotalRuns, int FailedRuns, int CorrectRuns,

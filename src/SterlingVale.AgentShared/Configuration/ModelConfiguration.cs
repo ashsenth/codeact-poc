@@ -87,7 +87,7 @@ public sealed record PricingConfiguration
     /// <summary>A deterministic fingerprint over the pricing fields.</summary>
     public string Fingerprint() => Hashing.Sha256Hex(string.Create(
         CultureInfo.InvariantCulture,
-        $"in={InputPerMillion};out={OutputPerMillion}"));
+        $"in={InputPerMillion:G29};out={OutputPerMillion:G29}"));
 }
 
 /// <summary>
