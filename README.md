@@ -186,15 +186,15 @@ dotnet run -c Release --no-build --project $benchmark -- visualize
 Stop on failure; an old dashboard is not evidence of success. `compare` runs all available profiles;
 `visualize` combines the latest per profile. Its printed HTML path opens without external assets.
 
-Actual output excerpt, with changing comparison ID omitted:
+Representative output shape, with changing IDs omitted and current validity labels:
 
 ```text
 [small] VALID — 10 households, 33 accounts, 370 positions; on-disk manifest present
 [medium] VALID — 40 households, 156 accounts, 2201 positions; on-disk manifest present
 [large] VALID — 120 households, 485 accounts, 7198 positions; on-disk manifest present
 Model selected: fake. Reason: explicit fake control; Azure environment variables are ignored.
-Completion: 2/2; correctness (Exact/WithinTolerance): 2/2
-COMPARISON VALID
+Correctness (Exact/WithinTolerance): 2/2; completion: 2/2
+COMPARISON VALID: model task outcomes recorded; oracle correct 2/2
 Execution kind: offline-fake-control
 Fairness: MATCHED; telemetry: VALID (accounting only, not success)
 ```
@@ -438,11 +438,13 @@ Correctness comes first; measurements include all task outcomes, not just oracle
 | --- | --- | --- | --- | --- | --- | --- |
 | N=1 | VALID | Completed / Partial, 3/3 | Completed / Exact, 3/3 | 23,739/724 / 15,875/2,951 | 16.429 / 16.945 | 0.0665875 / 0.0691975 |
 | N=3 | VALID | Completed / Partial, 3/3 | Completed / Exact, 2/3; Failed / InvalidSchema, 1/3 | 39,321/1,646 / 22,610/6,365 | 17.510 / 27.201 | 0.1147625 / 0.1216850 |
+| Full Small (10) | VALID | Completed / Partial, 3/3 | Completed / Partial, 3/3 | 68,608/1,580 / 21,175/2,088 | 23.418 / 16.350 | 0.1873200 / 0.0738175 |
 
 No efficiency winner is inferred from different correctness. All individual trials, turns,
 named calls, execute_code and callback counts are in the
 [sweep record](docs/review-current/x64-validation.md#three-trial-sweep-and-revised-validity-november-16-2026).
-Full Small is next; Medium/Large remain unapproved.
+The approved sweep is complete and stopped. Medium/Large were not run and require approval.
+Full Small produced no oracle-correct trial in either mode, despite schema-valid completion.
 
 ## 9. Project status
 
@@ -453,7 +455,7 @@ Full Small is next; Medium/Large remain unapproved.
 | Observability | Working offline: correlation, journals, capture policy, timelines, counts, reconciliation. |
 | Large payload capture | Bounded payloads with explicit flags; transcript records remain valid JSONL and retain later calls. Exact oversized payloads remain unavailable. |
 | Batched Classic | Offline tested; live quality and the changed comparison methodology remain unverified. |
-| Live Azure OpenAI | VM managed-identity call succeeded; initial N=1 CodeAct Exact with real execution, Classic InvalidSchema. That is a recorded model outcome under the current validity rule, not an efficiency win. |
+| Live Azure OpenAI | Three-trial N=1, N=3 and full Small sweep complete: all comparisons VALID. Oracle-correct Classic/CodeAct counts: 0/3 vs 3/3; 0/3 vs 2/3; 0/3 vs 0/3. Real guest/callback evidence verified. No efficiency-win claim; Medium/Large not run. |
 | Real Hyperlight | Five runtime tests pass on x64. Native cancellation is a retained known issue; benchmark workers provide external deadline containment. |
 | Remote clone / Linux / macOS | Ubuntu x64 local-source clean-clone restore/build/tests verified; remote-origin clone and macOS pending. |
 | Provision/bootstrap scripts | VM bootstrap ran with approval November 13; KVM access verified after reconnect. Provisioning script remains unexecuted here. |
@@ -467,7 +469,7 @@ with source commits/dates and **NOT RE-VERIFIED** labels, not as current verifie
 
 1. **Native cancellation:** retain the `HyperlightKnownIssue` test until a supported SDK interrupt exists; benchmark watchdog containment is not an SDK fix.
 2. **API watchdog gap:** the Classic and CodeAct API hosts lack the benchmark worker watchdog; native execution can still hang a direct API request. Add equivalent containment before treating live API hosting as protected.
-3. **Live sweep:** three paired trials at N=1, N=3, then full Small are approved; record all task outcomes and stop on infrastructure invalidity. Medium/Large require separate approval.
+3. **Further live scaling needs approval:** three paired trials at N=1, N=3 and full Small are recorded. Investigate Partial/InvalidSchema task outcomes before interpreting efficiency; Medium/Large require separate approval.
 4. **Remote clean-clone check:** repeat the quickstart with an empty checkout/package environment; local cached restore is narrower evidence.
 5. **Linux script verification:** fix the SSH-key regex rejecting valid ECDSA keys such as `ecdsa-sha2-nistp256`, then test approved setup/validation on x64; static review is not a KVM test.
 6. **Exercise new transcript captures live:** JSONL framing is fixed and regression-tested offline; confirm the per-field capture envelopes with real generated Python and callbacks on x64.

@@ -324,3 +324,48 @@ Named-tool order is the same seven-tool order defined above.
 Evidence: `artifacts/phase-b-sweep-20261116/n3/` and `n3.log`, including warm-ups
 (not measured), source SHA, original model responses/Python and full journals.
 The benchmark continues to the approved full Small profile; Medium/Large remain unapproved.
+
+### Full Small (10 households), three measured pairs
+
+Source checkout: `55dcaf075369d415abc38dfc59cdcedd42234712` (same benchmark code as
+`7fea4ec`; the intervening commits only recorded scoped results). Comparison:
+`small-20261116184051-6a9a3fe1d0c148d8bff90034aee2e297`.
+All ten households, 33 accounts and 370 positions; no `--households` override.
+Dataset/model/prompt hashes, guest, pricing and all limits are identical to the scoped runs.
+All six measured configurations/provenance were independently checked again.
+
+**VALID**, exit zero; fairness matched and telemetry reconciled in every measured trial.
+Both modes **0/3 oracle-correct**, all Completed/Partial. Classic emitted only one household
+per report; CodeAct emitted ten, but neither mode found the oracle's flagged households or
+breaches (flagged/breach recall zero). All reports declared `complete` with no missingItems.
+These are failed model task outcomes despite schema-valid completion, not useful equivalent
+work. CodeAct's zero allocation/trade error fields do not override the Partial classification
+or missing breach/flag recall. No efficiency winner is inferred from lower usage/duration.
+
+Named-tool order is the same seven-tool order defined above.
+
+| Trial | Mode | Status / oracle | Turns | Named tools, order above | Input / output tokens | Analysis s | Est. USD | execute_code | Callbacks |
+| --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | Classic | Completed / Partial | 8 | 1/10/10/10/17/3/17 | 68,608 / 1,575 | 23.525 | 0.1872700 | 0 | 0 |
+| 1 | CodeAct | Completed / Partial | 5 | 4/15/15/50/1096/1096/548 | 21,857 / 2,361 | 20.329 | 0.0782525 | 4 | 2824 |
+| 2 | Classic | Completed / Partial | 8 | 1/10/10/10/17/3/17 | 68,608 / 1,600 | 22.201 | 0.1875200 | 0 | 0 |
+| 2 | CodeAct | Completed / Partial | 5 | 4/15/15/50/548/548/0 | 19,775 / 1,978 | 16.350 | 0.0692175 | 4 | 1180 |
+| 3 | Classic | Completed / Partial | 8 | 1/10/10/10/17/3/17 | 68,608 / 1,580 | 23.418 | 0.1873200 | 0 | 0 |
+| 3 | CodeAct | Completed / Partial | 5 | 4/15/15/50/548/548/548 | 21,175 / 2,088 | 16.341 | 0.0738175 | 4 | 1728 |
+| Median | Classic | Partial 3/3; correct 0/3 | 8 | 1/10/10/10/17/3/17 | 68,608 / 1,580 | 23.418 | 0.1873200 | 0 | 0 |
+| Median | CodeAct | Partial 3/3; correct 0/3 | 5 | 4/15/15/50/548/548/548 | 21,175 / 2,088 | 16.350 | 0.0738175 | 4 | 1728 |
+
+Every measured CodeAct trial was independently checked against its actual guest events,
+not inferred from configuration: N=1 had 5 guest returns / 5 successful executions; N=3 had
+6 returns / 5 successful executions; full Small had 12 returns / 9 successful executions.
+Python execution failures remain model task evidence, not silently counted as successful
+programs. All returns identify runtime `hyperlight`; there are no not-executed/stand-in events.
+Actual callback-start event counts equal every trial's reported callbacks, including repeated
+calls across code executions. All three comparisons' efficiency deltas are null.
+
+Evidence: `artifacts/phase-b-sweep-20261116/full-small/` and `full-small.log`.
+Each scope has two persisted labelled warm-ups, excluded from its six measured rows.
+Results were committed/pushed after N=1 and N=3 before launching the next profile.
+**STOP:** the approved N=1, N=3, full Small sweep is complete. Medium/Large were not run
+and require separate approval. No prompts, limits, schema, package pins or Azure resource
+settings changed during the sweep.
