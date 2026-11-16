@@ -251,8 +251,9 @@ Unearned counts are over all trials; capped/schema-invalid outputs are unassesse
 | --- | --- | --- | --- | ---: | --- | ---: | ---: | ---: |
 | N=1 | Classic | 0/5 (0%) | 4/5 (assessed 4/5) | 0 | Unearned 4, Capped 1 | 25,302 | 0.0690825 | 16.432 |
 | N=1 | CodeAct | 2/5 (40%) | 2/5 (assessed 4/5) | 0 | Exact 2, Unearned 2, InvalidSchema 1 | 9,955 | 0.0380500 | 12.288 |
-| N=3 | Both | Pending rerun | Unassessed | unavailable | Original attempt stopped during warm-up; preserved separately | unavailable | unavailable | unavailable |
-| Full Small | Both | Pending N=3 | Unassessed | unavailable | Authorized after N=3 succeeds as infrastructure evidence | unavailable | unavailable | unavailable |
+| N=3 | Classic | 0/5 (0%) | 2/5 (assessed 2/5) | 0 | Unearned 2, Capped 3 | 225,429 | 0.5759400 | 49.642 |
+| N=3 | CodeAct | 0/5 (0%) | 3/5 (assessed 4/5) | 8 | Unearned 3, InvalidSchema 1, Partial 1 | 24,730 | 0.0802000 | 15.344 |
+| Full Small | Both | Pending run | Unassessed | unavailable | Authorized after N=3 record is committed/pushed | unavailable | unavailable | unavailable |
 
 **The original sweep stopped at N=3 before measured trials.** The CodeAct warm-up
 called `get_fx` with `"Unknown"` and then null as `toCurrency`, later finishing with a
@@ -268,6 +269,9 @@ Failure selection is now shared by the service, benchmark and offline reclassifi
 regressions cover both modes and historical copied terminal errors. The exact stopped
 raw evidence reclassifies as a model/schema failure, with valid telemetry and no
 infrastructure failure; zero measured trials remain zero. Both stopped attempts are preserved.
+The fresh N=3 comparison is VALID: all five measured pairs and both warm-ups have valid
+telemetry and no infrastructure failures. Classic's warm-up was UnearnedCompleteness;
+CodeAct's was schema-invalid. Both were recorded and execution continued as approved.
 `toolArgumentErrors` counts explicit tool argument/not-found validation failures once per
 invocation (not duplicate model/host wrapper events); it is unavailable in unassessed historical
 reports. Warm-up outcomes/counts are saved separately and excluded from measured aggregates.
@@ -346,6 +350,7 @@ Descriptive CodeAct-minus-Classic changes; no correctness-equivalent efficiency 
 | Scope | Median tokens | Median est. cost | Median analysis time |
 | --- | --- | --- | --- |
 | N=1 | -60.7%; correct 0/5 vs 2/5, unearned 4/5 vs 2/5; not a correctness-equivalent win | -44.9%; correct 0/5 vs 2/5, unearned 4/5 vs 2/5; not a correctness-equivalent win | -25.2%; correct 0/5 vs 2/5, unearned 4/5 vs 2/5; not a correctness-equivalent win |
+| N=3 | -89.0%; correct 0/5 vs 0/5, unearned 2/5 vs 3/5; not a correctness-equivalent win | -86.1%; correct 0/5 vs 0/5, unearned 2/5 vs 3/5; not a correctness-equivalent win | -69.1%; correct 0/5 vs 0/5, unearned 2/5 vs 3/5; not a correctness-equivalent win |
 
 #### Historical v2 cohort (not rescored)
 

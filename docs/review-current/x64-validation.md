@@ -1,5 +1,39 @@
 # Optional x64 validation workflow
 
+## v3 N=3 fresh five-pair result (November 16, 2026)
+
+The committed runner ran under nohup from pushed source
+`1cfa1c91b1cb18976bc23c850bb633d3ced1c727`.
+Comparison `small-20261116213201-b41838e36f6d4c1cb9bbf1eded261e48` is VALID:
+five measured pairs, one warm-up per mode, unchanged limits/model/pricing/scope
+fingerprints, valid telemetry for every run, no infrastructure failures.
+The committed checker verified raw tool-error counts and metadata and regenerated
+the explicitly scoped v3 Markdown/HTML summary. Historical v2 is unchanged.
+
+| Mode | Correct | Unearned (assessed) | Tool argument errors | Median tokens | Median est. USD | Median analysis s |
+|---|---|---|---:|---:|---:|---:|
+| Classic | 0/5 | 2/5 (2/5) | 0 | 225,429 | 0.5759400 | 49.642 |
+| CodeAct | 0/5 | 3/5 (4/5) | 8 | 24,730 | 0.0802000 | 15.344 |
+
+Classic: UnearnedCompleteness 2, Capped 3. CodeAct: UnearnedCompleteness 3,
+InvalidSchema 1, Partial 1. CodeAct descriptive deltas are -89.0% tokens,
+-86.1% estimated cost, -69.1% analysis time; neither mode was correct, so this
+is not a correctness-equivalent efficiency win. Warm-ups (excluded from aggregates):
+Classic Completed/UnearnedCompleteness, CodeAct Failed/InvalidSchema, zero tool
+argument errors each. The model failure did not stop measured execution.
+
+Both earlier zero-measured-trial attempts/logs remain outside summaries:
+`artifacts/v3-sweep-20261116/aborted-20261116T212359Z/` and
+`artifacts/v3-sweep-20261116/aborted-20261116T213138Z/`.
+The second archive's 58 files plus log were verified byte-for-byte before/after
+the move; its separate reclassification preserves the original raw events.
+N=1 source SHA-256s still match their manifest; its committed checker passes
+against the current binaries. The separate Diagnosis Release build also passes,
+zero warnings/errors. The code gate remains 279 non-live passes.
+
+Commit/push this N=3 record before starting full Small, five pairs under nohup.
+No Medium/Large.
+
 ## Shared terminal-failure propagation correction (November 16, 2026)
 
 The N=3 continuation from `b532c72` stopped during CodeAct warm-up, before any
