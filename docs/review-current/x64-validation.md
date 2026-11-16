@@ -293,3 +293,34 @@ unchanged shared prompt. Evidence: `artifacts/phase-b-sweep-20261116/n1/` and `n
 The initial launch used an absent default data directory and exited before warm-ups/model
 calls or comparison creation. Its `n1-missing-data-startup.log` is retained; the existing
 Phase B data directory was then selected and all manifests validated before this live run.
+
+### Small N=3, three measured pairs
+
+Source checkout: `5ea78816437f2a3bd9e246f530cf61975fddbff4` (same benchmark code as
+`7fea4ec`, subsequent changes only recorded N=1). Comparison:
+`small-20261116183702-cd37a0744d8245e1ae955d9cf00cd06c`.
+Dataset/model/prompt hashes, guest, pricing and all limits are identical to N=1; scope is three
+households for both modes and the oracle. All six measured configurations/provenance were
+independently checked again.
+
+**VALID**, exit zero; fairness matched and telemetry reconciled in every measured trial.
+Classic **0/3 oracle-correct**, all Completed/Partial; CodeAct **2/3 Exact**, one
+Failed/InvalidSchema. The latter is a model task outcome, not infrastructure invalidity,
+and is retained in every median. No efficiency winner is inferred.
+
+Named-tool order is the same seven-tool order defined above.
+
+| Trial | Mode | Status / oracle | Turns | Named tools, order above | Input / output tokens | Analysis s | Est. USD | execute_code | Callbacks |
+| --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | Classic | Completed / Partial | 5 | 0/3/3/11/17/3/0 | 39,321 / 1,646 | 16.793 | 0.1147625 | 0 | 0 |
+| 1 | CodeAct | Completed / Exact | 4 | 1/3/3/11/117/117/0 | 34,324 / 6,365 | 30.678 | 0.1494600 | 3 | 252 |
+| 2 | Classic | Completed / Partial | 5 | 0/3/3/11/17/3/0 | 39,321 / 1,641 | 19.733 | 0.1147125 | 0 | 0 |
+| 2 | CodeAct | Completed / Exact | 2 | 1/3/3/11/117/117/0 | 10,656 / 3,017 | 13.943 | 0.0568100 | 1 | 252 |
+| 3 | Classic | Completed / Partial | 5 | 0/3/3/11/17/3/0 | 39,321 / 1,646 | 17.510 | 0.1147625 | 0 | 0 |
+| 3 | CodeAct | Failed / InvalidSchema | 3 | 1/3/3/11/117/77/0 | 22,610 / 6,516 | 27.201 | 0.1216850 | 2 | 212 |
+| Median | Classic | Partial 3/3; correct 0/3 | 5 | 0/3/3/11/17/3/0 | 39,321 / 1,646 | 17.510 | 0.1147625 | 0 | 0 |
+| Median | CodeAct | Exact 2/3; InvalidSchema 1/3 | 3 | 1/3/3/11/117/117/0 | 22,610 / 6,365 | 27.201 | 0.1216850 | 2 | 252 |
+
+Evidence: `artifacts/phase-b-sweep-20261116/n3/` and `n3.log`, including warm-ups
+(not measured), source SHA, original model responses/Python and full journals.
+The benchmark continues to the approved full Small profile; Medium/Large remain unapproved.

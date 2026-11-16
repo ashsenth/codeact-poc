@@ -437,11 +437,12 @@ Correctness comes first; measurements include all task outcomes, not just oracle
 | Small scope | Comparison | Classic status / oracle | CodeAct status / oracle | Median input/output tokens, Classic / CodeAct | Median analysis seconds, Classic / CodeAct | Median est. USD, Classic / CodeAct |
 | --- | --- | --- | --- | --- | --- | --- |
 | N=1 | VALID | Completed / Partial, 3/3 | Completed / Exact, 3/3 | 23,739/724 / 15,875/2,951 | 16.429 / 16.945 | 0.0665875 / 0.0691975 |
+| N=3 | VALID | Completed / Partial, 3/3 | Completed / Exact, 2/3; Failed / InvalidSchema, 1/3 | 39,321/1,646 / 22,610/6,365 | 17.510 / 27.201 | 0.1147625 / 0.1216850 |
 
 No efficiency winner is inferred from different correctness. All individual trials, turns,
 named calls, execute_code and callback counts are in the
 [sweep record](docs/review-current/x64-validation.md#three-trial-sweep-and-revised-validity-november-16-2026).
-N=3 and full Small are next; Medium/Large remain unapproved.
+Full Small is next; Medium/Large remain unapproved.
 
 ## 9. Project status
 
