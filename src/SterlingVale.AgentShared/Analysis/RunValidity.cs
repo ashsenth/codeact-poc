@@ -1,8 +1,7 @@
 using System.Text.Json;
-using SterlingVale.AgentShared.Analysis;
 using SterlingVale.Telemetry;
 
-namespace SterlingVale.Benchmark;
+namespace SterlingVale.AgentShared.Analysis;
 
 public static class RunValidity
 {
@@ -19,9 +18,13 @@ public static class RunValidity
     {
         var failures = events.Where(entry => entry.ErrorCategory is not null &&
                 !IsRecoveredArgumentError(entry, events) &&
+                !(entry.EventType == "RUN_FAILED" && events.Any(prior =>
+                    prior.ErrorCategory == entry.ErrorCategory && IsRecoveredArgumentError(prior, events))) &&
                 !(status == "TimedOut" && entry.ErrorCategory is "Cancelled" or "OperationCanceledException"))
             .Select(Failure).ToArray();
-        return failures.FirstOrDefault(failure => !IsModelOutcome(failure)) ?? failures.FirstOrDefault();
+        return failures.FirstOrDefault(failure => !IsModelOutcome(failure)) ?? failures.FirstOrDefault() ??
+            (status == "Failed" && events.Any(entry => entry.EventType == "JSON_VALIDATION_COMPLETED" && entry.Status == "failed")
+                ? new("InvalidModelOutput", "The model did not return a valid non-empty analysis report.") : null);
     }
 
     private static bool IsArgumentError(ExecutionEvent entry) =>

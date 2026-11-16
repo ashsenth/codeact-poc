@@ -1,5 +1,29 @@
 # Optional x64 validation workflow
 
+## Shared terminal-failure propagation correction (November 16, 2026)
+
+The N=3 continuation from `b532c72` stopped during CodeAct warm-up, before any
+measured trials. A recovered `get_fx` argument error was copied by AnalysisService
+into the final `RUN_FAILED` event, although the actual final outcome was schema-invalid
+model output. This was the remaining layer of the approved classification fix,
+not observed Azure/auth/runtime failure.
+
+Failure selection now lives in AgentShared and is used by AnalysisService as well
+as the benchmark/reclassifier. Recovered input errors, including their historical
+terminal echoes, cannot override later model outcomes; genuine infrastructure
+events retain precedence. Both modes have regression cases for the exact sequence.
+Offline reclassification of the stopped attempt's raw events confirms no warm-up
+infrastructure failures and one CodeAct tool argument error. Its comparison stays
+invalid solely because no measured pairs exist; no raw artifact was rewritten.
+
+Release solution build: zero warnings/errors. **279 non-live tests passed, zero
+failed/skipped**, ten projects; TRX:
+`artifacts/v3-sweep-20261116/tests-shared-failure-fix/`.
+No prompt, schema, tool, pricing, model configuration or feedback/retry behavior changed.
+Commit/push this correction before archiving the second zero-trial attempt and
+starting a fresh N=3 via the committed runner. Full Small follows only after
+checking and committing/pushing N=3; Medium/Large remain unauthorized.
+
 ## Approved v3 continuation gate (November 16, 2026)
 
 The recovered tool-input-error validity fix is shared by Classic, CodeAct, warm-ups and

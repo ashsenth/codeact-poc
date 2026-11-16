@@ -87,7 +87,7 @@ public sealed class AnalysisService(
         }
 
         execution.Emit("JSON_VALIDATION_COMPLETED", record.Response.Metrics.SchemaValid ? "ok" : "failed");
-        var priorFailure = execution.Snapshot().FirstOrDefault(entry => entry.ErrorCategory is not null);
+        var priorFailure = RunValidity.FindFailure(record.Response.Status.ToString(), execution.Snapshot());
         var fallbackFailure = record.Response.Status switch
         {
             RunStatus.NotExecuted => new FailureInfo("NoHyperlightGuest", "not executed: no Hyperlight guest"),
@@ -99,11 +99,11 @@ public sealed class AnalysisService(
         };
         execution.Emit(record.Response.Status == RunStatus.Completed ? "RUN_COMPLETED" : "RUN_FAILED",
             record.Response.Status.ToString(), record.Response.Metrics.Duration.TotalMilliseconds,
-            errorCategory: record.Response.Status == RunStatus.Completed ? null : priorFailure?.ErrorCategory ?? fallbackFailure.Category,
+            errorCategory: record.Response.Status == RunStatus.Completed ? null : priorFailure?.Category ?? fallbackFailure.Category,
             data: new { diagnostics, reportStatus = record.Response.Report?.Status.ToString().ToLowerInvariant(),
                 missingItems = execution.Payloads.Capture(record.Response.Report?.MissingItems ?? []),
                 failure = record.Response.Status == RunStatus.Completed ? null :
-                priorFailure is null ? fallbackFailure : FailureFromEvent(priorFailure) });
+                priorFailure ?? fallbackFailure });
         return record with { Execution = execution.Context, Events = execution.Snapshot(), PayloadCaptureMode = execution.Payloads.Mode };
         }
 
@@ -118,14 +118,6 @@ public sealed class AnalysisService(
             }));
             throw;
         }
-    }
-
-    private static FailureInfo FailureFromEvent(ExecutionEvent entry)
-    {
-        var data = System.Text.Json.JsonSerializer.SerializeToElement(entry.Data);
-        return data.TryGetProperty("failure", out var failure)
-            ? System.Text.Json.JsonSerializer.Deserialize<FailureInfo>(failure)!
-            : new FailureInfo(entry.ErrorCategory!, "See the run timeline for failure evidence.");
     }
 
     private static string BuildUserMessage(AnalysisRequest request)

@@ -147,7 +147,7 @@ More detail: [architecture](docs/architecture.md) and [security model](docs/secu
 
 **Verification scope:** the sequence below succeeded in a clean local-source clone on Windows
 ARM64. Ubuntu x64 additionally passed local-source clean-clone locked restore, Release build and
-231 non-live tests at `3088451`, using an empty NuGet cache. The current v3 changes pass 275.
+231 non-live tests at `3088451`, using an empty NuGet cache. The current v3 changes pass 279.
 The complete quickstart on Linux/macOS and a remote-origin clone are **not yet verified**.
 
 Clone setup template (**remote clone not yet verified**; replace the placeholder):
@@ -205,7 +205,7 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Current result: **275 passed, 0 failed, 0 skipped across ten projects**, including
+Current result: **279 passed, 0 failed, 0 skipped across ten projects**, including
 worker containment/recovery and model-outcome/infrastructure-validity regressions. On the ARM64 laptop the six Hyperlight tests
 previously skipped; on Ubuntu x64 five pass, while native cancellation remains a labelled
 known issue. Neither a skip nor an excluded known issue is a pass.
@@ -256,12 +256,18 @@ Unearned counts are over all trials; capped/schema-invalid outputs are unassesse
 
 **The original sweep stopped at N=3 before measured trials.** The CodeAct warm-up
 called `get_fx` with `"Unknown"` and then null as `toCurrency`, later finishing with a
-schema-valid placeholder report and valid telemetry. The existing harness promotes the first
+schema-valid placeholder report and valid telemetry. The previous failure selection promoted the first
 error-category event (even a recoverable model-generated tool-argument error) to a run failure;
 warm-up classification then marks the comparison INVALID before measured trials start.
 This was a **harness classification blocker**, not an observed Azure/auth/worker outage.
 The approved correction now treats explicit tool input errors returned to the model with
 subsequent model continuation as model behavior in both modes and in warm-ups.
+The first continuation attempt also stopped before measured trials: the shared analysis
+service copied a recovered argument error into the terminal schema-failure event.
+Failure selection is now shared by the service, benchmark and offline reclassifier;
+regressions cover both modes and historical copied terminal errors. The exact stopped
+raw evidence reclassifies as a model/schema failure, with valid telemetry and no
+infrastructure failure; zero measured trials remain zero. Both stopped attempts are preserved.
 `toolArgumentErrors` counts explicit tool argument/not-found validation failures once per
 invocation (not duplicate model/host wrapper events); it is unavailable in unassessed historical
 reports. Warm-up outcomes/counts are saved separately and excluded from measured aggregates.

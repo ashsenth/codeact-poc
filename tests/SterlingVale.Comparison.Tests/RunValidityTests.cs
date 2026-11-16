@@ -24,17 +24,22 @@ public sealed class RunValidityTests
     };
 
     [Theory]
-    [InlineData("classic", "ToolArgumentException")]
-    [InlineData("codeact", "ToolArgumentException")]
-    [InlineData("classic", "ToolNotFoundException")]
-    [InlineData("codeact", "ToolNotFoundException")]
-    public void Returned_argument_errors_are_counted_once_and_do_not_invalidate_model_or_warmup_outcomes(string mode, string category)
+    [InlineData("classic", "ToolArgumentException", false)]
+    [InlineData("codeact", "ToolArgumentException", false)]
+    [InlineData("classic", "ToolNotFoundException", false)]
+    [InlineData("codeact", "ToolNotFoundException", false)]
+    [InlineData("classic", "ToolArgumentException", true)]
+    [InlineData("codeact", "ToolArgumentException", true)]
+    [InlineData("classic", "ToolNotFoundException", true)]
+    [InlineData("codeact", "ToolNotFoundException", true)]
+    public void Returned_argument_errors_are_counted_once_and_do_not_invalidate_model_or_warmup_outcomes(string mode, string category, bool copiedToTerminal)
     {
         var record = Record(mode, [
             Event(1, "TOOL_CALL_FAILED", category, new { invocationId = "child", parentInvocationId = "model" }),
             Event(2, "MODEL_TOOL_CALL_FAILED", category, new { invocationId = "model" }),
             Event(3, "MODEL_REQUEST_STARTED"),
-            Event(4, "RUN_FAILED", "InvalidModelOutput"),
+            Event(4, "JSON_VALIDATION_COMPLETED") with { Status = "failed" },
+            Event(5, "RUN_FAILED", copiedToTerminal ? category : "InvalidModelOutput"),
         ]);
         Assert.Equal(1, RunValidity.ToolArgumentErrors(record.Events));
         Assert.Equal("InvalidModelOutput", BenchmarkHarness.FindFailure(record)!.Category);
