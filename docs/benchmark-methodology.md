@@ -50,8 +50,22 @@ Each run's structured output is compared to the deterministic **oracle** (never 
 - Risk-breach precision & recall
 - Allocation mean absolute error; maximum allocation error
 - Trade-notional mean absolute error (as a fraction of household total)
-- Match classification: `Exact`, `WithinTolerance`, `Partial`, `InvalidSchema`, `Failed`,
+- Match classification: `Exact`, `WithinTolerance`, `Partial`, `UnearnedCompleteness`, `InvalidSchema`, `Failed`,
   `TimedOut`, `Capped`
+
+Completeness detection uses the same in-scope household set as the oracle, including N=1/N=3
+subsets; tools and datasets are not filtered or changed. It reports missing households,
+allocation/drift entries for policy target classes, oracle-required breach counts by kind,
+and trades for oracle-breached classes (when the oracle produces trades). Flags must follow
+reported breaches. No absent breach is required when the oracle finds none; detection cannot
+prove that a non-breached limit was actually evaluated.
+
+A schema-valid report claiming complete with missing components is `UnearnedCompleteness`;
+a report declaring incomplete stays `Partial`. Missing allocation/trade components yield null
+error metrics, propagated to aggregate means/maxima rather than treated as zero error.
+Unusable reports and historical trials without this assessment are explicitly unassessed.
+Out-of-scope households prevent an oracle pass but do not count as missing in-scope components.
+These checks happen after execution for detection/reporting only, with no feedback or retry loop.
 
 Collections are sorted by stable keys before comparison. Two outputs are equivalent only when their
 normalized structured data matches — never because prose looks similar.
@@ -63,7 +77,7 @@ normalized structured data matches — never because prose looks similar.
   trials or telemetry reconciliation failure. This includes infrastructure failures during
   the unmeasured warm-ups. Raw evidence remains; aggregate performance statistics are suppressed.
 - **Comparison VALID / recorded** does not mean model success. InvalidSchema, Partial,
-  declared incomplete, turn cap and TimedOut at the configured deadline are task outcomes;
+  UnearnedCompleteness, declared incomplete, turn cap and TimedOut at the configured deadline are task outcomes;
   they do not stop the sweep when harness evidence reconciles.
 - `median`, `min`, `max`, and every individual trial are reported. **No trial is removed** (failed
   or slow model task outcomes are kept). Correctness is shown first with both modes' full

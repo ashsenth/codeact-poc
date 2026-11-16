@@ -103,7 +103,7 @@ public sealed class CrossModeContractTests
         Assert.Equal("exposure-report/v2", OutputSchema.SchemaId);
         Assert.Equal("analysis-request/v1", ApiSchemas.RequestSchemaId);
         Assert.Equal("analysis-response/v1", ApiSchemas.ResponseSchemaId);
-        Assert.Equal("exposure-analysis/v2", Prompt.PromptId);
+        Assert.Equal("exposure-analysis/v3", Prompt.PromptId);
     }
 
     private sealed class OptionsClient() : DelegatingChatClient(

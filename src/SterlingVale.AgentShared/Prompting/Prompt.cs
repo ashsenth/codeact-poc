@@ -9,8 +9,8 @@ namespace SterlingVale.AgentShared.Prompting;
 public static class Prompt
 {
     /// <summary>Stable identifier for this prompt revision.</summary>
-    public const string PromptId = "exposure-analysis/v2";
-    public const string PreviousSharedHash = "d6dba82ae649a3ca253a9f3e61bf70392fbae04d54d3b81daa4f6a7a3ad8b596";
+    public const string PromptId = "exposure-analysis/v3";
+    public const string PreviousSharedHash = "630a3a841752d3b4475fadde5050b2884c11b59b28f87e4c43a694fc57ebbc86";
 
     /// <summary>The shared, mode-independent instructions (hashed for fairness).</summary>
     public const string Shared =
@@ -35,6 +35,9 @@ public static class Prompt
         - Proposed notional (per asset class) = target value - current value; the signed notionals net to zero.
         - Proposed trades are asset-class notionals in the base currency ONLY — never named securities.
         - A household is flagged when it has any risk breach (including drift breaches).
+        - Analyze every household in scope. If the request names specific households, those are the scope; otherwise every household returned by list_households is the scope. Every in-scope household must appear in the output, and households outside the scope must not.
+        - Each household must include allocations and drift for every policy target class, breaches evaluated against every policy limit (drift tolerance, FX, crypto, concentration), proposed trades for every breached class, and flagged derived from those breaches.
+        - Never output placeholder, hard-coded, or default values for anything you did not compute. If anything is not computed, set status="incomplete" and list it in missingItems.
 
         Use ONLY the provided data tools to retrieve households, policies, accounts, positions,
         prices, FX rates, and asset-class classifications. Do not invent data.

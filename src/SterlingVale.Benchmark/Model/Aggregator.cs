@@ -45,14 +45,17 @@ public static class Aggregator
             Mean(scores.Select(s => s.BreachRecall)),
             MeanDecimal(scores.Select(s => s.AllocationMae)),
             MeanDecimal(scores.Select(s => s.TradeNotionalMaeFraction)),
-            scores.Count == 0 ? 0m : scores.Max(s => s.MaxAllocationError),
+            scores.Any(s => s.MaxAllocationError is null) ? null : scores.Count == 0 ? 0m : scores.Max(s => s.MaxAllocationError),
             scores.Count(s => s.MatchClass == CorrectnessScorer.Match.Exact),
             scores.Count(s => s.MatchClass == CorrectnessScorer.Match.WithinTolerance),
             scores.Count(s => s.MatchClass == CorrectnessScorer.Match.Partial),
             scores.Count(s => s.MatchClass is CorrectnessScorer.Match.Failed
                 or CorrectnessScorer.Match.InvalidSchema
                 or CorrectnessScorer.Match.TimedOut
-                or CorrectnessScorer.Match.Capped));
+                or CorrectnessScorer.Match.Capped))
+        {
+            UnearnedCompletenessCount = scores.Count(s => s.MatchClass == CorrectnessScorer.Match.UnearnedCompleteness),
+        };
 
         return new ModeSummary(mode, modeTrials.Count, duration, tokens, cost, roundTrips, correctness);
     }
@@ -111,9 +114,10 @@ public static class Aggregator
         return list.Count == 0 ? 0d : list.Average();
     }
 
-    private static decimal MeanDecimal(IEnumerable<decimal> values)
+    private static decimal? MeanDecimal(IEnumerable<decimal?> values)
     {
         var list = values.ToList();
+        if (list.Any(value => value is null)) return null;
         return list.Count == 0 ? 0m : list.Average();
     }
 }

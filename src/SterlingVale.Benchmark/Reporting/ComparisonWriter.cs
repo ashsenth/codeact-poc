@@ -59,6 +59,7 @@ public static class ComparisonWriter
         var outcome = report.Outcome;
         var sb = new StringBuilder();
         sb.AppendLine($"Correctness (Exact/WithinTolerance): {outcome.CorrectRuns}/{outcome.TotalRuns}; completion: {outcome.CompletedRuns}/{outcome.TotalRuns}");
+        sb.AppendLine($"UnearnedCompleteness (claimed complete but missing required components): {report.RawTrials.Count(trial => trial.Score.MatchClass == CorrectnessScorer.Match.UnearnedCompleteness)}/{outcome.TotalRuns}");
         sb.AppendLine(outcome.Message);
         sb.AppendLine($"Execution kind: {report.ExecutionKind}");
         sb.AppendLine($"Shared prompt: {report.PromptRevision ?? "historical"}; hash={report.PromptHash ?? "unavailable"}; previous={report.PreviousPromptHash ?? "unavailable"}");
@@ -71,6 +72,7 @@ public static class ComparisonWriter
             sb.AppendLine($"  {trial.Mode}: {trial.Status}; oracle={trial.Score.MatchClass}" +
                 (trial.Failure is null ? string.Empty : $"; {trial.Failure.Message}"));
             sb.AppendLine($"    report status={trial.ReportStatus ?? "unavailable"}; missingItems={JsonSerializer.Serialize(trial.MissingItems, Json)}");
+            sb.AppendLine($"    missing components by household (detection only): {CompletenessDetails(trial.Score)}");
             sb.AppendLine($"    get_price calls={trial.Diagnostics?.ToolCallsByName.GetValueOrDefault("get_price")}; positions in scope={report.ScopedPositionCount}; priced positions={trial.PricedPositionCount}; distinct symbols in scope={report.ScopedSymbolCount}");
             if (trial.Diagnostics is { } diagnostic)
             {
@@ -122,9 +124,9 @@ public static class ComparisonWriter
             sb.Append(s.FlaggedRecall.ToString(Invariant)).Append(',');
             sb.Append(s.BreachPrecision.ToString(Invariant)).Append(',');
             sb.Append(s.BreachRecall.ToString(Invariant)).Append(',');
-            sb.Append(s.AllocationMae.ToString(Invariant)).Append(',');
-            sb.Append(s.TradeNotionalMaeFraction.ToString(Invariant)).Append(',');
-            sb.Append(s.MaxAllocationError.ToString(Invariant)).Append(',');
+            sb.Append(s.AllocationMae?.ToString(Invariant)).Append(',');
+            sb.Append(s.TradeNotionalMaeFraction?.ToString(Invariant)).Append(',');
+            sb.Append(s.MaxAllocationError?.ToString(Invariant)).Append(',');
             sb.Append(Csv(report.ExecutionKind)).Append(',');
             sb.Append(Csv(t.Diagnostics?.FinishReason ?? "unavailable")).Append(',');
             sb.Append(Csv(JsonSerializer.Serialize(t.Diagnostics?.ToolCallsByName, Json))).Append(',');
@@ -273,6 +275,10 @@ public static class ComparisonWriter
 
     private static void AppendTrialStatusTable(StringBuilder sb, ComparisonReport report)
     {
+        sb.Append("<h3>UnearnedCompleteness: claimed complete but missing required components</h3>");
+        sb.Append("<p>Detection and reporting only; no validation feedback or retries. Missing numeric components are unavailable, never zero error. Historical/unusable reports are unassessed.</p>");
+        foreach (string mode in new[] { "classic", "codeact" })
+            sb.Append($"<p>{mode}: {report.RawTrials.Count(trial => trial.Mode == mode && trial.Score.MatchClass == CorrectnessScorer.Match.UnearnedCompleteness)}/{TrialCount(report, mode)} UnearnedCompleteness</p>");
         sb.Append("<table><tr><th>Mode</th><th>Status</th><th>Oracle</th><th>Failure</th><th>Completion diagnostics</th><th>Input / output tokens</th><th>Timeline</th></tr>");
         foreach (var trial in report.RawTrials)
         {
@@ -280,6 +286,7 @@ public static class ComparisonWriter
                 $"<td>{Enc(trial.Failure?.Message ?? trial.Failure?.Category ?? "none")}</td>" +
                 $"<td>{Enc(trial.Diagnostics?.Summary ?? "unavailable")}<br>preview: {Enc(trial.Diagnostics?.FinalPreview ?? "unavailable")}" +
                 $"<br>report status: {Enc(trial.ReportStatus ?? "unavailable")}; missingItems: {Enc(JsonSerializer.Serialize(trial.MissingItems, Json))}" +
+                $"<br>missing components by household: {Enc(CompletenessDetails(trial.Score))}" +
                 $"<br>get_price calls: {trial.Diagnostics?.ToolCallsByName.GetValueOrDefault("get_price")}; positions in scope: {report.ScopedPositionCount}; priced positions: {trial.PricedPositionCount}</td>" +
                 $"<td>{LongVal(trial.InputTokens)} / {LongVal(trial.OutputTokens)}" +
                 (report.ExecutionKind == "live-model-code-generation-only" && trial.Mode == "codeact"
@@ -292,6 +299,9 @@ public static class ComparisonWriter
             sb.Append("<tr>" + string.Concat(row.Select(value => $"<td>{Enc(value)}</td>")) + "</tr>");
         sb.Append("</table>");
     }
+
+    private static string CompletenessDetails(RunScore score) => score.CompletenessAssessed
+        ? JsonSerializer.Serialize(score.MissingComponents, Json) : "unassessed";
 
     private static IEnumerable<string[]> MetricRows(ComparisonReport report)
     {
@@ -388,6 +398,7 @@ public static class ComparisonWriter
                 "Exact" => "exact match to the reference report",
                 "WithinTolerance" => "correct within numeric tolerance",
                 "Partial" => "partially correct; not an oracle pass",
+                "UnearnedCompleteness" => "claimed complete but missing required components; not an oracle pass",
                 _ => "completed",
             };
         }
@@ -724,9 +735,10 @@ public static class ComparisonWriter
         AppendRow(sb, "Flagged recall (mean)", F(report.Classic.Correctness.MeanFlaggedRecall), F(report.CodeAct.Correctness.MeanFlaggedRecall));
         AppendRow(sb, "Breach precision (mean)", F(report.Classic.Correctness.MeanBreachPrecision), F(report.CodeAct.Correctness.MeanBreachPrecision));
         AppendRow(sb, "Breach recall (mean)", F(report.Classic.Correctness.MeanBreachRecall), F(report.CodeAct.Correctness.MeanBreachRecall));
-        AppendRow(sb, "Allocation MAE (mean)", report.Classic.Correctness.MeanAllocationMae.ToString(), report.CodeAct.Correctness.MeanAllocationMae.ToString());
-        AppendRow(sb, "Trade-notional MAE (mean)", report.Classic.Correctness.MeanTradeNotionalMae.ToString(), report.CodeAct.Correctness.MeanTradeNotionalMae.ToString());
-        AppendRow(sb, "Max allocation error", report.Classic.Correctness.MaxAllocationError.ToString(), report.CodeAct.Correctness.MaxAllocationError.ToString());
+        AppendRow(sb, "Allocation MAE (mean)", report.Classic.Correctness.MeanAllocationMae?.ToString(Invariant) ?? "unavailable", report.CodeAct.Correctness.MeanAllocationMae?.ToString(Invariant) ?? "unavailable");
+        AppendRow(sb, "Trade-notional MAE (mean)", report.Classic.Correctness.MeanTradeNotionalMae?.ToString(Invariant) ?? "unavailable", report.CodeAct.Correctness.MeanTradeNotionalMae?.ToString(Invariant) ?? "unavailable");
+        AppendRow(sb, "Max allocation error", report.Classic.Correctness.MaxAllocationError?.ToString(Invariant) ?? "unavailable", report.CodeAct.Correctness.MaxAllocationError?.ToString(Invariant) ?? "unavailable");
+        AppendRow(sb, "UnearnedCompleteness", report.Classic.Correctness.UnearnedCompletenessCount.ToString(Invariant), report.CodeAct.Correctness.UnearnedCompletenessCount.ToString(Invariant));
         AppendRow(sb, "Exact / WithinTol / Partial / Failed",
             MatchCounts(report.Classic.Correctness), MatchCounts(report.CodeAct.Correctness));
 

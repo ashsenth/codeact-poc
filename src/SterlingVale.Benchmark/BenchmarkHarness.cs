@@ -43,6 +43,10 @@ public sealed class BenchmarkHarness(Composition composition)
         var scopedPositions = snapshot.Positions.Where(position => scopedAccounts.Contains(position.AccountId)).ToArray();
 
         var oracleDto = ReportJson.ToDto(new ExposureOracle().Analyze(snapshot, request, "oracle", OracleAsOf));
+        var policyTargetClasses = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        foreach (var household in snapshot.Households.Where(h => householdIds.Contains(h.Id.Value)))
+            policyTargetClasses[household.Id.Value] = snapshot.Policy(household.Id).Targets
+                .Select(target => target.AssetClass.ToString()).ToArray();
 
         var classicFactory = new ClassicAgentFactory();
         var codeactFactory = new CodeActAgentFactory(composition.Hyperlight);
@@ -105,7 +109,7 @@ public sealed class BenchmarkHarness(Composition composition)
 
                 var actualDto = record.Response.Report is null ? null : ReportJson.ToDto(record.Response.Report);
                 var score = CorrectnessScorer.Score(
-                    actualDto, oracleDto, record.Response.Status.ToString(), record.Response.Metrics.SchemaValid);
+                    actualDto, oracleDto, record.Response.Status.ToString(), record.Response.Metrics.SchemaValid, policyTargetClasses);
 
                 var m = record.Response.Metrics;
                 var priceCalls = (record.ChildRuns.Count == 0 ? record.ToolCalls : record.ChildRuns.SelectMany(child => child.ToolCalls))

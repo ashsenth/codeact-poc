@@ -8,12 +8,16 @@ public sealed record RunScore(
     double FlaggedRecall,
     double BreachPrecision,
     double BreachRecall,
-    decimal AllocationMae,
-    decimal TradeNotionalMaeFraction,
-    decimal MaxAllocationError,
+    decimal? AllocationMae,
+    decimal? TradeNotionalMaeFraction,
+    decimal? MaxAllocationError,
     string MatchClass)
 {
+    public bool CompletenessAssessed { get; init; }
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> MissingComponents { get; init; } =
+        new Dictionary<string, IReadOnlyList<string>>();
+
     /// <summary>A score for a run that produced no usable output.</summary>
     public static RunScore ForFailure(string status, bool schemaValid, string matchClass) =>
-        new(schemaValid, status, 0d, 0d, 0d, 0d, 0m, 0m, 0m, matchClass);
+        new(schemaValid, status, 0d, 0d, 0d, 0d, null, null, null, matchClass);
 }

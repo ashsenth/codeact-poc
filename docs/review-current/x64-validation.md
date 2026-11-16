@@ -1,5 +1,28 @@
 # Optional x64 validation workflow
 
+## v3 implementation gate (November 16, 2026)
+
+The approved shared-prompt v3 additions are scope-aware and identical across modes.
+Shared prompt SHA-256: `6425894ef8ce4d492d1e806ef180d1e87d8e26a789c694e0616b0f11c860e3af`;
+previous v2 hash: `630a3a841752d3b4475fadde5050b2884c11b59b28f87e4c43a694fc57ebbc86`.
+The output schema, tools, oracle, model, limits and pricing are unchanged.
+Completeness detection/reporting is post-run only, with no feedback/retry loop.
+Missing required components are recorded per in-scope household; complete claims with
+omissions receive `UnearnedCompleteness`, a valid model task outcome, not infrastructure failure.
+
+Release build (`dotnet build -c Release --no-restore`): zero warnings/errors.
+All ten non-live test projects: **262 passed, zero failed/skipped**, using
+`Category!=LiveModel&Category!=Hyperlight&Category!=HyperlightKnownIssue`.
+TRX evidence is under `artifacts/v3-sweep-20261116/tests-non-live/`.
+This is not a new Hyperlight test gate; the five earlier supported runtime passes and the
+excluded native cancellation known issue remain recorded below.
+
+Authorized live sequence after the implementation commit/push: five measured pairs each
+for Small N=1, N=3, then full Small, under nohup with logs and unchanged 20-turn/120-second
+limits. Commit/push after each profile; stop on infrastructure failure, retain task outcomes.
+v3 evidence/summary lives under `artifacts/v3-sweep-20261116/`, separate from historical v2.
+Medium/Large are not authorized.
+
 **Status: partial VM validation; initial live pair had a failed Classic task outcome.** Bootstrap and five guest tests now
 passed on Ubuntu x64. Native cancellation remains a labelled SDK limitation; see the dated
 [Phase B record](#phase-b-vm-validation-november-16-2026). Full-profile validation is not complete.

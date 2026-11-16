@@ -18,6 +18,7 @@ public static class CorrectnessScorer
         public const string Exact = "Exact";
         public const string WithinTolerance = "WithinTolerance";
         public const string Partial = "Partial";
+        public const string UnearnedCompleteness = "UnearnedCompleteness";
         public const string InvalidSchema = "InvalidSchema";
         public const string Failed = "Failed";
         public const string TimedOut = "TimedOut";
@@ -25,9 +26,11 @@ public static class CorrectnessScorer
     }
 
     /// <summary>Scores <paramref name="actual"/> against the <paramref name="oracle"/> report.</summary>
-    public static RunScore Score(ExposureReportDto? actual, ExposureReportDto oracle, string status, bool schemaValid)
+    public static RunScore Score(ExposureReportDto? actual, ExposureReportDto oracle, string status, bool schemaValid,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> policyTargetClasses)
     {
         ArgumentNullException.ThrowIfNull(oracle);
+        ArgumentNullException.ThrowIfNull(policyTargetClasses);
 
         if (status is "TimedOut")
         {
@@ -50,12 +53,23 @@ public static class CorrectnessScorer
 
         var (breachP, breachR) = ScoreSet(BreachKeys(actual), BreachKeys(oracle));
 
-        var (allocMae, maxAllocError) = AllocationError(actual, oracle);
-        decimal tradeMae = TradeNotionalError(actual, oracle);
+        var missing = MissingComponents(actual, oracle, policyTargetClasses);
+        bool missingAllocations = missing.Values.SelectMany(items => items)
+            .Any(item => item == "household" || item.StartsWith("allocation/drift:", StringComparison.Ordinal));
+        bool missingTrades = missing.Values.SelectMany(items => items)
+            .Any(item => item == "household" || item.StartsWith("trade:", StringComparison.Ordinal));
+        (decimal? Mae, decimal? Max) allocationError = missingAllocations ? (null, null) : AllocationError(actual, oracle);
+        var (allocMae, maxAllocError) = allocationError;
+        decimal? tradeMae = missingTrades ? null : TradeNotionalError(actual, oracle);
 
         bool setsPerfect = flaggedP == 1d && flaggedR == 1d && breachP == 1d && breachR == 1d;
+        bool scopeMatches = actual.Households.Count == oracle.Households.Count &&
+            actual.Households.Select(h => h.HouseholdId).ToHashSet(StringComparer.Ordinal)
+                .SetEquals(oracle.Households.Select(h => h.HouseholdId));
         string matchClass =
             actual.Status == "incomplete" ? Match.Partial :
+            missing.Count > 0 ? Match.UnearnedCompleteness :
+            !scopeMatches ? Match.Partial :
             setsPerfect && allocMae == 0m && tradeMae == 0m ? Match.Exact :
             setsPerfect && maxAllocError <= Tolerance ? Match.WithinTolerance :
             Match.Partial;
@@ -70,7 +84,45 @@ public static class CorrectnessScorer
             allocMae,
             tradeMae,
             maxAllocError,
-            matchClass);
+            matchClass)
+        {
+            CompletenessAssessed = true,
+            MissingComponents = missing,
+        };
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> MissingComponents(
+        ExposureReportDto actual, ExposureReportDto oracle,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> policyTargetClasses)
+    {
+        var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        foreach (var expected in oracle.Households)
+        {
+            var household = actual.Households.FirstOrDefault(h => h.HouseholdId == expected.HouseholdId);
+            var missing = new List<string>();
+            if (household is null)
+            {
+                result[expected.HouseholdId] = ["household"];
+                continue;
+            }
+            foreach (string assetClass in policyTargetClasses[expected.HouseholdId])
+                if (!household.Drifts.Any(drift => drift.AssetClass == assetClass))
+                    missing.Add($"allocation/drift:{assetClass}");
+            foreach (var breaches in expected.Breaches.GroupBy(breach => breach.Kind))
+            {
+                int present = household.Breaches.Count(breach => breach.Kind == breaches.Key);
+                if (present < breaches.Count())
+                    missing.Add($"breaches:{breaches.Key} ({present}/{breaches.Count()})");
+            }
+            foreach (var drift in expected.Drifts.Where(drift => drift.Breached))
+                if (expected.ProposedTrades.Any(trade => trade.AssetClass == drift.AssetClass) &&
+                    !household.ProposedTrades.Any(trade => trade.AssetClass == drift.AssetClass))
+                    missing.Add($"trade:{drift.AssetClass}");
+            if (household.Flagged != (household.Breaches.Count > 0))
+                missing.Add("flagged:not derived from reported breaches");
+            if (missing.Count > 0) result[expected.HouseholdId] = missing;
+        }
+        return result;
     }
 
     private static IEnumerable<string> BreachKeys(ExposureReportDto report) =>

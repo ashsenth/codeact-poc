@@ -147,7 +147,7 @@ More detail: [architecture](docs/architecture.md) and [security model](docs/secu
 
 **Verification scope:** the sequence below succeeded in a clean local-source clone on Windows
 ARM64. Ubuntu x64 additionally passed local-source clean-clone locked restore, Release build and
-231 non-live tests at `3088451`, using an empty NuGet cache. The current validity/reporting changes pass 255.
+231 non-live tests at `3088451`, using an empty NuGet cache. The current v3 changes pass 262.
 The complete quickstart on Linux/macOS and a remote-origin clone are **not yet verified**.
 
 Clone setup template (**remote clone not yet verified**; replace the placeholder):
@@ -205,7 +205,7 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Current result: **255 passed, 0 failed, 0 skipped across ten projects**, including
+Current result: **262 passed, 0 failed, 0 skipped across ten projects**, including
 worker containment/recovery and model-outcome/infrastructure-validity regressions. On the ARM64 laptop the six Hyperlight tests
 previously skipped; on Ubuntu x64 five pass, while native cancellation remains a labelled
 known issue. Neither a skip nor an excluded known issue is a pass.
@@ -213,6 +213,32 @@ known issue. Neither a skip nor an excluded known issue is a pass.
 ## 6. What the results show
 
 ### Results
+
+#### v3 cohort
+
+The shared prompt is now `exposure-analysis/v3`: the three approved additions require
+scope-aware household coverage, policy-target allocations/drifts and required breaches/trades,
+and honest disclosure of uncomputed components. Both modes receive identical shared text.
+Shared SHA-256: `6425894ef8ce4d492d1e806ef180d1e87d8e26a789c694e0616b0f11c860e3af`.
+Schema, tools, model, limits (20 turns / 120 seconds), and pricing are unchanged.
+
+Completeness is scored only against the oracle's in-scope households. Missing households,
+policy-target allocation/drift entries, oracle-required breach coverage and breached-class
+trades are reported per household, along with flags inconsistent with reported breaches.
+**UnearnedCompleteness** means **claimed complete but missing required components**;
+declared incomplete reports remain Partial. Missing numeric components produce unavailable
+error metrics, not zero error. Invalid/unusable outputs are unassessed. This detects omissions,
+not proof that every limit was evaluated; an empty breach list is legitimate when none is due.
+Semantic checks only detect/report after the run: neither mode receives feedback or retries.
+Out-of-scope households cannot earn an oracle pass.
+
+The authorized live sequence is five measured pairs each for N=1, N=3, then full Small,
+with one unmeasured warm-up per mode per profile. Infrastructure failures stop the sequence;
+model task outcomes remain recorded. Medium/Large are not authorized. v3 results and
+contextual deltas will be recorded separately in `artifacts/v3-sweep-20261116/summary.md`
+and HTML; no v2 trials are mixed or retroactively rescored.
+
+#### Historical v2 cohort (not rescored)
 
 Live VM sweep, three measured pairs per scope, shared prompt v2; **correctness first**.
 All comparisons are VALID infrastructure evidence, not proof of correct model answers.
@@ -258,9 +284,9 @@ H0001's CodeAct valuation is correct; its first computational divergence is omit
 drift analysis, followed by hard-coded no flags/breaches/trades. Classic stopped prematurely
 with one fabricated household after querying positions for only 10 of 33 accounts.
 The unchanged oracle matches an independent decimal hand calculation for H0001.
-Proposed shared-prompt/semantic-validation/scoring-coverage fixes are documented, **not applied**;
-any approved prompt edit must apply to both modes and start a new prompt-hash cohort.
-No Medium/Large or new live runs were performed for this diagnosis/reporting work.
+The diagnosis preceded the approved v3 shared-prompt and detection-only scoring/reporting
+changes above. These historical v2 results retain their original labels; completeness was
+not assessed. No Medium/Large or new live runs were performed for that diagnosis/reporting work.
 
 ### Fake-model controls, NOT real performance
 

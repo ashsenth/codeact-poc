@@ -60,13 +60,16 @@ public sealed record CorrectnessStats(
     double MeanFlaggedRecall,
     double MeanBreachPrecision,
     double MeanBreachRecall,
-    decimal MeanAllocationMae,
-    decimal MeanTradeNotionalMae,
-    decimal MaxAllocationError,
+    decimal? MeanAllocationMae,
+    decimal? MeanTradeNotionalMae,
+    decimal? MaxAllocationError,
     int ExactCount,
     int WithinToleranceCount,
     int PartialCount,
-    int FailedCount);
+    int FailedCount)
+{
+    public int UnearnedCompletenessCount { get; init; }
+}
 
 /// <summary>Per-mode summary over the measured trials.</summary>
 public sealed record ModeSummary(
@@ -99,7 +102,7 @@ public sealed record ComparisonDelta(
     double? ToolCallDeltaFraction,
     double? ModelTurnDeltaFraction,
     int ExactCountDelta,
-    decimal AllocationMaeDelta);
+    decimal? AllocationMaeDelta);
 
 /// <summary>The full comparison output (serialized to JSON and rendered to Markdown).</summary>
 public sealed record ComparisonReport(

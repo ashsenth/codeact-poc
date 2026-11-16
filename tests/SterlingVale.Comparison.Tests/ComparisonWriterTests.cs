@@ -291,6 +291,60 @@ public sealed class ComparisonWriterTests
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
     }
 
+    [Fact]
+    public void Unearned_completeness_and_missing_components_survive_reporting_and_aggregation()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "sv-completeness-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var sample = SummaryReport(1);
+            var trials = sample.RawTrials.Select(trial => trial.Mode == "classic" ? trial with
+            {
+                Score = Exact with
+                {
+                    MatchClass = CorrectnessScorer.Match.UnearnedCompleteness,
+                    CompletenessAssessed = true, AllocationMae = null, MaxAllocationError = null,
+                    TradeNotionalMaeFraction = null,
+                    MissingComponents = new Dictionary<string, IReadOnlyList<string>>
+                    {
+                        ["H1"] = ["allocation/drift:Equity", "trade:Equity"],
+                    },
+                },
+            } : trial with { Score = Exact with { CompletenessAssessed = true } }).ToArray();
+            var classic = Aggregator.Summarize("classic", trials);
+            var codeact = Aggregator.Summarize("codeact", trials);
+            var report = sample with { RawTrials = trials, Classic = classic, CodeAct = codeact };
+            Assert.Equal(3, classic.Correctness.UnearnedCompletenessCount);
+            Assert.Null(classic.Correctness.MeanAllocationMae);
+            Assert.Null(classic.Correctness.MeanTradeNotionalMae);
+            Assert.Null(classic.Correctness.MaxAllocationError);
+            Assert.True(report.Outcome.IsValid);
+            Assert.Null(report.ForPresentation().Delta);
+            string path = ComparisonWriter.Write(report, root);
+            var read = ComparisonWriter.Read(path);
+            Assert.Null(read.RawTrials[0].Score.AllocationMae);
+            Assert.Equal(["allocation/drift:Equity", "trade:Equity"], read.RawTrials[0].Score.MissingComponents["H1"]);
+            foreach (string output in new[] { ComparisonWriter.RenderHtml(read), ComparisonWriter.RenderMarkdown(read) })
+            {
+                Assert.Contains("claimed complete but missing required components", output);
+                Assert.Contains("H1", output);
+                Assert.Contains("allocation/drift:Equity", output);
+                Assert.Contains("trade:Equity", output);
+                Assert.Contains("unavailable", output);
+            }
+            SweepSummaryWriter.Write([path], root);
+            foreach (string format in new[] { "md", "html" })
+            {
+                string text = File.ReadAllText(Path.Combine(root, "summary." + format));
+                Assert.Contains("UnearnedCompleteness", text);
+                Assert.Contains("3/3 (assessed 3/3)", text);
+                Assert.Contains("not a correctness-equivalent win", text);
+                Assert.Contains("UnearnedCompleteness Classic 3/3", text);
+            }
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
     [Theory]
     [InlineData("prompt")]
     [InlineData("model")]
