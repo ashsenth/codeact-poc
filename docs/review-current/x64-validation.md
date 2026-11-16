@@ -3,7 +3,7 @@
 ## v3 implementation gate (November 16, 2026)
 
 The approved shared-prompt v3 additions are scope-aware and identical across modes.
-Shared prompt SHA-256: `6425894ef8ce4d492d1e806ef180d1e87d8e26a789c694e0616b0f11c860e3af`;
+Shared prompt SHA-256 (canonical LF-normalized text): `f0cf5bce1c07cceb82ef7e9b2552788dc6154f7eb5e7b4a61a0e8d4d426b667c`;
 previous v2 hash: `630a3a841752d3b4475fadde5050b2884c11b59b28f87e4c43a694fc57ebbc86`.
 The output schema, tools, oracle, model, limits and pricing are unchanged.
 Completeness detection/reporting is post-run only, with no feedback/retry loop.
@@ -22,6 +22,32 @@ for Small N=1, N=3, then full Small, under nohup with logs and unchanged 20-turn
 limits. Commit/push after each profile; stop on infrastructure failure, retain task outcomes.
 v3 evidence/summary lives under `artifacts/v3-sweep-20261116/`, separate from historical v2.
 Medium/Large are not authorized.
+
+The first pre-run hash calculation omitted the repository's CRLF-to-LF normalization;
+the canonical hash above is confirmed by both modes' runtime fingerprints. No prompt text
+changed after the implementation commit. The live launcher serialized the unchanged
+USD 2.50/10.00 rates as 2.5/10.0; pricing fingerprints preserve decimal scale. v3's pricing
+fingerprint is therefore `92d04a975e504c55a723faf6ec9887813f4d6d489c3fb72b7caac7b8f19f7843`,
+versus historical v2's `de12efe9ee6ec3cf44038e3e73e8fb23e5569fcf87f6bd624117238fe7142ae2`.
+Numeric rates and full pricing provenance are identical; v3 keeps one representation and
+does not mix either prompt cohort. Schema/tools/model/dataset fingerprints match v2 exactly.
+
+### v3 Small N=1 completed
+
+Source commit: `4f3aaac90fe65c59110ffc53b3676bc780a212a1`.
+`nohup` run, five measured pairs plus one warm-up per mode; process exited 0.
+Comparison `small-20261116204456-a702d6024c2a4eb1afcc742408d492f0` is VALID:
+matched cross-mode fingerprints, reconciled telemetry, ten measured trials, no infrastructure
+failures. Every run's model and numeric pricing/provenance match the historical configuration.
+CodeAct measured trials made eight execute_code calls and 323 host callbacks.
+
+Classic: zero correct, four UnearnedCompleteness, one Capped; CodeAct: two Exact,
+two UnearnedCompleteness, one InvalidSchema. Neither the cap nor schema failure was discarded.
+Per-household omissions appear in the comparison HTML and JSON; unassessed failures remain
+unassessed rather than being classified complete. The separate v3 summary and README Results
+record medians and correctness-contextual deltas.
+Log: `artifacts/v3-sweep-20261116/n1.log`; comparison and trial evidence:
+`artifacts/v3-sweep-20261116/n1/`. Historical v2 artifacts were not rewritten.
 
 **Status: partial VM validation; initial live pair had a failed Classic task outcome.** Bootstrap and five guest tests now
 passed on Ubuntu x64. Native cancellation remains a labelled SDK limitation; see the dated

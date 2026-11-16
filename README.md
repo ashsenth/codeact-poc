@@ -219,7 +219,7 @@ known issue. Neither a skip nor an excluded known issue is a pass.
 The shared prompt is now `exposure-analysis/v3`: the three approved additions require
 scope-aware household coverage, policy-target allocations/drifts and required breaches/trades,
 and honest disclosure of uncomputed components. Both modes receive identical shared text.
-Shared SHA-256: `6425894ef8ce4d492d1e806ef180d1e87d8e26a789c694e0616b0f11c860e3af`.
+Shared SHA-256 (canonical LF-normalized text): `f0cf5bce1c07cceb82ef7e9b2552788dc6154f7eb5e7b4a61a0e8d4d426b667c`.
 Schema, tools, model, limits (20 turns / 120 seconds), and pricing are unchanged.
 
 Completeness is scored only against the oracle's in-scope households. Missing households,
@@ -235,8 +235,26 @@ Out-of-scope households cannot earn an oracle pass.
 The authorized live sequence is five measured pairs each for N=1, N=3, then full Small,
 with one unmeasured warm-up per mode per profile. Infrastructure failures stop the sequence;
 model task outcomes remain recorded. Medium/Large are not authorized. v3 results and
-contextual deltas will be recorded separately in `artifacts/v3-sweep-20261116/summary.md`
-and HTML; no v2 trials are mixed or retroactively rescored.
+contextual deltas are recorded separately in
+[v3 summary Markdown](artifacts/v3-sweep-20261116/summary.md) and
+[HTML](artifacts/v3-sweep-20261116/summary.html); no v2 trials are mixed or retroactively rescored.
+The v3 launcher serialized the unchanged USD 2.50/10.00 rates as 2.5/10.0. The current
+fingerprinter preserves decimal scale, so its pricing hash differs from v2 despite identical
+rates and provenance; all v3 profiles retain the same representation.
+
+Five measured pairs per completed scope; all outcomes remain in the medians, warm-ups excluded.
+Unearned counts are over all trials; capped/schema-invalid outputs are unassessed.
+
+| Small scope | Mode | Oracle-correct | UnearnedCompleteness | Outcomes | Median tokens | Median est. USD | Median analysis s |
+| --- | --- | --- | --- | --- | ---: | ---: | ---: |
+| N=1 | Classic | 0/5 (0%) | 4/5 (assessed 4/5) | Unearned 4, Capped 1 | 25,302 | 0.0690825 | 16.432 |
+| N=1 | CodeAct | 2/5 (40%) | 2/5 (assessed 4/5) | Exact 2, Unearned 2, InvalidSchema 1 | 9,955 | 0.0380500 | 12.288 |
+
+Descriptive CodeAct-minus-Classic changes; no correctness-equivalent efficiency win:
+
+| Scope | Median tokens | Median est. cost | Median analysis time |
+| --- | --- | --- | --- |
+| N=1 | -60.7%; correct 0/5 vs 2/5, unearned 4/5 vs 2/5; not a correctness-equivalent win | -44.9%; correct 0/5 vs 2/5, unearned 4/5 vs 2/5; not a correctness-equivalent win | -25.2%; correct 0/5 vs 2/5, unearned 4/5 vs 2/5; not a correctness-equivalent win |
 
 #### Historical v2 cohort (not rescored)
 
