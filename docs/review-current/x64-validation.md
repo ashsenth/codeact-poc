@@ -256,3 +256,40 @@ separately. Medians are componentwise over every measured task outcome, not just
 **API safety follow-up:** both standalone API hosts lack the benchmark worker watchdog.
 The pinned native cancellation limitation still affects direct API hosting; it is not protected
 by the benchmark's supervised process containment.
+
+### Small N=1, three measured pairs
+
+Source: `7fea4ec53faa5b83973c04400edd3d23db3c1dc6`.
+Comparison: `small-20261116183315-756172429e844d8a89569f332174cce4`.
+Dataset hash: `f686013740692996ccae5dcc82d626b76ffba902d27a84e07842666100c7f684`.
+Model fingerprint: `4f121c2cc54e6eac998ba721ae76462b5e9bfb04381f029bb417e6583dac468a`.
+
+**VALID**, exit zero; fairness matched and telemetry reconciled in all six trials.
+Classic **0/3 oracle-correct**, all Completed/Partial; CodeAct **3/3 Exact**, with actual
+Python execution/callbacks. CodeAct precision/recall are all 1 and allocation/trade errors zero.
+Classic's mean flagged recall is 0.333333, breach recall 0.111111, allocation MAE
+0.0754610705; schema-valid completion is not correctness. No efficiency winner is inferred.
+
+Tool counts below are in this fixed order:
+`list_households / get_policy / list_accounts / list_positions / get_price / get_fx / asset_class`.
+Classic counts are model-facing data calls; CodeAct counts are real sandbox callbacks.
+execute_code is separate. All monetary values are estimated USD under the verified rates.
+
+| Trial | Mode | Status / oracle | Turns | Named tools, order above | Input / output tokens | Analysis s | Est. USD | execute_code | Callbacks |
+| --- | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | Classic | Completed / Partial | 6 | 0/1/1/3/13/3/0 | 23,739 / 724 | 16.695 | 0.0665875 | 0 | 0 |
+| 1 | CodeAct | Completed / Exact | 2 | 1/1/1/3/26/26/0 | 8,227 / 1,907 | 12.370 | 0.0396375 | 1 | 58 |
+| 2 | Classic | Completed / Partial | 6 | 0/1/1/3/13/3/0 | 23,739 / 771 | 16.429 | 0.0670575 | 0 | 0 |
+| 2 | CodeAct | Completed / Exact | 3 | 1/1/1/3/26/26/26 | 15,875 / 2,951 | 16.945 | 0.0691975 | 2 | 84 |
+| 3 | Classic | Completed / Partial | 6 | 0/1/1/3/13/3/0 | 23,739 / 719 | 15.396 | 0.0665375 | 0 | 0 |
+| 3 | CodeAct | Completed / Exact | 3 | 1/1/1/3/26/17/0 | 16,031 / 3,030 | 18.634 | 0.0703775 | 2 | 49 |
+| Median | Classic | Partial 3/3; correct 0/3 | 6 | 0/1/1/3/13/3/0 | 23,739 / 724 | 16.429 | 0.0665875 | 0 | 0 |
+| Median | CodeAct | Exact 3/3 | 3 | 1/1/1/3/26/26/0 | 15,875 / 2,951 | 16.945 | 0.0691975 | 2 | 58 |
+
+Medians are componentwise, so a median row need not correspond to one actual trial.
+Every measured run's metadata was independently checked for 20 turns/120 s, parallel true,
+strict false, 16,384 output tokens and pricing/source/date; the prompt hash matches the
+unchanged shared prompt. Evidence: `artifacts/phase-b-sweep-20261116/n1/` and `n1.log`.
+The initial launch used an absent default data directory and exited before warm-ups/model
+calls or comparison creation. Its `n1-missing-data-startup.log` is retained; the existing
+Phase B data directory was then selected and all manifests validated before this live run.

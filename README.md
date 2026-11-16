@@ -428,6 +428,21 @@ All costs are **estimates**, not Azure invoices: observed input/output tokens ti
 USD retail rates, excluding cached-input discounts, negotiated rates, unreported usage and
 VM/infrastructure charges. See the [official pricing overview](https://azure.microsoft.com/en-us/pricing/details/azure-openai/).
 
+### Approved three-trial VM sweep (November 16, 2026)
+
+Implementation source: `7fea4ec53faa5b83973c04400edd3d23db3c1dc6`; same VM, guest,
+deployment, prompt and limits as above. Three measured pairs per scope after warm-ups.
+Correctness comes first; measurements include all task outcomes, not just oracle passes.
+
+| Small scope | Comparison | Classic status / oracle | CodeAct status / oracle | Median input/output tokens, Classic / CodeAct | Median analysis seconds, Classic / CodeAct | Median est. USD, Classic / CodeAct |
+| --- | --- | --- | --- | --- | --- | --- |
+| N=1 | VALID | Completed / Partial, 3/3 | Completed / Exact, 3/3 | 23,739/724 / 15,875/2,951 | 16.429 / 16.945 | 0.0665875 / 0.0691975 |
+
+No efficiency winner is inferred from different correctness. All individual trials, turns,
+named calls, execute_code and callback counts are in the
+[sweep record](docs/review-current/x64-validation.md#three-trial-sweep-and-revised-validity-november-16-2026).
+N=3 and full Small are next; Medium/Large remain unapproved.
+
 ## 9. Project status
 
 | Area | Status and evidence |
