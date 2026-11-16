@@ -71,6 +71,16 @@ normalized structured data matches — never because prose looks similar.
 - Efficiency deltas are withheld unless every measured trial is Exact/WithinTolerance.
   When displayed, both modes' correctness appears alongside token/latency/cost deltas.
   Lower usage for an incorrect answer is not an efficiency win.
+- The cross-profile `summarize --comparisons <json-paths>` report additionally permits
+  **descriptive** changes between all-outcome medians, with an explicit correctness context
+  on **each** delta (for example, both Partial / not a correctness-equivalent win).
+  It does not populate the suppressed per-comparison win cards. Explicit files preserve
+  separate household scopes of one profile; prompt/model/pricing/execution cohorts cannot mix.
+  The output is `summary.md` / `summary.html` under ARTIFACTS_ROOT, with direct links to every
+  individual trial timeline and each full comparison. No analysis is rerun.
+- Summary token medians are medians of each trial's total usage; analysis duration is not
+  substituted with process-inclusive duration. A missing measurement makes that median
+  unavailable rather than dropping the trial.
 - Analysis duration is the service's run metric; process-inclusive wall time additionally
   includes worker startup/transport. Both modes use the same watchdog and accounting.
 - Cost is an estimate from observed tokens and configured retail USD rates, not an invoice.

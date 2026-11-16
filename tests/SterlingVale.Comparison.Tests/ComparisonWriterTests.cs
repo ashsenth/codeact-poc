@@ -243,6 +243,94 @@ public sealed class ComparisonWriterTests
         Assert.Contains("oracle correct classic 1/1, codeact 1/1", line, StringComparison.Ordinal);
     }
 
+    private static ComparisonReport SummaryReport(int scope)
+    {
+        var sample = SampleReport();
+        var trials = Enumerable.Range(1, 3).SelectMany(pair => sample.RawTrials.Select(trial => trial with
+        {
+            PairId = pair, DurationMs = 99999, AnalysisDurationMs = pair * (trial.Mode == "classic" ? 1000 : 500),
+            TotalTokens = trial.Mode == "classic" ? pair * 110 : (pair - 1) * 30 + 10,
+            EstimatedCostUsd = trial.Mode == "classic" ? pair : (pair - 1) * 0.3m + 0.1m,
+            RunId = $"run-{trial.Mode}-{scope}-{pair}", Score = Exact with { MatchClass = "Partial" },
+        })).ToArray();
+        var fingerprints = new Dictionary<string, string>(sample.Fairness.ClassicFingerprints)
+        {
+            ["model"] = "model", ["pricing"] = "pricing",
+        };
+        return sample with
+        {
+            ComparisonId = $"summary-scope-{scope}", ScopedHouseholdCount = scope, MeasuredTrials = 3,
+            RawTrials = trials, Fairness = new(true, [], fingerprints, fingerprints), ExecutionKind = "live-model-hyperlight",
+        };
+    }
+
+    [Fact]
+    public void Sweep_summary_retains_scopes_all_trials_analysis_medians_and_context_on_each_delta()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "sv-sweep-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var reports = new[] { SummaryReport(1), SummaryReport(3) };
+            string[] paths = reports.Select(report => ComparisonWriter.Write(report, root)).ToArray();
+            SweepSummaryWriter.Write(paths, root);
+            foreach (string format in new[] { "md", "html" })
+            {
+                string text = File.ReadAllText(Path.Combine(root, "summary." + format));
+                Assert.Contains("small (N=1)", text);
+                Assert.Contains("small (N=3)", text);
+                Assert.Contains("-81.8% tokens; both Partial; not a correctness-equivalent win", text);
+                Assert.Contains("-80.0% est. cost; both Partial; not a correctness-equivalent win", text);
+                Assert.Contains("-50.0% analysis time; both Partial; not a correctness-equivalent win", text);
+                Assert.DoesNotContain("99.999", text);
+                foreach (var trial in reports.SelectMany(report => report.RawTrials))
+                    Assert.Contains($"runs/{trial.RunId}/timeline.md", text);
+            }
+            Assert.Contains("| 220 | 2.0000000 | 2.000 |", File.ReadAllText(Path.Combine(root, "summary.md")));
+            Assert.Contains("| 40 | 0.4000000 | 1.000 |", File.ReadAllText(Path.Combine(root, "summary.md")));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Theory]
+    [InlineData("prompt")]
+    [InlineData("model")]
+    [InlineData("pricing")]
+    [InlineData("execution")]
+    public void Sweep_summary_rejects_mixed_cohorts(string key)
+    {
+        string root = Path.Combine(Path.GetTempPath(), "sv-sweep-cohort-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var first = SummaryReport(1);
+            var second = SummaryReport(3);
+            var fingerprints = new Dictionary<string, string>(second.Fairness.ClassicFingerprints) { [key] = "different" };
+            second = key == "execution" ? second with { ExecutionKind = "offline-fake-control" }
+                : second with { Fairness = new(true, [], fingerprints, fingerprints) };
+            string[] paths = [ComparisonWriter.Write(first, root), ComparisonWriter.Write(second, root)];
+            Assert.Throws<InvalidOperationException>(() => SweepSummaryWriter.Write(paths, root));
+            Assert.False(File.Exists(Path.Combine(root, "summary.html")));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void Sweep_summary_keeps_unknown_usage_and_analysis_unknown_instead_of_using_process_duration()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "sv-sweep-unknown-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var report = SummaryReport(1);
+            report = report with { RawTrials = report.RawTrials.Select(trial => trial with
+                { TotalTokens = null, EstimatedCostUsd = null, AnalysisDurationMs = null }).ToArray() };
+            SweepSummaryWriter.Write([ComparisonWriter.Write(report, root)], root);
+            string text = File.ReadAllText(Path.Combine(root, "summary.md"));
+            Assert.Contains("| unavailable | unavailable | unavailable |", text);
+            Assert.Contains("unavailable tokens delta (unknown or zero baseline); both Partial", text);
+            Assert.DoesNotContain("99.999", text);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
     [Theory]
     [InlineData("Failed", "InvalidSchema", "InvalidModelOutput")]
     [InlineData("Completed", "Partial", null)]

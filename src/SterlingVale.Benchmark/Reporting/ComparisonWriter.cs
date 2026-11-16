@@ -420,11 +420,21 @@ public static class ComparisonWriter
     {
         ArgumentNullException.ThrowIfNull(reports);
         reports = reports.Select(report => report.ForPresentation()).ToArray();
+        ValidateCohort(reports);
+        return RenderValidatedScalingHtml(reports);
+    }
+
+    internal static void ValidateCohort(IReadOnlyList<ComparisonReport> reports)
+    {
         if (reports.Count > 1 && (reports.Any(report => report.PromptHash is null) ||
             reports.Select(report => report.PromptHash).Distinct(StringComparer.Ordinal).Count() != 1))
             throw new InvalidOperationException("Cannot compare runs with different or unavailable shared-prompt hashes. Select one prompt revision.");
         if (reports.Select(report => report.ModelFingerprint).Distinct(StringComparer.Ordinal).Count() > 1)
             throw new InvalidOperationException("Cannot compare runs with different model-configuration fingerprints, including structured-output settings.");
+    }
+
+    private static string RenderValidatedScalingHtml(IReadOnlyList<ComparisonReport> reports)
+    {
         string promptHash = reports.Count == 0 ? "unavailable" : reports[0].PromptHash ?? "unavailable";
         if (reports.Any(report => !report.Outcome.IsValid))
         {

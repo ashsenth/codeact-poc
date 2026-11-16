@@ -81,6 +81,17 @@ switch (command)
     case "visualize":
         return Visualize(options, open);
 
+    case "summarize":
+        if (!options.TryGetValue("comparisons", out var comparisons))
+            throw new InvalidOperationException("--comparisons requires comma-separated comparison JSON paths.");
+        using (var composition = new Composition())
+        {
+            SweepSummaryWriter.Write(comparisons.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                composition.ArtifactsRoot);
+            Console.WriteLine($"Wrote {Path.Combine(composition.ArtifactsRoot, "summary.md")} and summary.html; existing trials were not rerun.");
+        }
+        return 0;
+
     default:
         PrintUsage();
         return 2;
@@ -303,6 +314,7 @@ static void PrintUsage()
     Console.WriteLine("  benchmark compare [--trials N]");
     Console.WriteLine("  benchmark report --comparison-id <id> [--open]");
     Console.WriteLine("  benchmark visualize [--profiles small,medium,large] [--open]");
+    Console.WriteLine("  benchmark summarize --comparisons <comparison.json,comparison.json,...>");
     Console.WriteLine("  execution options: --log-level minimal|normal|verbose|debug --payload-capture none|metadata|full");
     Console.WriteLine("  model selection: --model fake|live (default fake; environment never opts in)");
     Console.WriteLine("  scope: --households N (first N dataset households, same scope and oracle for both modes)");

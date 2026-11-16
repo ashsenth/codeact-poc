@@ -1,0 +1,109 @@
+{
+  "runId": "oracle-h0001",
+  "generatedAt": "2026-01-01T00:00:00.0000000\u002B00:00",
+  "households": [
+    {
+      "householdId": "H0001",
+      "baseCurrency": "USD",
+      "totalValue": 826579.16,
+      "flagged": true,
+      "drifts": [
+        {
+          "assetClass": "Equity",
+          "actualFraction": 0.4720894350,
+          "targetFraction": 0.50,
+          "driftFraction": -0.0279105650,
+          "breached": false
+        },
+        {
+          "assetClass": "FixedIncome",
+          "actualFraction": 0.2764255888,
+          "targetFraction": 0.30,
+          "driftFraction": -0.0235744112,
+          "breached": false
+        },
+        {
+          "assetClass": "Cash",
+          "actualFraction": 0.0004687801,
+          "targetFraction": 0.10,
+          "driftFraction": -0.0995312199,
+          "breached": true
+        },
+        {
+          "assetClass": "Alternative",
+          "actualFraction": 0.0323635198,
+          "targetFraction": 0.07,
+          "driftFraction": -0.0376364802,
+          "breached": false
+        },
+        {
+          "assetClass": "Crypto",
+          "actualFraction": 0.2186526762,
+          "targetFraction": 0.03,
+          "driftFraction": 0.1886526762,
+          "breached": true
+        }
+      ],
+      "breaches": [
+        {
+          "kind": "AllocationDrift",
+          "detail": "Cash allocation drift exceeds tolerance.",
+          "observed": 0.0995312199,
+          "limit": 0.05
+        },
+        {
+          "kind": "AllocationDrift",
+          "detail": "Crypto allocation drift exceeds tolerance.",
+          "observed": 0.1886526762,
+          "limit": 0.05
+        },
+        {
+          "kind": "FxExposure",
+          "detail": "Non-base-currency exposure exceeds limit.",
+          "observed": 0.4744144492,
+          "limit": 0.30
+        },
+        {
+          "kind": "CryptoExposure",
+          "detail": "Crypto exposure exceeds limit.",
+          "observed": 0.2186526762,
+          "limit": 0.10
+        }
+      ],
+      "proposedTrades": [
+        {
+          "assetClass": "Equity",
+          "direction": "Buy",
+          "notional": 23070.29,
+          "currency": "USD"
+        },
+        {
+          "assetClass": "FixedIncome",
+          "direction": "Buy",
+          "notional": 19486.12,
+          "currency": "USD"
+        },
+        {
+          "assetClass": "Cash",
+          "direction": "Buy",
+          "notional": 82270.43,
+          "currency": "USD"
+        },
+        {
+          "assetClass": "Alternative",
+          "direction": "Buy",
+          "notional": 31109.53,
+          "currency": "USD"
+        },
+        {
+          "assetClass": "Crypto",
+          "direction": "Sell",
+          "notional": 155936.37,
+          "currency": "USD"
+        }
+      ]
+    }
+  ],
+  "status": "complete",
+  "missingItems": []
+}

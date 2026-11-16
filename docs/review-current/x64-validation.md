@@ -369,3 +369,36 @@ Results were committed/pushed after N=1 and N=3 before launching the next profil
 **STOP:** the approved N=1, N=3, full Small sweep is complete. Medium/Large were not run
 and require separate approval. No prompts, limits, schema, package pins or Azure resource
 settings changed during the sweep.
+
+## Full-Small diagnosis and cross-profile reporting (November 16, 2026)
+
+Reporting-only follow-up from `25ad7b70df6094b746e7757af8038129bf289179` on the same
+Standard_D4s_v5 VM. No new model calls, guest executions or Medium/Large runs.
+The original prompt-hash cohort and all its trial evidence are unchanged.
+
+For full-Small pair 1, CodeAct H0001's USD **826,579.16** matches the unchanged oracle
+and an independent Decimal calculation of all 26 positions. The first computational
+divergence is omitted allocations/drifts: the Python hard-codes empty analytical arrays
+and `flagged: false` despite four oracle breaches. This is semantic incompleteness,
+not an observed valuation/units error or oracle arithmetic bug. Classic retrieved only
+10 of 33 accounts' positions, then stopped at turn 8 with one fabricated household;
+the captured final response itself is incomplete, not truncated by the harness.
+See the [field-by-field diagnosis and independent ledger](../sample-run/diagnosis.md).
+Shared-prompt, semantic-validation and scoring-coverage fixes are proposed there but
+**not applied**; prompt changes require approval and a new shared-prompt hash cohort.
+
+The explicit-comparison `summarize` command writes local
+`artifacts/summary.md` and `artifacts/summary.html`: all three scopes, both modes,
+correctness first, all-outcome medians and correctness-labelled descriptive deltas.
+All 18 individual trial timelines are directly linked. Full-Small's lower resource
+usage remains labelled **both Partial, not a correctness-equivalent win**.
+The [committed sample](../sample-run/README.md) contains one real full-Small pair,
+actual Python, invocation excerpts and a comparison HTML; aliases replace run-directory
+identifiers. The 14-file sample passed endpoint/secret/absolute-path scans,
+relative-link checks and byte-for-byte comparison of its four Python programs.
+
+Validation: Release build **0 warnings/errors**; full non-live suite **255 passed,
+0 failed, 0 skipped across ten projects**. Six new reporting cases cover scope
+preservation, analysis-time/all-outcome medians, contextual deltas, unknown measurements,
+and rejection of mixed prompt/model/pricing/execution cohorts. The observability helper
+now expects 255; historical 249-test sweep evidence above is not relabelled.

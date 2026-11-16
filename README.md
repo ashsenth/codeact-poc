@@ -147,7 +147,7 @@ More detail: [architecture](docs/architecture.md) and [security model](docs/secu
 
 **Verification scope:** the sequence below succeeded in a clean local-source clone on Windows
 ARM64. Ubuntu x64 additionally passed local-source clean-clone locked restore, Release build and
-231 non-live tests at `3088451`, using an empty NuGet cache. The current validity/reporting changes pass 249.
+231 non-live tests at `3088451`, using an empty NuGet cache. The current validity/reporting changes pass 255.
 The complete quickstart on Linux/macOS and a remote-origin clone are **not yet verified**.
 
 Clone setup template (**remote clone not yet verified**; replace the placeholder):
@@ -205,12 +205,62 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Current result: **249 passed, 0 failed, 0 skipped across ten projects**, including
+Current result: **255 passed, 0 failed, 0 skipped across ten projects**, including
 worker containment/recovery and model-outcome/infrastructure-validity regressions. On the ARM64 laptop the six Hyperlight tests
 previously skipped; on Ubuntu x64 five pass, while native cancellation remains a labelled
 known issue. Neither a skip nor an excluded known issue is a pass.
 
 ## 6. What the results show
+
+### Results
+
+Live VM sweep, three measured pairs per scope, shared prompt v2; **correctness first**.
+All comparisons are VALID infrastructure evidence, not proof of correct model answers.
+Medians include every measured task outcome, excluding warm-ups. Tokens are median **total**
+tokens per trial, not the sum of independently calculated input/output medians.
+
+| Small scope | Mode | Oracle-correct rate | Outcomes | Median tokens | Median est. USD | Median analysis s |
+| --- | --- | --- | --- | ---: | ---: | ---: |
+| N=1 | Classic | 0/3 (0%) | Partial 3 | 24,463 | 0.0665875 | 16.429 |
+| N=1 | CodeAct | 3/3 (100%) | Exact 3 | 18,826 | 0.0691975 | 16.945 |
+| N=3 | Classic | 0/3 (0%) | Partial 3 | 40,967 | 0.1147625 | 17.510 |
+| N=3 | CodeAct | 2/3 (66.7%) | Exact 2, InvalidSchema 1 | 29,126 | 0.1216850 | 27.201 |
+| Full Small (10) | Classic | 0/3 (0%) | Partial 3 | 70,188 | 0.1873200 | 23.418 |
+| Full Small (10) | CodeAct | 0/3 (0%) | Partial 3 | 23,263 | 0.0738175 | 16.350 |
+
+Descriptive CodeAct-minus-Classic changes; **each delta includes correctness context**:
+
+| Scope | Median tokens | Median est. cost | Median analysis time |
+| --- | --- | --- | --- |
+| N=1 | -23.0%; Classic 0/3 vs CodeAct 3/3 correct; not a correctness-equivalent win | +3.9%; Classic 0/3 vs CodeAct 3/3 correct; not a correctness-equivalent win | +3.1%; Classic 0/3 vs CodeAct 3/3 correct; not a correctness-equivalent win |
+| N=3 | -28.9%; Classic 0/3 vs CodeAct 2/3 correct; not a correctness-equivalent win | +6.0%; Classic 0/3 vs CodeAct 2/3 correct; not a correctness-equivalent win | +55.3%; Classic 0/3 vs CodeAct 2/3 correct; not a correctness-equivalent win |
+| Full Small | -66.9%; both Partial, 0/3 correct; not a correctness-equivalent win | -60.6%; both Partial, 0/3 correct; not a correctness-equivalent win | -30.2%; both Partial, 0/3 correct; not a correctness-equivalent win |
+
+The generated [summary Markdown](artifacts/summary.md) and [summary HTML](artifacts/summary.html)
+link all 18 individual trial timelines directly, plus all three full comparison reports.
+These ignored local artifacts are generated from existing JSON, not new model/guest calls:
+
+```powershell
+$comparisonFiles = @(
+  "artifacts/phase-b-sweep-20261116/n1/comparisons/small-20261116183315-756172429e844d8a89569f332174cce4.json",
+  "artifacts/phase-b-sweep-20261116/n3/comparisons/small-20261116183702-cd37a0744d8245e1ae955d9cf00cd06c.json",
+  "artifacts/phase-b-sweep-20261116/full-small/comparisons/small-20261116184051-6a9a3fe1d0c148d8bff90034aee2e297.json"
+)
+$env:ARTIFACTS_ROOT = "artifacts"
+dotnet run -c Release --no-build --project src/SterlingVale.Benchmark -- summarize --comparisons ($comparisonFiles -join ",")
+```
+
+The summary selects files explicitly so N=1/N=3/full Small do not overwrite each other as
+the same profile; mixed shared-prompt/model/pricing/execution cohorts are rejected.
+For peers without local artifacts, open the committed [sanitized sample](docs/sample-run/README.md)
+and [field-by-field diagnosis / hand verification](docs/sample-run/diagnosis.md).
+H0001's CodeAct valuation is correct; its first computational divergence is omitted allocation/
+drift analysis, followed by hard-coded no flags/breaches/trades. Classic stopped prematurely
+with one fabricated household after querying positions for only 10 of 33 accounts.
+The unchanged oracle matches an independent decimal hand calculation for H0001.
+Proposed shared-prompt/semantic-validation/scoring-coverage fixes are documented, **not applied**;
+any approved prompt edit must apply to both modes and start a new prompt-hash cohort.
+No Medium/Large or new live runs were performed for this diagnosis/reporting work.
 
 ### Fake-model controls, NOT real performance
 
@@ -250,6 +300,7 @@ Fake tokens and formula costs are identical; wall-clock timings vary.
 | Relative location | Contents |
 | --- | --- |
 | `<ARTIFACTS_ROOT>/index.md` | Comparisons and runs, status, warm-up labels, and available timeline/code/tool-invocation links. |
+| `<ARTIFACTS_ROOT>/summary.{md,html}` | Explicitly selected cross-profile/scoped comparisons, correctness rates, medians, correctness-labelled descriptive deltas, and direct links to every measured trial. |
 | `artifacts/comparisons/{id}.{json,md,csv,html}` | Raw trials, summaries, scores, fingerprints, execution kind, and dashboards. |
 | `artifacts/comparisons/{id}/summary.{json,md}` | Additional comparison summary. |
 | `artifacts/comparisons/scaling-{timestamp}.html` | Latest-per-profile overview; check execution kinds before mixing runs. |
@@ -280,9 +331,10 @@ Comparison validity is independent of model success:
 
 Both modes' status/oracle, turns, named calls, input/output tokens, analysis duration, estimated
 cost, execute_code and callbacks are shown per trial and as medians. Unknown remains unavailable.
-Efficiency deltas are withheld unless every measured trial is oracle-correct; when shown,
-both modes' correctness appears alongside them. Lower tokens/latency on an incorrect report
-is never labelled a win. Process-inclusive timing remains separately available.
+Per-comparison efficiency-win cards/deltas are withheld unless every measured trial is
+oracle-correct. The cross-profile summary additionally shows descriptive resource deltas for
+task outcomes, with each delta explicitly labelled by both modes' correctness and never as a
+correctness-equivalent win. Process-inclusive timing remains separately available.
 Telemetry can reconcile a failed request: **VALID accounting is not successful analysis**.
 Warm-ups are persisted and labelled **WARM-UP, not measured**. Normal logs show full IDs at
 RUN STARTED, then an eight-character run prefix; verbose/debug and disk journals retain full IDs.
@@ -450,7 +502,7 @@ Full Small produced no oracle-correct trial in either mode, despite schema-valid
 
 | Area | Status and evidence |
 | --- | --- |
-| Offline POC demo | Working: local-source clean clones; current validity/reporting changes have 249 non-live passes. |
+| Offline POC demo | Working: local-source clean clones; current validity/reporting changes have 255 non-live passes. |
 | HTTP contract | Offline integration tests pass; a standalone live Classic request completed for one household, with valid schema/telemetry but no oracle score. |
 | Observability | Working offline: correlation, journals, capture policy, timelines, counts, reconciliation. |
 | Large payload capture | Bounded payloads with explicit flags; transcript records remain valid JSONL and retain later calls. Exact oversized payloads remain unavailable. |

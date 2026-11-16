@@ -1,0 +1,66 @@
+{
+  "runId": "analysis-20231011-001",
+  "generatedAt": "2023-10-11T12:00:00.0000000+00:00",
+  "households": [
+    {
+      "householdId": "H0001",
+      "baseCurrency": "USD",
+      "totalValue": 1000000,
+      "flagged": false,
+      "drifts": [
+        {
+          "assetClass": "Equity",
+          "actualFraction": 0.5,
+          "targetFraction": 0.5,
+          "driftFraction": 0,
+          "breached": false
+        },
+        {
+          "assetClass": "FixedIncome",
+          "actualFraction": 0.3,
+          "targetFraction": 0.3,
+          "driftFraction": 0,
+          "breached": false
+        },
+        {
+          "assetClass": "Cash",
+          "actualFraction": 0.1,
+          "targetFraction": 0.1,
+          "driftFraction": 0,
+          "breached": false
+        },
+        {
+          "assetClass": "Alternative",
+          "actualFraction": 0.07,
+          "targetFraction": 0.07,
+          "driftFraction": 0,
+          "breached": false
+        },
+        {
+          "assetClass": "Crypto",
+          "actualFraction": 0.03,
+          "targetFraction": 0.03,
+          "driftFraction": 0,
+          "breached": false
+        }
+      ],
+      "breaches": [],
+      "proposedTrades": [
+        {
+          "assetClass": "Equity",
+          "direction": "Buy",
+          "notional": 5000,
+          "currency": "USD"
+        },
+        {
+          "assetClass": "FixedIncome",
+          "direction": "Sell",
+          "notional": 3000,
+          "currency": "USD"
+        }
+      ]
+    }
+  ],
+  "status": "complete",
+  "missingItems": []
+}

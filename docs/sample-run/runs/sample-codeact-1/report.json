@@ -1,0 +1,98 @@
+{
+  "runId": "analysis-small-dataset-001",
+  "generatedAt": "2023-10-03T12:00:00.0000000+00:00",
+  "households": [
+    {
+      "householdId": "H0001",
+      "baseCurrency": "USD",
+      "totalValue": 826579.16,
+      "flagged": false,
+      "drifts": [],
+      "breaches": [],
+      "proposedTrades": []
+    },
+    {
+      "householdId": "H0002",
+      "baseCurrency": "USD",
+      "totalValue": 1201461.1,
+      "flagged": false,
+      "drifts": [],
+      "breaches": [],
+      "proposedTrades": []
+    },
+    {
+      "householdId": "H0003",
+      "baseCurrency": "USD",
+      "totalValue": 2256394.3,
+      "flagged": false,
+      "drifts": [],
+      "breaches": [],
+      "proposedTrades": []
+    },
+    {
+      "householdId": "H0004",
+      "baseCurrency": "USD",
+      "totalValue": 614987.21,
+      "flagged": false,
+      "drifts": [],
+      "breaches": [],
+      "proposedTrades": []
+    },
+    {
+      "householdId": "H0005",
+      "baseCurrency": "EUR",
+      "totalValue": 730630.71,
+      "flagged": false,
+      "drifts": [],
+      "breaches": [],
+      "proposedTrades": []
+    },
+    {
+      "householdId": "H0006",
+      "baseCurrency": "USD",
+      "totalValue": 1646643.69,
+      "flagged": false,
+      "drifts": [],
+      "breaches": [],
+      "proposedTrades": []
+    },
+    {
+      "householdId": "H0007",
+      "baseCurrency": "GBP",
+      "totalValue": 584283.38,
+      "flagged": false,
+      "drifts": [],
+      "breaches": [],
+      "proposedTrades": []
+    },
+    {
+      "householdId": "H0008",
+      "baseCurrency": "USD",
+      "totalValue": 1186966.44,
+      "flagged": false,
+      "drifts": [],
+      "breaches": [],
+      "proposedTrades": []
+    },
+    {
+      "householdId": "H0009",
+      "baseCurrency": "USD",
+      "totalValue": 3128184.81,
+      "flagged": false,
+      "drifts": [],
+      "breaches": [],
+      "proposedTrades": []
+    },
+    {
+      "householdId": "H0010",
+      "baseCurrency": "EUR",
+      "totalValue": 1048384.4,
+      "flagged": false,
+      "drifts": [],
+      "breaches": [],
+      "proposedTrades": []
+    }
+  ],
+  "status": "complete",
+  "missingItems": []
+}
