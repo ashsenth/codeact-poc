@@ -1,5 +1,35 @@
 # Optional x64 validation workflow
 
+## v3 full Small five-pair result (November 16, 2026)
+
+After N=3 was checked, committed and pushed at
+`2de44a231febc712004166f4159f959292ed5312`, the committed runner launched full
+Small (10 households) under nohup from that source. Comparison
+`small-20261116214010-6960fd4f41e645af8be1874d26eb63be` is VALID:
+five measured pairs, one warm-up per mode, all telemetry valid, no infrastructure
+failures, approved configuration/pricing and fairness fingerprints unchanged.
+The committed checker verified every raw tool-error count and regenerated the
+final three-profile v3 summary, excluding both aborted directories and all v2 data.
+
+| Mode | Correct | Unearned (assessed) | Tool argument errors | Median tokens | Median est. USD | Median analysis s |
+|---|---|---|---:|---:|---:|---:|
+| Classic | 0/5 | 5/5 (5/5) | 0 | 71,677 | 0.1943500 | 21.851 |
+| CodeAct | 0/5 | 4/5 (4/5) | 0 | 51,643 | 0.1860475 | 32.905 |
+
+Classic: UnearnedCompleteness 5. CodeAct: UnearnedCompleteness 4, TimedOut 1.
+The deadline timeout is a recorded model task outcome, not infrastructure failure.
+Warm-ups: Classic Incomplete/Partial, CodeAct Completed/UnearnedCompleteness;
+zero tool argument errors each, neither stopped measured execution.
+CodeAct descriptive deltas: -28.0% tokens, -4.3% estimated cost, +50.6% analysis
+time. Both modes are 0/5 correct, so no correctness-equivalent efficiency win.
+All measured outcomes remain in the medians; warm-ups are excluded.
+
+N=1 reclassification is unchanged and its raw artifacts remain untouched.
+The solution and portable Diagnosis Release builds passed with zero warnings/errors;
+the final code gate is **279 non-live tests passed, zero failed/skipped**.
+No further code changes followed that gate. No prompt changes were made during
+continuation. No Medium/Large runs were started.
+
 ## v3 N=3 fresh five-pair result (November 16, 2026)
 
 The committed runner ran under nohup from pushed source
