@@ -145,6 +145,18 @@ schema/parallel function tools, exact 429/retry accounting and exhaustion, prici
 tiers/caches, returned-model mismatches, and multi-message reasoning responses
 consuming only one shared turn in both modes.
 
-Preparation only at this commit. No smoke or measured cohort has started yet.
-The final cross-model table will retain all five measured outcomes per scope/mode,
-and label token/cost/time deltas descriptive when correctness differs.
+Both isolated N=1 smoke gates passed on source `375c2d5`, in the required order:
+
+- **gpt-4o:** VALID, reconciled, matched fingerprints; measured Classic Capped at
+  20 requests and CodeAct Incomplete/Partial. Model failures did not stop the gate.
+  Comparison `small-20261117171055-4c731da245b84fe6a57b0a3bedb6cb5a`.
+- **gpt-6.1-sol:** VALID, reconciled, matched fingerprints; measured Classic
+  WithinTolerance and CodeAct Exact. Recorded reasoning/visible tokens were
+  1,841/2,250 and 28/1,762 respectively, with cached/read-write usage preserved.
+  Comparison `small-20261117171400-a7cc7386302e40a0b1dc5a5fed8e9ecc`.
+
+Both have zero 429s, retry waits, tool-argument errors and output overflows.
+The directories are `artifacts/v3-enforced-20261117/{gpt-4o,gpt-6.1-sol}/smoke-n1/`.
+They are excluded from measured cohort samples and summaries. The five-pair
+N=1/N=3/full Small profiles are next; each profile is checked, committed and pushed
+before the following profile starts.
