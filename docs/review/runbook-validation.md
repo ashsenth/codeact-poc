@@ -8,13 +8,13 @@ Commands below were **actually executed** during this audit or earlier phases; r
 
 | Documented step | Command | Result |
 | --- | --- | --- |
-| Restore (locked) | `dotnet restore --locked-mode` | ✅ exit 0 |
-| Build | `dotnet build -c Release` | ✅ 0 warnings / 0 errors |
-| Format | `dotnet format --verify-no-changes` | ✅ clean |
-| Test (offline) | `dotnet test -c Release --no-build` | ✅ 146 passed / 5 gated-skipped |
-| Generate data | `dotnet run --project src/SterlingVale.DataGenerator -- data` | ✅ (verified in Phase 1 & benchmark smoke) |
-| Benchmark validate | `benchmark validate-data` | ✅ all 3 profiles VALID |
-| Benchmark run | `benchmark run --profile small --trials 3` | ✅ fairness MATCHED; `{id}.json`+`.md` written |
+| Restore (locked) | `dotnet restore --locked-mode` | PASS exit 0 |
+| Build | `dotnet build -c Release` | PASS 0 warnings / 0 errors |
+| Format | `dotnet format --verify-no-changes` | PASS clean |
+| Test (offline) | `dotnet test -c Release --no-build` | PASS 146 passed / 5 gated-skipped |
+| Generate data | `dotnet run --project src/SterlingVale.DataGenerator -- data` | PASS (verified in Phase 1 & benchmark smoke) |
+| Benchmark validate | `benchmark validate-data` | PASS all 3 profiles VALID |
+| Benchmark run | `benchmark run --profile small --trials 3` | PASS fairness MATCHED; `{id}.json`+`.md` written |
 
 ## Not executed here (recorded honestly)
 

@@ -10,15 +10,15 @@ within-model deltas, see the [canonical methodology](benchmark-methodology.md#re
 
 | Quantity | Rule |
 | --- | --- |
-| Native value | `quantity × price` (both in the symbol's quote currency) |
-| Base value | `native value × FX(quoteCurrency → householdBaseCurrency)` |
-| Household total | Σ base value over all positions in all accounts of the household |
+| Native value | `quantity * price` (both in the symbol's quote currency) |
+| Base value | `native value * FX(quoteCurrency -> householdBaseCurrency)` |
+| Household total | sum base value over all positions in all accounts of the household |
 
 ## FX conversion
 
-- **Direct:** if a rate `From→To` exists, multiply by it.
-- **Inverse:** if only `To→From` exists, divide by that rate.
-- **Identity:** `From == To` ⇒ rate `1`.
+- **Direct:** if a rate `From->To` exists, multiply by it.
+- **Inverse:** if only `To->From` exists, divide by that rate.
+- **Identity:** `From == To` => rate `1`.
 - **Missing:** if neither direction exists, throw `FxRateNotFoundException` (value is never silently
   dropped). The synthetic datasets guarantee full coverage, so this only occurs on malformed input.
 - **Precision:** conversions use full `decimal` precision; **no intermediate rounding**. Rounding to
@@ -29,7 +29,7 @@ within-model deltas, see the [canonical methodology](benchmark-methodology.md#re
 | Quantity | Rule |
 | --- | --- |
 | Allocation (per asset class) | `assetClassBaseValue / householdTotal` |
-| Drift | `actualAllocation − targetAllocation` (may be negative) |
+| Drift | `actualAllocation - targetAllocation` (may be negative) |
 | Drift breach | `|drift| > policy.DriftTolerance` |
 | Concentration (per symbol) | `symbolBaseValue / householdTotal`; breach when `> policy.MaxConcentration` |
 | FX exposure | `nonBaseCurrencyValue / householdTotal`; breach when `> policy.MaxFxExposure` |
@@ -38,9 +38,9 @@ within-model deltas, see the [canonical methodology](benchmark-methodology.md#re
 
 ## Rebalancing
 
-- Target value for an asset class = `householdTotal × targetFraction`.
-- Proposed notional = `targetValue − currentValue`; positive ⇒ **Buy**, negative ⇒ **Sell**.
-- Notionals are asset-class amounts in the household base currency — **never named securities**.
+- Target value for an asset class = `householdTotal * targetFraction`.
+- Proposed notional = `targetValue - currentValue`; positive => **Buy**, negative => **Sell**.
+- Notionals are asset-class amounts in the household base currency -- **never named securities**.
 - **Invariant:** because target fractions sum to 1, the signed proposed notionals net to
   approximately zero (within `FinancialMath.NetNotionalTolerance` relative to the household total,
   after money rounding).
@@ -60,5 +60,5 @@ within-model deltas, see the [canonical methodology](benchmark-methodology.md#re
 - When a household total is `0`, `FinancialMath.SafeDivide` yields `0` for every allocation,
   concentration, and exposure (no divide-by-zero).
 - No proposed trades are produced for a zero-total household (all deltas are `0`).
-- Drift for each class equals `0 − target = −target`, which may register as a drift breach; this is
+- Drift for each class equals `0 - target = -target`, which may register as a drift breach; this is
   an intentional, documented edge case. The synthetic datasets guarantee non-zero totals.

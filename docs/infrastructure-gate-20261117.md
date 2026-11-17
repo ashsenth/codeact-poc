@@ -98,8 +98,8 @@ scores/resources from a hypothetical stop at request 20. No rerun or rescore occ
 Reproduction:
 
 ```bash
-python3 scripts/vm/audit-model-turns.py --artifacts-root <existing-artifacts-root> \
-  --threshold 20 > <new-audit.json>
+python3 scripts/vm/audit-model-turns.py --artifacts-root "<existing-artifacts-root>" \
+  --threshold 20 > "<new-audit.json>"
 ```
 
 ## 3. Exact offline overflow behavior
@@ -189,7 +189,7 @@ Reproduce without a guest or model:
 ```bash
 dotnet build scripts/vm/Diagnosis -c Release
 dotnet scripts/vm/Diagnosis/bin/Release/net9.0/Diagnosis.dll sandbox-capacity \
-  <existing-generated-data-root> <new-capacity-output-directory>
+  "<existing-generated-data-root>" "<new-capacity-output-directory>"
 ```
 
 ### Stop decision and options requiring approval

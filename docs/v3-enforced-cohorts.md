@@ -8,7 +8,7 @@ as `1b55bea6871614a1f564381f416519582a9ae909`; full Small as
 but timed out 5/5 at each larger scope. Sol CodeAct was correct 5/5 in every scope,
 with one measured returned overflow in each larger scope. These are not
 correctness-equivalent comparisons outside N=1. See [final results](v3-responses-results.md)
-and [README](../README.md#results-gpt-61-sol-v3).
+and [README](results.md#results-gpt-61-sol-v3).
 
 Everything below describing a stop/hold is a **dated historical record**, superseded
 by that completed continuation, not a current instruction to launch or wait.
@@ -141,7 +141,7 @@ valid comparison, and records the current execution/concurrency policy separatel
 No historical artifacts are required. `--reference-comparison` is optional and retains
 the historical comparison-plus-sibling-metadata path for explicit legacy reproduction.
 Without that flag or `--cohort`, run/check default to `gpt-4o-v3-enforced`; pass
-`--cohort gpt-6.1-sol-v3` for Sol. Follow the [current runbook](../README.md#running-current-cohorts);
+`--cohort gpt-6.1-sol-v3` for Sol. Follow the [current runbook](running-experiments.md#running-current-cohorts);
 the commands below describe the historical sequence.
 
 `ARTIFACTS_ROOT` must be a **different new directory per cohort**. Set the deployment
@@ -152,15 +152,15 @@ differ. The runner requires a clean committed worktree and refuses existing outp
 ```bash
 # First gpt-4o, then gpt-6.1-sol; never start the next if infrastructure fails.
 python3 scripts/vm/run-v3-profile.py n1 --smoke \
-  --cohort gpt-4o-v3-enforced --reference-comparison <historical-v3-comparison.json>
+  --cohort gpt-4o-v3-enforced --reference-comparison "<historical-v3-comparison.json>"
 python3 scripts/vm/check-v3-profile.py n1 --smoke \
-  --cohort gpt-4o-v3-enforced --reference-comparison <historical-v3-comparison.json>
+  --cohort gpt-4o-v3-enforced --reference-comparison "<historical-v3-comparison.json>"
 
 # After BOTH smoke gates pass, use the same commands without --smoke,
 # for n1, n3, full-small, five pairs per profile, independently per cohort.
 # Check, summarize, document, commit and push after EACH profile.
 python3 scripts/vm/check-v3-profile.py n1 --summarize \
-  --cohort gpt-4o-v3-enforced --reference-comparison <historical-v3-comparison.json>
+  --cohort gpt-4o-v3-enforced --reference-comparison "<historical-v3-comparison.json>"
 ```
 
 Invoke long-running profiles with the approved background/nohup execution mechanism.
@@ -274,7 +274,7 @@ helper and streams every child stdout/stderr line to the outer persistent log,
 while also retaining per-profile logs. Offline tests verify that checker, report,
 commit and push precede the following profile, and that infrastructure or
 publication failure prevents that launch. See [manual environment and launch
-commands](../README.md#remaining-sol-controller-and-completion-signals).
+commands](running-experiments.md#remaining-sol-controller-and-completion-signals).
 
 Profiles used the committed runner under managed background supervision, not
 literal `nohup`. Both deployments retained their pinned versions throughout all

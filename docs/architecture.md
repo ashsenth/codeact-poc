@@ -8,38 +8,38 @@ mechanism addenda and model-facing tool surfaces intentionally differ.
 ## Dependency direction
 
 ```
-        Domain  ◄─ Application ◄─ Tools ─────────────┐
-          ▲            ▲            ▲                 │
-          │            │            │                 │
-          └── (pure) ──┘        AgentShared ◄─────────┤
-                                    ▲    ▲            │
-                Telemetry ──────────┘    │            │
-                                         │            │
-                    Infrastructure ◄─────┤     SterlingVale.CodeAct
-                         ▲               │            ▲
-                         │               │            │
-        Api.Shared ◄─────┼───────────────┘            │
-             ▲           │                            │
-             │           │                            │
-   Classic.Api ──────────┘             CodeAct.Api ───┘
-                                       Benchmark ──────┘
+        Domain  <- Application <- Tools -------------+
+          ^            ^            ^                 |
+          |            |            |                 |
+          +-- (pure) --+        AgentShared <---------+
+                                    ^    ^            |
+                Telemetry ----------+    |            |
+                                         |            |
+                    Infrastructure <-----+     SterlingVale.CodeAct
+                         ^               |            ^
+                         |               |            |
+        Api.Shared <-----+---------------+            |
+             ^           |                            |
+             |           |                            |
+   Classic.Api ----------+             CodeAct.Api ---+
+                                       Benchmark ------+
 ```
 
-- **Domain** — pure value objects, immutable model, `FinancialMath`. Zero references (enforced by
+- **Domain** -- pure value objects, immutable model, `FinancialMath`. Zero references (enforced by
   `ArchitectureTests`).
-- **Application** — the deterministic **oracle**, portfolio snapshot, and FX converter. References
+- **Application** -- the deterministic **oracle**, portfolio snapshot, and FX converter. References
   only Domain.
-- **Tools** — the canonical seven granular tools + `ToolCatalog`. References Application + Telemetry.
-- **AgentShared** — shared prompt, output schema, contracts, `AnalysisRunner`, `AnalysisService`,
+- **Tools** -- the canonical seven granular tools + `ToolCatalog`. References Application + Telemetry.
+- **AgentShared** -- shared prompt, output schema, contracts, `AnalysisRunner`, `AnalysisService`,
   `ClassicAgentFactory`, deterministic fake model, fairness fingerprints.
-- **SterlingVale.CodeAct** — `CodeActAgentFactory` (Hyperlight). Isolated so the console benchmark
+- **SterlingVale.CodeAct** -- `CodeActAgentFactory` (Hyperlight). Isolated so the console benchmark
   can use it without the ASP.NET host.
-- **Infrastructure** — dataset loading, chat-client providers (Azure / fake), `FileRunStore`, DI.
-- **Api.Shared** (namespace `SterlingVale.Api.Hosting`) — the single endpoint mapping used by both
+- **Infrastructure** -- dataset loading, chat-client providers (Azure / fake), `FileRunStore`, DI.
+- **Api.Shared** (namespace `SterlingVale.Api.Hosting`) -- the single endpoint mapping used by both
   APIs, so the HTTP contract cannot diverge.
-- **Classic.Api / CodeAct.Api** — thin composition roots (~15-line `Program.cs`). Each registers only
+- **Classic.Api / CodeAct.Api** -- thin composition roots (~15-line `Program.cs`). Each registers only
   its mode-specific `IAgentFactory`.
-- **Benchmark** — paired-trial harness, correctness scoring, comparison reporting.
+- **Benchmark** -- paired-trial harness, correctness scoring, comparison reporting.
 
 ## The single orchestration seam
 
@@ -51,15 +51,15 @@ mechanism addenda and model-facing tool surfaces intentionally differ.
 | Model surface | the 7 tools | `execute_code` (tools reached via `call_tool`) |
 | Tool fingerprint | hash of the 7 tools | **same** hash of the 7 tools |
 
-Everything downstream — prompt, schema, dataset, model config, pricing, `AnalysisRunner`, metrics,
-artifacts, HTTP contract — is shared.
+Everything downstream -- prompt, schema, dataset, model config, pricing, `AnalysisRunner`, metrics,
+artifacts, HTTP contract -- is shared.
 
 ## Request flow
 
-`POST /api/v1/analyses` → validate request against `analysis-request/v1` schema → `AnalysisService`
+`POST /api/v1/analyses` -> validate request against `analysis-request/v1` schema -> `AnalysisService`
 resolves the snapshot, builds the shared tool service, computes fairness fingerprints, creates the
 mode's agent, and runs it through `AnalysisRunner` (usage aggregation, turn/tool counting, timeout,
-turn cap, schema validation, raw-output capture) → `FileRunStore` persists artifacts → response DTO.
+turn cap, schema validation, raw-output capture) -> `FileRunStore` persists artifacts -> response DTO.
 
 The shared prompt is `exposure-analysis/v3`; its embedded `exposure-report/v2` schema requires
 `status` (`complete` or `incomplete`) and `missingItems` (strings). Incomplete requires at least
@@ -163,3 +163,22 @@ safe notice. Invalid/insecure or credential-bearing URLs are rejected without ec
 The shared run store and comparison writer refresh `<ARTIFACTS_ROOT>/index.md` with statuses
 and relative links to available timelines, generated-code captures and tool-invocation records.
 See the [current POC review](review-current/poc-demo-review.md) for verified scope and open issues.
+
+## Scenario and implementation
+
+Seeded synthetic data contains:
+
+| Profile | Households | Accounts | Positions |
+|---|---:|---:|---:|
+| Small | 10 | 33 | 370 |
+| Medium | 40 | 156 | 2,201 |
+| Large | 120 | 485 | 7,198 |
+
+For each in-scope household the agent retrieves holdings, prices, FX and policy; values holdings in base currency; calculates allocations/drift; checks drift, concentration, FX and crypto breaches; proposes asset-class buy/sell notionals; and returns `exposure-report/v2`.
+
+Classic exposes seven granular functions to the model. CodeAct exposes `execute_code`; Python calls those same functions via `call_tool`. Tools are direct **AIFunction callbacks, not MCP**, and expose no oracle calculations. Both modes allow multiple calls per model response; local function execution is sequential within the response, and results are returned together in the next request.
+
+The CLI runs paired trials and scoring without separate HTTP hosts. The two optional APIs share `POST /api/v1/analyses` and run retrieval.
+
+- [Architecture](architecture.md), [oracle calculation and tolerance rules](metrics.md), [SDK findings](sdk-findings.md).
+- [Committed sanitized live sample](sample-run/README.md) and [independent household hand-check](sample-run/diagnosis.md): historical v2 evidence, not current scorer results.

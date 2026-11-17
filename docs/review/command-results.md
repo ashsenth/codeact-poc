@@ -1,4 +1,4 @@
-﻿# Command results (audit)
+# Command results (audit)
 
 Historical output below preserves original results, including skips. Local paths and package-feed
 URLs have been replaced with placeholders; this output is not current validation evidence.
@@ -290,7 +290,7 @@ Project `SterlingVale.Contract.Tests` has the following updates to its packages
 | --- | --- |
 | dotnet --info | .NET SDK 9.0.317, win-arm64, AspNetCore/NETCore 9.0.19 |
 | dotnet restore --locked-mode | exit 0 (lock files consistent) |
-| dotnet build -c Release --no-restore | Build succeeded — 0 Warning(s), 0 Error(s) |
+| dotnet build -c Release --no-restore | Build succeeded -- 0 Warning(s), 0 Error(s) |
 | dotnet format --verify-no-changes | exit 0 (no changes) |
 | dotnet test -c Release --no-build | 146 passed, 5 skipped, 0 failed (10 test projects) |
 | dotnet list package --vulnerable --include-transitive | no vulnerable packages (all 22 projects) |

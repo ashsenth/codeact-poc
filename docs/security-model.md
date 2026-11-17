@@ -17,18 +17,18 @@ the trust boundaries and the controls that keep that safe.
 Generated code runs **only inside a Hyperlight micro-VM**, never in the host process. The provider
 is configured with strict defaults:
 
-- **No outbound network** — `AllowedDomains` is empty (deny-all).
-- **No host filesystem** — no `FileMounts` are configured.
-- **Fresh sandbox per run** — a new provider is created and **disposed** after each analysis, so
+- **No outbound network** -- `AllowedDomains` is empty (deny-all).
+- **No host filesystem** -- no `FileMounts` are configured.
+- **Fresh sandbox per run** -- a new provider is created and **disposed** after each analysis, so
   state cannot leak between runs.
-- **Benchmark containment** — every analysis runs in its own worker process, in both modes,
+- **Benchmark containment** -- every analysis runs in its own worker process, in both modes,
   including warm-ups and Classic batches. A parent watchdog kills and reaps that worker's
   process tree at the configured deadline. The shared observed client enforces the request
   budget before dispatch. The pinned SDK has **no mid-execution native cancellation**;
   cancelling an `AnalysisRunner` token cannot interrupt running guest code.
-- **API-host gap** — standalone Classic/CodeAct API hosts do not use the benchmark worker
+- **API-host gap** -- standalone Classic/CodeAct API hosts do not use the benchmark worker
   watchdog. Their native guest execution is not protected by an equivalent deadline.
-- **Approval mode** — `NeverRequire` (unattended benchmark runs); no host is prompted.
+- **Approval mode** -- `NeverRequire` (unattended benchmark runs); no host is prompted.
 
 Provider-owned tools are reachable from generated code only through `call_tool(...)`, which marshals
 back to the host `AIFunction`s (the same seven read-only tools) and returns bounded JSON.
@@ -37,7 +37,7 @@ back to the host `AIFunction`s (the same seven read-only tools) and returns boun
 
 The seven granular tools only **retrieve or classify** synthetic data. They validate arguments,
 return bounded results, are deterministic, and are safe for concurrent use. They perform no
-valuation, allocation, or policy evaluation — those live in the oracle, which is **never** exposed as
+valuation, allocation, or policy evaluation -- those live in the oracle, which is **never** exposed as
 a tool (enforced by architecture tests).
 
 ## Telemetry redaction

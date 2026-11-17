@@ -1,4 +1,4 @@
-# SDK Findings — Microsoft Agent Framework & Hyperlight CodeAct
+# SDK Findings -- Microsoft Agent Framework & Hyperlight CodeAct
 
 > Phase 0 deliverable. Records the **verified** APIs, package versions, source links,
 > preview limitations, and implementation decisions that the rest of this repository
@@ -109,7 +109,7 @@ floating versions.
 | --- | --- | --- |
 | `Microsoft.Agents.AI` | `1.19.0` | Core agent abstractions, `AsAIAgent`, `ChatClientAgentOptions` (stable) |
 | `Microsoft.Agents.AI.OpenAI` | `1.19.0` | Azure/OpenAI chat-client bridge (stable) |
-| `Microsoft.Agents.AI.Hyperlight` | `1.19.0-preview.260822.1` | **Preview-only** — `HyperlightCodeActProvider`; no stable release exists |
+| `Microsoft.Agents.AI.Hyperlight` | `1.19.0-preview.260822.1` | **Preview-only** -- `HyperlightCodeActProvider`; no stable release exists |
 | `Microsoft.Extensions.AI` | `10.9.0` | `AIFunction`, `AIFunctionFactory`, `IChatClient` |
 | `Microsoft.Extensions.AI.Abstractions` | `10.9.0` | `ChatOptions`, `ChatMessage`, `AIContent` |
 | `Azure.AI.OpenAI` | `2.1.0` | `AzureOpenAIClient` |
@@ -122,7 +122,7 @@ Transitive versions observed in the probe lock file (for reference; not pinned d
 
 ---
 
-## 3. Agent creation (Classic path) — VERIFIED
+## 3. Agent creation (Classic path) -- VERIFIED
 
 ```csharp
 using Azure.AI.OpenAI;
@@ -153,7 +153,7 @@ AIAgent agent = chatClient.AsAIAgent(new ChatClientAgentOptions
 - Tools are built with `AIFunctionFactory.Create(Delegate, name: ..., description: ...)`.
 - The same `IChatClient` abstraction is used by both apps; only the wiring differs.
 
-## 4. CodeAct path — VERIFIED
+## 4. CodeAct path -- VERIFIED
 
 ```csharp
 using Microsoft.Agents.AI;
@@ -176,7 +176,7 @@ AIAgent agent = chatClient.AsAIAgent(new ChatClientAgentOptions
 ### `HyperlightCodeActProvider`
 
 - Type: `AIContextProvider`, `IDisposable`. Dispose is required (owns sandbox resources).
-- `StateKeys` exposes a single fixed key `"HyperlightCodeActProvider"` → **one provider per
+- `StateKeys` exposes a single fixed key `"HyperlightCodeActProvider"` -> **one provider per
   agent** (cannot register two CodeAct providers on the same agent).
 
 ### `HyperlightCodeActProviderOptions`
@@ -187,7 +187,7 @@ AIAgent agent = chatClient.AsAIAgent(new ChatClientAgentOptions
 | `CreateForJavaScript()` / `new()` | JavaScript guest (default) |
 | `Tools` (`IEnumerable<AIFunction>`) | provider-owned tools, reachable via `call_tool(...)` |
 | `FileMounts` | read-only host directory mounts (avoid unless required) |
-| `AllowedDomains` | outbound allow-list (empty ⇒ network denied) |
+| `AllowedDomains` | outbound allow-list (empty => network denied) |
 | `HostInputDirectory` / `WorkspaceRoot` | host paths |
 | `ApprovalMode` (`CodeActApprovalMode`) | default `NeverRequire` |
 | `HeapSize` / `StackSize` | guest memory limits |
@@ -214,7 +214,7 @@ AIAgent agent = chatClient.AsAIAgent(new ChatClientAgentOptions
 
 ---
 
-## 5. Gated integration-test pattern — VERIFIED (`CodeActEndToEndTests`)
+## 5. Gated integration-test pattern -- VERIFIED (`CodeActEndToEndTests`)
 
 > **Version correction (1.19.0):** the `AIContextProvider` base method in this SDK is
 > `ProvideAIContextAsync(...)` (there is **no** `InvokingAsync`/`InvokingContext` type as in older
@@ -222,7 +222,7 @@ AIAgent agent = chatClient.AsAIAgent(new ChatClientAgentOptions
 > `net9.0` app can reference it. Because a Hyperlight guest + hardware virtualization are unavailable
 > in this environment, the repository's gated test (`HyperlightRuntimeTests`) verifies **provider
 > construction with the seven provider-owned tools and clean disposal**, and **skips with an explicit
-> reason** (`Xunit.SkippableFact` → `Skip.If`) when `HYPERLIGHT_PYTHON_GUEST_PATH` is unset. The
+> reason** (`Xunit.SkippableFact` -> `Skip.If`) when `HYPERLIGHT_PYTHON_GUEST_PATH` is unset. The
 > deeper `execute_code`/`call_tool`/isolation/denied-network E2E requires a live guest and follows the
 > official pattern below; it is never faked. See `decisions.md` ADR-0013.
 
@@ -245,7 +245,7 @@ model, using `HYPERLIGHT_PYTHON_GUEST_PATH` to locate the guest.
 
 ---
 
-## 6. Usage / telemetry metadata — VERIFIED shape
+## 6. Usage / telemetry metadata -- VERIFIED shape
 
 - Responses expose usage via `Microsoft.Extensions.AI` `UsageDetails`
   (`InputTokenCount`, `OutputTokenCount`, `TotalTokenCount`), surfaced on
@@ -268,12 +268,24 @@ model, using `HYPERLIGHT_PYTHON_GUEST_PATH` to locate the guest.
    version-dependent. When unavailable, `generated-code.txt` is written with an explicit
    "unavailable" marker (never fabricated).
 4. "One `execute_code` call" is **not** guaranteed; the harness measures the actual count.
-5. `net10.0` samples vs `net9.0` app target — see ADR-0002.
+5. `net10.0` samples vs `net9.0` app target -- see ADR-0002.
 
 ---
 
 ## 8. Source references
 
-- `microsoft/agent-framework` (GitHub) — provider, options, `CodeActEndToEndTests`, samples.
-- NuGet (internal proxy) — package versions and target frameworks.
-- Local probe `codeact-poc/_probe` — restore + compile verification on `net9.0`.
+- `microsoft/agent-framework` (GitHub) -- provider, options, `CodeActEndToEndTests`, samples.
+- NuGet (internal proxy) -- package versions and target frameworks.
+- Local probe `codeact-poc/_probe` -- restore + compile verification on `net9.0`.
+
+## Known limits
+
+1. **Guest shared output: 16,376 available bytes.** Oversize results can abort guest serialization and return an explicit failure envelope with empty stdout; this is not silent truncation. Heap/stack or output-directory settings do not resize this buffer in the pinned SDK.
+2. **Medium/Large infeasible under the current output design.** Canonical compact reports are 64,764 / 196,685 UTF-8 bytes, before transport overhead. The pinned provider exposes no output-buffer control. v4 supported-buffer/output-protocol work is pending; no current live scalability claim. Full Small canonical output is 16,547 bytes, while concise feasibility output is 15,274: serialization/descriptions matter.
+3. **Telemetry is a different bound:** 65,536 characters per captured payload, with explicit flags; not the guest buffer and not necessarily the actual model-input size.
+4. **No native mid-execution cancellation.** The pinned provider can wait forever despite a cancellation token. Benchmark parent processes kill/reap the worker tree at the configured deadline in both modes, including warm-ups/batches. The excluded `HyperlightKnownIssue` test is not a pass.
+5. **API-host watchdog gap:** standalone Classic/CodeAct API hosting lacks the benchmark's worker isolation. Do not describe direct API native execution as deadline-contained.
+6. **MCP is not used.** This measures direct AIFunction integration, not MCP transport overhead or behavior.
+7. Small cohorts, provider nondeterminism, cache effects, retail estimates and preview SDK behavior limit generalization. Optional Classic batching changes the experiment and remains separately labelled.
+
+Evidence: [SDK findings](sdk-findings.md), [capacity and stop decision](infrastructure-gate-20261117.md), [security model](security-model.md).

@@ -105,7 +105,7 @@ export DATASET_ROOT="<existing-generated-data-root>"
 export HYPERLIGHT_PYTHON_GUEST_PATH="<absolute-path-to-python-sandbox.aot>"
 dotnet build -c Release
 dotnet scripts/vm/Diagnosis/bin/Release/net9.0/Diagnosis.dll control \
-  scripts/vm/reference-analysis-control.py <new-control-artifacts-directory>
+  scripts/vm/reference-analysis-control.py "<new-control-artifacts-directory>"
 ```
 
 No Azure configuration is required or used. The output directory is intentionally
@@ -186,8 +186,8 @@ with no stdout/tool-result capture truncation or guest output-buffer overflow ob
 Reproduce the read-only mechanical ledger (no Python/model execution of artifacts):
 
 ```bash
-python3 scripts/vm/inspect-v3-failures.py --sweep-root <existing-v3-sweep-root> \
-  > <new-forensics-ledger.jsonl>
+python3 scripts/vm/inspect-v3-failures.py --sweep-root "<existing-v3-sweep-root>" \
+  > "<new-forensics-ledger.jsonl>"
 ```
 
 [Captured ledger](../artifacts/v3-codeact-forensics.jsonl).

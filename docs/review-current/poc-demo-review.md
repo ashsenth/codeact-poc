@@ -152,7 +152,7 @@ same shapes with new timestamps/IDs. The sanitized result table above is committ
 
 ## Best demo path and what x64 adds
 
-Use the [README offline quickstart](../../README.md#quickstart-without-azure), then inspect the
+Use the [README offline quickstart](../getting-started.md#quickstart-without-azure), then inspect the
 new scaling report, a profile's correctness table and the corresponding event journal. Small is
 the simplest source/transcript walkthrough. The November 11 fix preserves transcript JSONL framing
 and later call records even when earlier payloads exceed the capture cap.
@@ -166,7 +166,7 @@ POC's accuracy/token/latency/cost/call-count question. This was the historical
 proposal; current live scope is Small only, and the supported test selection
 explicitly excludes the native-cancellation known issue.
 
-Current constraints and follow-up are in [README Known limits](../../README.md#known-limits).
+Current constraints and follow-up are in [README Known limits](../sdk-findings.md#known-limits).
 ### November 11 pre-push follow-up
 
 - Historical live claims now identify source commits `03cb30a` and `5a65c6e` (September 29, 2026),

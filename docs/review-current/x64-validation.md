@@ -2,7 +2,7 @@
 
 **Historical validation ledger.** For current commands, provisioning, corporate VPN
 and dual CorpNetPublic NSGs, feature registration, deploy keys and VM lifecycle use
-the [README runbook](../../README.md#ubuntu-x64-vm-and-real-hyperlight).
+the [README runbook](../vm-setup.md#ubuntu-x64-vm-and-real-hyperlight).
 The current supported runtime selection has six tests; the native-cancellation
 known issue remains excluded, not passed. Earlier five-pass counts below are dated.
 Validity is defined by the [canonical methodology](../benchmark-methodology.md#validity-rules),

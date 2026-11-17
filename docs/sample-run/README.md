@@ -49,4 +49,4 @@ payloads were checked untruncated/unredacted before extraction.
 
 The original six measured attempts, full journals and cross-profile summary remain separate.
 See the [three-trial sweep record](../review-current/x64-validation.md#three-trial-sweep-and-revised-validity-november-16-2026)
-and [README Results](../../README.md#results-gpt-61-sol-v3).
+and [README Results](../results.md#results-gpt-61-sol-v3).

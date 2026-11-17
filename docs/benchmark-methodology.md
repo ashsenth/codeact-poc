@@ -22,7 +22,7 @@ and initialization costs. Warm-up runs are never included in the reported number
 Within each pair, the execution order of the two modes is randomized. The random seed is **derived
 from the dataset hash and recorded** in the report, so the run is both randomized and reproducible.
 
-## Fairness — fail closed
+## Fairness -- fail closed
 
 Before aggregating, the harness computes fairness fingerprints for each mode and compares them:
 
@@ -86,7 +86,7 @@ Out-of-scope households prevent an oracle pass but do not count as missing in-sc
 These checks happen after execution for detection/reporting only, with no feedback or retry loop.
 
 Collections are sorted by stable keys before comparison. Two outputs are equivalent only when their
-normalized structured data matches — never because prose looks similar.
+normalized structured data matches -- never because prose looks similar.
 
 ## Validity rules
 
@@ -166,7 +166,7 @@ measured cohorts.
 
 This repository **never** hard-codes an expected winner or savings. With the deterministic fake
 model (offline default), both modes emit the oracle result, so correctness is identical and timings
-are tiny — a control that validates the harness, not a performance claim. Real differences require a
+are tiny -- a control that validates the harness, not a performance claim. Real differences require a
 live model and will vary by model, dataset, and environment.
 
 ## Threats to validity
@@ -176,3 +176,14 @@ live model and will vary by model, dataset, and environment.
 - Token-usage gaps (mitigated: unknown stays unknown).
 - Environment variance (mitigated: warm-up, median reporting, retained raw trials).
 - Preview SDK behavior for CodeAct (documented in `sdk-findings.md`).
+
+## Methodology and interpretation
+
+This document is canonical, especially its [validity rules](#validity-rules). Other documents link here rather than defining competing classification rules.
+
+- **Fairness:** same data/scope, seven underlying tools, shared prompt body, schema/validator, oracle/scorer, within-model version/settings, pricing and budgets. Mechanism addenda/model-facing tool surfaces intentionally differ; matching shared hashes alone does not establish scientific equivalence.
+- **Trials:** one warm-up per mode, then paired measurements in seeded randomized order. Keep five-pair cohorts distinct from historical three-pair runs and isolated smoke pairs.
+- **Cohorts/hashes:** prompt v3 canonical LF-normalized SHA-256 is `f0cf5bce1c07cceb82ef7e9b2552788dc6154f7eb5e7b4a61a0e8d4d426b667c`; historical v2 is `630a3a841752d3b4475fadde5050b2884c11b59b28f87e4c43a694fc57ebbc86`. Report schema remains v2. API/model/enforcement/pricing/scope cohorts are separate; historical data is not rewritten or silently rescored.
+- **Aggregation:** retain every measured outcome, slow or failed; exclude warm-ups. Show individual trials plus median/min/max. Median total tokens is the median of each trial's total, not a sum of input/output medians. Unknown stays unavailable, never dropped or invented.
+- **Accounting:** reasoning is included once in output/total; visible output is output minus reasoning when known. Current analysis time excludes recorded retry wait; process-inclusive time and the 120-second deadline include it and startup/transport. Model requests, HTTP retries, model-facing calls and sandbox callbacks are distinct.
+- **Primary view:** within-model, same-scope deltas. Efficiency-win cards require every measured trial Exact/WithinTolerance. Descriptive all-outcome deltas always carry both modes' correctness context; cross-model comparisons are secondary.

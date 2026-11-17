@@ -5,7 +5,7 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0001 — Repository root is `codeact-poc`
+## ADR-0001 -- Repository root is `codeact-poc`
 
 - **Status:** Accepted.
 - **Context:** The specification names the repository `sterling-vale-codeact`. The user
@@ -18,7 +18,7 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0002 — Target framework `net9.0` (samples use `net10.0`)
+## ADR-0002 -- Target framework `net9.0` (samples use `net10.0`)
 
 - **Status:** Accepted.
 - **Context:** The published Agent Framework samples target `net10.0`. This host has no admin
@@ -30,7 +30,7 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0003 — Central package management, pinned preview versions
+## ADR-0003 -- Central package management, pinned preview versions
 
 - **Status:** Accepted.
 - **Context:** Fairness and reproducibility require identical, non-floating dependencies across
@@ -38,11 +38,11 @@ from the original specification (as required by the task).
 - **Decision:** All versions live in `Directory.Packages.props`; `RestorePackagesWithLockFile`
   + `--locked-mode` in CI. The Hyperlight preview version is pinned exactly
   (`1.19.0-preview.260822.1`), matching the core packages.
-- **Deviation:** Using a preview package is unavoidable — CodeAct exists only in preview.
+- **Deviation:** Using a preview package is unavoidable -- CodeAct exists only in preview.
 
 ---
 
-## ADR-0004 — Both orchestrations derive tools from one `ToolCatalog`
+## ADR-0004 -- Both orchestrations derive tools from one `ToolCatalog`
 
 - **Status:** Accepted.
 - **Context:** The only intentional variable is orchestration. Different tool descriptions or
@@ -55,7 +55,7 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0005 — Correctness oracle is never an agent tool
+## ADR-0005 -- Correctness oracle is never an agent tool
 
 - **Status:** Accepted.
 - **Context:** The oracle must be an independent ground truth, not something the agent can call.
@@ -66,7 +66,7 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0006 — Deterministic fake model for default build/CI
+## ADR-0006 -- Deterministic fake model for default build/CI
 
 - **Status:** Accepted.
 - **Context:** The repo must build and run locally without live model access, and CI must be
@@ -78,7 +78,7 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0007 — Fairness enforced by hashing, fail-closed
+## ADR-0007 -- Fairness enforced by hashing, fail-closed
 
 - **Status:** Accepted.
 - **Context:** The benchmark must be scientifically defensible; every confounder must be
@@ -90,7 +90,7 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0008 — Generated-code artifact is best-effort, never fabricated
+## ADR-0008 -- Generated-code artifact is best-effort, never fabricated
 
 - **Status:** Accepted.
 - **Context:** Whether the preview SDK exposes the model-generated program is version-dependent.
@@ -101,7 +101,7 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0009 — Justified analyzer severities (CA1822, CA1859)
+## ADR-0009 -- Justified analyzer severities (CA1822, CA1859)
 
 - **Status:** Accepted.
 - **Context:** `TreatWarningsAsErrors=true` with `AnalysisLevel=latest-recommended` promotes two
@@ -118,14 +118,14 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0010 — Shared prompt + minimal per-mode mechanism addendum
+## ADR-0010 -- Shared prompt + minimal per-mode mechanism addendum
 
 - **Status:** Accepted.
 - **Context:** Fairness requires "same prompt wording", but CodeAct must be told to write one
   bounded program (`execute_code` + `call_tool`) while Classic calls tools directly. These
   mechanism instructions genuinely differ.
 - **Decision:** `Prompt.Shared` holds the entire task definition, computation rules, output
-  contract, and disclaimer — identical for both modes and the ONLY text covered by the fairness
+  contract, and disclaimer -- identical for both modes and the ONLY text covered by the fairness
   prompt hash. Each mode appends a single-sentence mechanism note (`ClassicAddendum` /
   `CodeActAddendum`). That mechanism note is part of the orchestration variable under test, not a
   hidden prompt difference.
@@ -136,7 +136,7 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0011 — Offline fake model uses the oracle to synthesize answers
+## ADR-0011 -- Offline fake model uses the oracle to synthesize answers
 
 - **Status:** Accepted.
 - **Context:** The apps must build and run without live model access. The fake model must produce
@@ -150,11 +150,11 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0012 — Microsoft.Extensions.* pinned to 10.0.11
+## ADR-0012 -- Microsoft.Extensions.* pinned to 10.0.11
 
 - **Status:** Accepted.
 - **Context:** The Agent Framework (`Microsoft.Agents.AI`, `Microsoft.Extensions.AI 10.9.0`) and
-  `System.ClientModel` transitively require `Microsoft.Extensions.*` ≥ `10.0.x`. Pinning them at
+  `System.ClientModel` transitively require `Microsoft.Extensions.*` >= `10.0.x`. Pinning them at
   `9.0.0` produced `NU1605` downgrade errors (fatal under warnings-as-errors).
 - **Decision:** The `Microsoft.Extensions.*` central versions are pinned to `10.0.11`. They ship
   net9.0-compatible assets (already present in the transitive graph) and build cleanly on the
@@ -163,7 +163,7 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0013 — CodeAct offline path + gated Hyperlight tests
+## ADR-0013 -- CodeAct offline path + gated Hyperlight tests
 
 - **Status:** Accepted.
 - **Context:** CodeAct's `execute_code` requires a Hyperlight guest + hardware virtualization, which
@@ -172,7 +172,7 @@ from the original specification (as required by the task).
 - **Decisions:**
   1. A shared `SterlingVale.Api.Shared` library owns the identical health/analysis endpoint mapping,
      JSON config, and problem-details middleware, so the two APIs cannot diverge in contract. (Its
-     namespace is `SterlingVale.Api.Hosting` because `Shared` is a reserved VB keyword — CA1716.)
+     namespace is `SterlingVale.Api.Hosting` because `Shared` is a reserved VB keyword -- CA1716.)
   2. `CodeActAgentFactory` builds the real `HyperlightCodeActProvider` when a guest path is
      configured; otherwise it registers an offline `execute_code` stand-in
      (`FakeExecuteCodeFunction`) so the CodeAct API runs deterministically with the fake model.
@@ -187,10 +187,10 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0014 — Phase 0–7 audit fixes
+## ADR-0014 -- Phase 0-7 audit fixes
 
 - **Status:** Accepted.
-- **Context:** A verification pass over Phases 0–7 confirmed the build (Release, warnings-as-errors),
+- **Context:** A verification pass over Phases 0-7 confirmed the build (Release, warnings-as-errors),
   full test suite, `dotnet format`, and a **`--locked-mode` restore** all pass, and that Domain has
   zero references while Application references only Domain. Two gaps were found and closed:
   1. **Missing request/response API schemas.** Phase 1/4 requires "versioned JSON schemas for request
@@ -204,7 +204,7 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0015 — CodeAct factory extracted to a library; benchmark harness
+## ADR-0015 -- CodeAct factory extracted to a library; benchmark harness
 
 - **Status:** Accepted.
 - **Context:** Phase 8's benchmark must drive BOTH orchestrations in-process. `CodeActAgentFactory`
@@ -228,7 +228,7 @@ from the original specification (as required by the task).
 
 ---
 
-## ADR-0016 — Phase 10: architecture/contract tests, CI, docs
+## ADR-0016 -- Phase 10: architecture/contract tests, CI, docs
 
 - **Status:** Accepted.
 - **Decisions:**
@@ -239,12 +239,12 @@ from the original specification (as required by the task).
   2. `SterlingVale.Contract.Tests` asserts the cross-mode contract: both factories produce an
      **identical tool fingerprint**, share the same prompt body, and yield matching fairness
      fingerprints; schema ids are stable.
-  3. GitHub Actions CI runs restore `--locked-mode` → build (Release) → `dotnet format --verify` →
-     tests filtered `Category!=LiveModel&Category!=Hyperlight` with coverage → dependency
-     vulnerability scan → gitleaks secret scan.
+  3. GitHub Actions CI runs restore `--locked-mode` -> build (Release) -> `dotnet format --verify` ->
+     tests filtered `Category!=LiveModel&Category!=Hyperlight` with coverage -> dependency
+     vulnerability scan -> gitleaks secret scan.
   4. Documentation: `README.md`, `docs/architecture.md`, `docs/benchmark-methodology.md`,
      `docs/security-model.md`, `SECURITY.md` (plus the earlier `sdk-findings.md`, `decisions.md`,
      `metrics.md`).
-- **Deviation:** No `docker-compose.yml` is provided — Hyperlight requires host hardware
+- **Deviation:** No `docker-compose.yml` is provided -- Hyperlight requires host hardware
   virtualization that is not portable across containers, and the spec makes Docker conditional on
   Hyperlight compatibility. Documented in README.
