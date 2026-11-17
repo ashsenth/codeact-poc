@@ -159,6 +159,45 @@ Both isolated N=1 smoke gates passed on source `375c2d5`, in the required order:
 
 Both have zero 429s, retry waits, tool-argument errors and output overflows.
 The directories are `artifacts/v3-enforced-20261117/{gpt-4o,gpt-6.1-sol}/smoke-n1/`.
-They are excluded from measured cohort samples and summaries. The five-pair
-N=1/N=3/full Small profiles are next; each profile is checked, committed and pushed
-before the following profile starts.
+They are excluded from measured cohort samples and summaries.
+
+### Measured results and infrastructure stop
+
+The [generated cross-model results](v3-responses-results.md) contain all measured
+outcomes, token breakdowns, operational counters and descriptive deltas. Four
+five-pair profiles completed VALID, each checked, committed and pushed before the
+next launch:
+
+- gpt-4o N=1: `13c5dcce91be07d21a91d9917de8defe6b63d3b8`.
+- gpt-4o N=3: `b86dd1fc21ffdb4a1f075db4c59996616c850e4e`.
+- gpt-4o full Small: `b9d57964b6fb6b22b53c168895d9d3eaa0d4a3a0`.
+- gpt-6.1-sol N=1: `80c35245bf926e6c26a753eab777ae5dabb1fcb1`.
+
+**STOPPED on infrastructure during Sol N=3 warm-up.** Comparison
+`small-20261117180346-e492436a074f480abee16ad17fe1789a` is INVALID:
+`SandboxOutputOverflow`, with `MissingOrUnpairedTrials` because no measured pairs
+were started. The CodeAct warm-up (`9afee5063f7b4c038c109d59d0dbebfd`) recorded one
+guest shared-output serialization abort: **Required 16,396 bytes, Available 16,376**.
+Its full captured stderr was not truncated. The model subsequently recovered across
+five executions and returned an Exact answer, but that does not erase the runtime
+infrastructure failure. The Classic warm-up timed out at the unchanged 120-second
+deadline; that alone was a model outcome, not the stop reason.
+
+No Sol N=3 measured trials or Sol full Small runs were launched. The attempted
+profile and raw evidence remain untouched; no retry, buffer workaround, v4 work,
+or Medium/Large run was performed. Warm-up errors are not mixed into measured
+table counters. The INVALID N=3 rows have no measured statistics or usable deltas.
+
+Profiles used the committed runner under managed background supervision, not
+literal `nohup`. Both deployments retained their pinned versions throughout all
+observed requests. Independent recomputation from raw Responses usage verified
+per-request cache/context pricing, reasoning/visible/total partitions, request
+budgets and operational counters across all 58 new runs (40 measured, ten
+non-smoke warm-ups, eight isolated smoke runs including their warm-ups). No run
+exceeded 20 requests. All new runs had zero HTTP 429s and retry wait; all measured
+trials had zero tool-argument and overflow errors. The sole new overflow was the
+stopped warm-up above.
+
+All 1,858 historical evidence-file hashes still match the pre-run preservation
+manifest. Prompt, schema, oracle, scorer, tools, datasets, guest and dependency
+versions remain unchanged.
