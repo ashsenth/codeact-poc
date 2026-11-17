@@ -17,9 +17,9 @@ public static class RunValidity
     public static FailureInfo? FindFailure(string status, IReadOnlyList<ExecutionEvent> events)
     {
         var failures = events.Where(entry => entry.ErrorCategory is not null &&
-                !IsRecoveredArgumentError(entry, events) &&
+                !IsRecoveredModelError(entry, events) &&
                 !(entry.EventType == "RUN_FAILED" && events.Any(prior =>
-                    prior.ErrorCategory == entry.ErrorCategory && IsRecoveredArgumentError(prior, events))) &&
+                    prior.ErrorCategory == entry.ErrorCategory && IsRecoveredModelError(prior, events))) &&
                 !(status == "TimedOut" && entry.ErrorCategory is "Cancelled" or "OperationCanceledException"))
             .Select(Failure).ToArray();
         return failures.FirstOrDefault(failure => !IsModelOutcome(failure)) ?? failures.FirstOrDefault() ??
@@ -31,9 +31,32 @@ public static class RunValidity
         entry.EventType is "TOOL_CALL_FAILED" or "MODEL_TOOL_CALL_FAILED" &&
         entry.ErrorCategory is "ToolArgumentException" or "ToolNotFoundException";
 
-    private static bool IsRecoveredArgumentError(ExecutionEvent entry, IReadOnlyList<ExecutionEvent> events) =>
-        IsArgumentError(entry) &&
-        events.Any(next => next.SequenceNumber > entry.SequenceNumber && next.EventType == "MODEL_REQUEST_STARTED");
+    private static bool IsRecoveredModelError(ExecutionEvent entry, IReadOnlyList<ExecutionEvent> events)
+    {
+        if (IsArgumentError(entry))
+            return events.Any(next => next.SequenceNumber > entry.SequenceNumber && next.EventType == "MODEL_REQUEST_STARTED");
+        if (entry.EventType != "SANDBOX_OUTPUT_OVERFLOW" || entry.ErrorCategory != "SandboxOutputOverflow" ||
+            Field(entry, "invocationId") is not { } invocationId)
+            return false;
+        var returned = events.FirstOrDefault(next => next.SequenceNumber > entry.SequenceNumber &&
+            next.EventType == "MODEL_TOOL_CALL_COMPLETED" && Field(next, "invocationId") == invocationId);
+        return returned is not null && events.Any(next => next.SequenceNumber > returned.SequenceNumber &&
+            next.EventType == "MODEL_REQUEST_STARTED" && ContainsToolResult(next, invocationId));
+    }
+
+    private static bool ContainsToolResult(ExecutionEvent entry, string invocationId)
+    {
+        var data = JsonSerializer.SerializeToElement(entry.Data, JsonSerializerOptions.Web);
+        if (data.TryGetProperty("toolResultCallIds", out var ids))
+            return ids.EnumerateArray().Any(id => id.GetString() == invocationId);
+        if (!data.TryGetProperty("messages", out var captured) ||
+            captured.GetProperty("truncated").GetBoolean() ||
+            captured.GetProperty("content").ValueKind != JsonValueKind.String)
+            return false;
+        using var messages = JsonDocument.Parse(captured.GetProperty("content").GetString()!);
+        return messages.RootElement.EnumerateArray().SelectMany(message => message.GetProperty("results").EnumerateArray())
+            .Any(result => result.GetProperty("callId").GetString() == invocationId);
+    }
 
     private static FailureInfo Failure(ExecutionEvent entry)
     {

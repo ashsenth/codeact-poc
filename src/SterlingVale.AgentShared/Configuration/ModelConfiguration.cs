@@ -41,6 +41,7 @@ public sealed record ModelConfiguration
     public bool AllowMultipleToolCalls => true;
     public int MaxOutputTokens => 16384;
     public string TurnLimitEnforcement => "model-request-boundary/v1";
+    public string FunctionInvocationPolicy => "sequential-within-response/v1";
 
     public string DescribeOutputSettings() =>
         $"Model output: response_format={ResponseFormat}; parallel_tool_calls={AllowMultipleToolCalls.ToString().ToLowerInvariant()}; " +
@@ -65,7 +66,8 @@ public sealed record ModelConfiguration
         $"deployment={DeploymentName};temperature={Temperature:R};maxTurns={MaxTurns};turnLimitEnforcement={TurnLimitEnforcement};timeoutSeconds={TimeoutSeconds};" +
         $"responseFormat={ResponseFormat};responseSchema={ResponseSchemaHash};strict={ResponseSchemaStrict};" +
         $"parallel_tool_calls={AllowMultipleToolCalls};maxOutputTokens={MaxOutputTokens};" +
-        $"api={ApiMode};model={ModelName};version={ModelVersion};defaultReasoningEffort={DefaultReasoningEffort};store={Store};context={ContextPolicy}"));
+        $"api={ApiMode};model={ModelName};version={ModelVersion};defaultReasoningEffort={DefaultReasoningEffort};store={Store};context={ContextPolicy};" +
+        $"functionInvocationPolicy={FunctionInvocationPolicy}"));
 }
 
 /// <summary>Token pricing (USD per 1,000,000 tokens). Both modes must use identical values.</summary>

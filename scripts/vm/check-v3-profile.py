@@ -8,7 +8,7 @@ import statistics
 import subprocess
 from decimal import Decimal
 from pathlib import Path
-from cohort_config import COHORTS
+from cohort_config import COHORTS, validate_function_policy
 
 
 def read(path):
@@ -72,6 +72,7 @@ def main():
             spec["deployment"], spec["model"], spec["version"], spec["reasoning"])
         assert model["contextPolicy"] == "full-context/no-previous-response-id/v1"
         assert model["turnLimitEnforcement"] == "model-request-boundary/v1"
+        validate_function_policy(model, report["modelFingerprint"], spec)
         assert (model["maxTurns"], model["timeoutSeconds"], model["maxOutputTokens"]) == (20, 120, 16384)
         assert model["strict"] is False and model["parallel_tool_calls"] is True
         assert model["temperature"] == (None if spec["model"] == "gpt-6.1-sol" else 0)

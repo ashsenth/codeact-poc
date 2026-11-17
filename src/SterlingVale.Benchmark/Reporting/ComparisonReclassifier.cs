@@ -36,6 +36,16 @@ public static class ComparisonReclassifier
                 JsonSerializerOptions.Web) ?? throw new InvalidDataException("Missing warm-up metrics.");
             string status = data.GetProperty("status").GetString()!;
             var failure = RunValidity.FindFailure(status, events);
+            var original = source.WarmupTrials.FirstOrDefault(trial => trial.RunId == data.GetProperty("runId").GetString());
+            if (original is not null)
+            {
+                warmups.Add(original with
+                {
+                    Failure = failure, ToolArgumentErrors = RunValidity.ToolArgumentErrors(events),
+                    SandboxOutputOverflowErrors = events.Count(entry => entry.EventType == "SANDBOX_OUTPUT_OVERFLOW"),
+                });
+                continue;
+            }
             warmups.Add(new(0, 0, mode, m.Duration.TotalMilliseconds, status,
                 m.ToolCallCount, m.ModelTurnCount, m.ExecuteCodeCallCount, m.TotalTokens,
                 m.EstimatedCostUsd, data.GetProperty("runId").GetString()!,
@@ -44,6 +54,7 @@ public static class ComparisonReclassifier
             {
                 Failure = failure, ToolArgumentErrors = RunValidity.ToolArgumentErrors(events),
                 TelemetryValid = m.TelemetryValid,
+                SandboxOutputOverflowErrors = events.Count(entry => entry.EventType == "SANDBOX_OUTPUT_OVERFLOW"),
             });
         }
         var trials = source.RawTrials.Select(trial =>
@@ -55,6 +66,7 @@ public static class ComparisonReclassifier
             {
                 Failure = RunValidity.FindFailure(trial.Status, events),
                 ToolArgumentErrors = RunValidity.ToolArgumentErrors(events),
+                SandboxOutputOverflowErrors = events.Count(entry => entry.EventType == "SANDBOX_OUTPUT_OVERFLOW"),
             };
         }).ToArray();
         var classicFp = new Dictionary<string, string>(source.Fairness.ClassicFingerprints) { ["pricing"] = pricing["classic"] };

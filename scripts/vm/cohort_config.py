@@ -21,6 +21,7 @@ def price_url(query):
 COHORTS = {
     "gpt-4o-v3-enforced": {
         "deployment": "gpt-4o", "model": "gpt-4o", "version": "2024-11-20", "reasoning": "not-supported",
+        "auditedLegacySequentialFingerprint": "041e8fc0a4d8cff418618fcfa63c767efcf9c16175a1caaa15b309a7309d003e",
         "rates": {"inputPerMillion": "2.5", "outputPerMillion": "10", "cachedInputPerMillion": "1.25"},
         "meters": {"gpt 4o 1120 Inp glbl Tokens": "2.5", "gpt 4o 1120 Outp glbl Tokens": "10",
                    "gpt 4o 1120 cached Inp glbl Tokens": "1.25"},
@@ -28,6 +29,7 @@ COHORTS = {
     },
     "gpt-6.1-sol-v3": {
         "deployment": "gpt-6.1-sol", "model": "gpt-6.1-sol", "version": "2026-09-29", "reasoning": "medium",
+        "auditedLegacySequentialFingerprint": "309f1e281b2f33fe171f7809d8c0794340416ef83a869b257dedc0de96ed96bb",
         "rates": {"inputPerMillion": "2", "outputPerMillion": "10", "cachedInputPerMillion": ".1",
                   "cacheWritePerMillion": "2.5", "longContextThreshold": "272000",
                   "longInputPerMillion": "4", "longOutputPerMillion": "15",
@@ -47,6 +49,15 @@ RATE_ENV = {
     "longOutputPerMillion": "PRICING_LONG_OUTPUT_PER_MILLION", "longCachedInputPerMillion": "PRICING_LONG_CACHED_INPUT_PER_MILLION",
     "longCacheWritePerMillion": "PRICING_LONG_CACHE_WRITE_PER_MILLION",
 }
+
+
+def validate_function_policy(model, fingerprint, spec):
+    policy = model.get("functionInvocationPolicy")
+    if policy == "sequential-within-response/v1":
+        return
+    if policy is None and fingerprint == spec["auditedLegacySequentialFingerprint"]:
+        return
+    raise ValueError("Local invocation policy is neither explicit sequential nor an audited legacy fingerprint.")
 
 
 def deployment_metadata(spec):

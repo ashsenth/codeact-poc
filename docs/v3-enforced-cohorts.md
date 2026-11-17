@@ -87,10 +87,21 @@ separately. The 120-second deadline is unchanged and still includes waiting.
 Exhausted retries/auth/transport failures remain infrastructure.
 
 Model outcomes (including TurnLimitReached, invalid/incomplete answers and timeout)
-do not stop profiles. A real shared-output-buffer abort is explicitly recorded as
-`SandboxOutputOverflow`, a sandbox/runtime infrastructure failure even when its
-error envelope is returned to the model. It must not be hidden by a later answer.
-Infrastructure failure invalidates the comparison and stops further launches.
+do not stop profiles. Under the revised approved rule, a shared-output-buffer abort
+is a **model-visible environment constraint** when the execution error is returned
+and its matching function result is carried into a subsequent model request.
+`SandboxOutputOverflow` remains a per-trial count, including warm-ups; recovery
+does not erase that count. A host crash or sandbox failure without that delivery
+and continuation evidence remains infrastructure. Infrastructure failure
+invalidates the comparison and stops further launches.
+
+The request journal now records function-result call IDs independently of the
+65,536-character payload capture, so large history captures cannot hide delivery
+identity. Legacy reclassification checks the original complete request capture.
+The [parallel-call audit](v3-parallel-audit.md) confirms same-turn batching and
+documents why 4o repeated calls until the enforced request cap. Sequential local
+execution is unchanged and identical across both modes and APIs; it is now
+explicit in configuration and its fingerprint.
 
 ### Historical overflow audit (read-only)
 
@@ -136,14 +147,43 @@ python3 scripts/vm/check-v3-profile.py n1 --summarize \
 Invoke long-running profiles with the approved background/nohup execution mechanism.
 The smoke is isolated in `smoke-n1/`, never part of the five-pair cohorts or summaries.
 
+The [remaining-Sol helper](../scripts/vm/resume-sol-v3.py) runs N=3 then full Small,
+checks each profile, regenerates the combined report, commits and pushes before
+proceeding. It preserves all model outcomes and stops on infrastructure or a failed
+validation/publication command. Required Azure/guest/dataset environment is the
+same as above; paths are explicit command arguments:
+
+```bash
+python3 scripts/vm/resume-sol-v3.py \
+  --reference-comparison "$REFERENCE_COMPARISON" \
+  --gpt4o-root "$GPT4O_ENFORCED_ROOT" --sol-root "$SOL_ROOT" --log-root "$LOG_ROOT"
+```
+
+The explicit local-policy marker changes new literal model fingerprints without
+changing execution behavior. The generic strict sweep merger remains unchanged
+and rejects mixed literal fingerprints. For this continuation use the helper's
+combined report, not `check-v3-profile.py --summarize`: it checks the explicit
+policy or one of the two exact audited legacy fingerprints, keeps profile rows
+separate, and never rewrites older metadata. Within-model deltas are primary,
+cross-model deltas secondary. Equal correct counts alone permit the
+`correctness-equivalent by count` label; equal zero counts are explicitly not an
+efficiency win.
+
 ## Execution status
 
-Release build: zero warnings/errors. **300 offline tests and six supported real
-Hyperlight tests passed**, zero failed/skipped. Native-cancellation known issue stays
-excluded. The new tests cover stateless encrypted-reasoning history, non-strict
+Current continuation gate: Release build, zero warnings/errors; **313 non-live
+.NET tests, four Python report checks, and six supported real Hyperlight tests
+passed**, zero failed/skipped in the final selected evidence. The Comparison
+project was rerun with `xUnit.ParallelizeTestCollections=false` after an unchanged
+global `Console.SetOut` test encountered concurrent log output. No unrelated
+test/production logging code was changed. Native-cancellation known issue stays
+excluded. The earlier preparation gate passed 300 .NET tests. Tests cover stateless encrypted-reasoning history, non-strict
 schema/parallel function tools, exact 429/retry accounting and exhaustion, pricing
 tiers/caches, returned-model mismatches, and multi-message reasoning responses
-consuming only one shared turn in both modes. A direct mocked comparison against
+consuming only one shared turn in both modes. The continuation adds 52-call
+same-next-request regressions for both models/modes, returned versus unreceived
+overflow, warm-up handling, immutable reclassification and correctness-labelled
+within-model deltas. A direct mocked comparison against
 the pinned SDK's unmodified default also verifies that instrumentation preserves
 its retry-exhaustion request bound; neither smoke needed HTTP retries.
 
@@ -161,9 +201,9 @@ Both have zero 429s, retry waits, tool-argument errors and output overflows.
 The directories are `artifacts/v3-enforced-20261117/{gpt-4o,gpt-6.1-sol}/smoke-n1/`.
 They are excluded from measured cohort samples and summaries.
 
-### Measured results and infrastructure stop
+### Measured results and initial stop
 
-The [generated cross-model results](v3-responses-results.md) contain all measured
+The [generated results](v3-responses-results.md) contain all measured
 outcomes, token breakdowns, operational counters and descriptive deltas. Four
 five-pair profiles completed VALID, each checked, committed and pushed before the
 next launch:
@@ -173,20 +213,40 @@ next launch:
 - gpt-4o full Small: `b9d57964b6fb6b22b53c168895d9d3eaa0d4a3a0`.
 - gpt-6.1-sol N=1: `80c35245bf926e6c26a753eab777ae5dabb1fcb1`.
 
-**STOPPED on infrastructure during Sol N=3 warm-up.** Comparison
-`small-20261117180346-e492436a074f480abee16ad17fe1789a` is INVALID:
+**The initial policy stopped Sol N=3 during warm-up.** Original comparison
+`small-20261117180346-e492436a074f480abee16ad17fe1789a` recorded INVALID:
 `SandboxOutputOverflow`, with `MissingOrUnpairedTrials` because no measured pairs
 were started. The CodeAct warm-up (`9afee5063f7b4c038c109d59d0dbebfd`) recorded one
 guest shared-output serialization abort: **Required 16,396 bytes, Available 16,376**.
 Its full captured stderr was not truncated. The model subsequently recovered across
-five executions and returned an Exact answer, but that does not erase the runtime
-infrastructure failure. The Classic warm-up timed out at the unchanged 120-second
+five executions and returned an Exact answer. That overflow is now reclassified
+as a model-visible constraint, not infrastructure (details below).
+The Classic warm-up timed out at the unchanged 120-second
 deadline; that alone was a model outcome, not the stop reason.
 
-No Sol N=3 measured trials or Sol full Small runs were launched. The attempted
-profile and raw evidence remain untouched; no retry, buffer workaround, v4 work,
-or Medium/Large run was performed. Warm-up errors are not mixed into measured
-table counters. The INVALID N=3 rows have no measured statistics or usable deltas.
+No Sol N=3 measured trials or Sol full Small runs were launched. No retry, buffer
+workaround, v4 work, or Medium/Large run was performed. Warm-up errors are not mixed
+into measured table counters.
+
+### Derived reclassification and manual-launch hold
+
+The stopped profile is archived as
+`artifacts/v3-enforced-20261117/gpt-6.1-sol/aborted-20261117T183945Z/`.
+All **56 original files are byte-identical** to the pre-archive SHA-256 manifest.
+The offline reclassifier wrote a separate derived report under
+`artifacts/v3-continuation-gate/sol-n3-reclassified/`; `--output-root` prevents any
+source/index overwrite.
+
+- CodeAct warm-up: still **Completed / Exact**, one overflow, infrastructure false.
+- Classic warm-up: still **TimedOut / TimedOut**, zero overflows, infrastructure false.
+- Warm-up infrastructure failures: **zero**, down from one.
+- Measured trials: still **zero**. The derived comparison remains INVALID solely
+  for `MissingOrUnpairedTrials`, not for overflow.
+
+Both original and derived attempts are excluded from measured summaries by
+explicit profile-directory selection. At the user's instruction, **do not launch**
+the continuation from this session: publish the committed wrapper and exact
+manual launch/progress commands instead.
 
 Profiles used the committed runner under managed background supervision, not
 literal `nohup`. Both deployments retained their pinned versions throughout all

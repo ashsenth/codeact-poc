@@ -18,7 +18,8 @@ public sealed class RunValidityTests
     {
         Mode = mode, RawModelOutput = "", Events = events,
         Response = new() { RunId = "run", Mode = mode, Status = RunStatus.Failed,
-            Metrics = new() { Duration = TimeSpan.Zero, TelemetryValid = true, SchemaValid = false } },
+            Metrics = new() { Duration = TimeSpan.Zero, TelemetryValid = true, SchemaValid = false,
+                SandboxOutputOverflowErrors = events.Count(entry => entry.EventType == "SANDBOX_OUTPUT_OVERFLOW") } },
         Fingerprints = new() { PromptHash = "p", SchemaHash = "s", ToolFingerprint = "t",
             ModelFingerprint = "m", PricingFingerprint = "c", DatasetHash = "d" },
     };
@@ -78,5 +79,45 @@ public sealed class RunValidityTests
         var events = new[] { Event(1, "TOOL_CALL_FAILED", "ToolArgumentException") };
         Assert.Equal(1, RunValidity.ToolArgumentErrors(events));
         Assert.Equal("ToolArgumentException", RunValidity.FindFailure("Failed", events)!.Category);
+    }
+
+    [Theory]
+    [InlineData("classic", false)]
+    [InlineData("codeact", false)]
+    [InlineData("classic", true)]
+    [InlineData("codeact", true)]
+    public void Returned_overflow_is_a_counted_model_constraint_including_warmups(string mode, bool legacyCapture)
+    {
+        object request = legacyCapture
+            ? new { messages = new { truncated = false, content = """[{"results":[{"callId":"overflow","result":"execution error"}]}]""" } }
+            : new { toolResultCallIds = new[] { "overflow" }, messages = new { truncated = true, content = "partial capture" } };
+        var record = Record(mode, [
+            Event(1, "SANDBOX_OUTPUT_OVERFLOW", "SandboxOutputOverflow", new { invocationId = "overflow" }),
+            Event(2, "MODEL_TOOL_CALL_COMPLETED", data: new { invocationId = "overflow", success = false }),
+            Event(3, "MODEL_REQUEST_STARTED", data: request),
+            Event(4, "JSON_VALIDATION_COMPLETED") with { Status = "failed" },
+            Event(5, "RUN_FAILED", "SandboxOutputOverflow"),
+        ]);
+        Assert.Equal("InvalidModelOutput", BenchmarkHarness.FindFailure(record)!.Category);
+        var warmup = BenchmarkHarness.AssessWarmup(record, new ExposureReportDto("o", "", []),
+            new Dictionary<string, IReadOnlyList<string>>());
+        Assert.False(warmup.InfrastructureFailed);
+        Assert.Equal(1, warmup.SandboxOutputOverflowErrors);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void Overflow_without_returned_error_and_model_continuation_remains_infrastructure(bool completed, bool delivered)
+    {
+        var events = new List<ExecutionEvent>
+        {
+            Event(1, "SANDBOX_OUTPUT_OVERFLOW", "SandboxOutputOverflow", new { invocationId = "overflow" }),
+        };
+        if (completed) events.Add(Event(2, "MODEL_TOOL_CALL_COMPLETED", data: new { invocationId = "overflow" }));
+        string[] resultIds = delivered ? ["overflow"] : [];
+        events.Add(Event(3, "MODEL_REQUEST_STARTED", data: new { toolResultCallIds = resultIds }));
+        Assert.Equal("SandboxOutputOverflow", RunValidity.FindFailure("Failed", events)!.Category);
     }
 }

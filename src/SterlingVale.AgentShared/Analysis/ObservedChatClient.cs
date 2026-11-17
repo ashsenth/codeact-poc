@@ -23,7 +23,10 @@ public sealed class ObservedChatClient(IChatClient inner, int maxTurns = int.Max
         string requestId = Guid.NewGuid().ToString("N");
         using var activity = new Activity("model.request").SetIdFormat(ActivityIdFormat.W3C).Start();
         var input = messages.ToList();
-        var request = new { requestId, modelTurn, execution.Context, messages = execution.Payloads.Capture(ProjectMessages(input)) };
+        var request = new { requestId, modelTurn, execution.Context,
+            toolResultCallIds = input.SelectMany(message => message.Contents).OfType<FunctionResultContent>()
+                .Select(result => result.CallId).ToArray(),
+            messages = execution.Payloads.Capture(ProjectMessages(input)) };
         execution.AppendArtifact("model/requests.jsonl", request);
         execution.Emit("MODEL_REQUEST_STARTED", data: request);
         long start = Stopwatch.GetTimestamp();

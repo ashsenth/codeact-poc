@@ -20,6 +20,37 @@ public sealed class ResponsesAdapterTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "sv-responses-" + Guid.NewGuid().ToString("N"));
 
     [Theory]
+    [InlineData("gpt-4o", "2024-11-20", "classic")]
+    [InlineData("gpt-4o", "2024-11-20", "codeact")]
+    [InlineData("gpt-6.1-sol", "2026-09-29", "classic")]
+    [InlineData("gpt-6.1-sol", "2026-09-29", "codeact")]
+    public async Task Every_call_in_a_parallel_response_is_returned_once_in_the_same_next_request(
+        string modelName, string version, string mode)
+    {
+        using var session = new ExecutionSession(_root, mode, "small");
+        using var handler = new ResponsesHandler(modelName, version, callFunction: true, functionCount: 52);
+        using var http = new HttpClient(handler);
+        using var client = CreateClient(http, modelName, version, invokeFunctions: true);
+        Assert.False(Assert.IsType<ObservedFunctionClient>(client).AllowConcurrentInvocation);
+        int completed = 0;
+        var model = new ModelConfiguration { DeploymentName = modelName };
+        await client.GetResponseAsync([new ChatMessage(ChatRole.User, "Return JSON")],
+            model.CreateChatOptions("Use the tools",
+                [AIFunctionFactory.Create(() => { completed++; return "[]"; }, "list_households")]));
+        Assert.Equal(52, completed);
+        Assert.Equal(2, handler.Requests.Count);
+        var input = handler.Requests[1].GetProperty("input").EnumerateArray().ToArray();
+        var calls = input.Where(item => item.GetProperty("type").GetString() == "function_call").ToArray();
+        var results = input.Where(item => item.GetProperty("type").GetString() == "function_call_output").ToArray();
+        Assert.Equal(52, calls.Length);
+        Assert.Equal(52, results.Length);
+        Assert.Equal(calls.Select(item => item.GetProperty("call_id").GetString()).Order(),
+            results.Select(item => item.GetProperty("call_id").GetString()).Order());
+        Assert.Equal(52, results.Select(item => item.GetProperty("call_id").GetString()).Distinct().Count());
+        Assert.All(handler.Requests, request => Assert.True(request.GetProperty("parallel_tool_calls").GetBoolean()));
+    }
+
+    [Theory]
     [InlineData("gpt-4o", "2024-11-20")]
     [InlineData("gpt-6.1-sol", "2026-09-29")]
     public async Task Stateless_adapter_resends_full_function_history_and_preserves_usage(string modelName, string version)
@@ -177,7 +208,8 @@ public sealed class ResponsesAdapterTests : IDisposable
         protected override TimeSpan GetNextDelay(PipelineMessage message, int tryCount) => TimeSpan.FromMilliseconds(1);
     }
 
-    private sealed class ResponsesHandler(string modelName, string version, bool callFunction = false, bool throttle = false, bool exhaust = false) : HttpMessageHandler
+    private sealed class ResponsesHandler(string modelName, string version, bool callFunction = false, bool throttle = false,
+        bool exhaust = false, int functionCount = 1) : HttpMessageHandler
     {
         public List<JsonElement> Requests { get; } = [];
         public int Attempts { get; private set; }
@@ -188,7 +220,9 @@ public sealed class ResponsesAdapterTests : IDisposable
             Attempts++;
             bool limited = throttle && (Attempts == 1 || exhaust);
             string output = callFunction && Attempts == 1
-                ? """[{"type":"function_call","id":"fc1","call_id":"c1","name":"list_households","arguments":"{}","status":"completed"}]"""
+                ? JsonSerializer.Serialize(Enumerable.Range(1, functionCount).Select(index => new
+                    { type = "function_call", id = $"fc{index}", call_id = $"c{index}", name = "list_households",
+                        arguments = "{}", status = "completed" }))
                 : """[{"type":"message","id":"msg1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"{}","annotations":[]}]}]""";
             if (modelName == "gpt-6.1-sol")
                 output = $$"""[{"type":"reasoning","id":"rs{{Attempts}}","summary":[],"encrypted_content":"opaque-{{Attempts}}"},""" + output[1..];

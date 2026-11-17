@@ -85,7 +85,7 @@ switch (command)
         if (!options.TryGetValue("comparison", out var sourcePath) || !options.TryGetValue("source-root", out var sourceRoot))
             throw new InvalidOperationException("--comparison and --source-root are required for reclassification.");
         var reclassified = ComparisonReclassifier.Reclassify(ComparisonWriter.Read(sourcePath), sourceRoot);
-        string destination = Path.GetFullPath(sourceRoot);
+        string destination = Path.GetFullPath(options.GetValueOrDefault("output-root", sourceRoot));
         if (File.Exists(Path.Combine(destination, "comparisons", reclassified.ComparisonId + ".json")))
             throw new InvalidOperationException("Reclassified output already exists; preserve it and select a fresh source copy.");
         Console.WriteLine(ComparisonWriter.Write(reclassified, destination));

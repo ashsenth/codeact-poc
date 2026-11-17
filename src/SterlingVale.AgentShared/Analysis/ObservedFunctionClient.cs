@@ -6,8 +6,13 @@ using SterlingVale.Telemetry;
 
 namespace SterlingVale.AgentShared.Analysis;
 
-public sealed class ObservedFunctionClient(IChatClient inner) : FunctionInvokingChatClient(inner)
+public sealed class ObservedFunctionClient : FunctionInvokingChatClient
 {
+    public ObservedFunctionClient(IChatClient inner) : base(inner)
+    {
+        AllowConcurrentInvocation = false;
+    }
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private int _executionNumber;
 

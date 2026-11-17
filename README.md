@@ -205,10 +205,13 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Current result: **300 passed, 0 failed, 0 skipped across ten projects**, including
+Current result: **313 passed, 0 failed, 0 skipped across ten projects**, including
 worker containment/recovery and model-outcome/infrastructure-validity regressions. On the ARM64 laptop the six Hyperlight tests
 previously skipped; on Ubuntu x64 five pass, while native cancellation remains a labelled
 known issue. Neither a skip nor an excluded known issue is a pass.
+The November 17 continuation gate additionally passes four Python reporting checks
+and all six currently supported Hyperlight checks. Its Comparison project uses
+`-- xUnit.ParallelizeTestCollections=false` to avoid a pre-existing global console-capture race.
 
 ## 6. What the results show
 
@@ -221,6 +224,13 @@ New enforced cohorts are documented separately in
 use the same function-only, full-context, `store=false` adapter; the Chat Completions
 path remains available for historical reproduction. The committed runner/checker
 accept `--cohort` and isolated `--smoke`; do not mix these results with the table below.
+See the [read-only parallel-call audit](docs/v3-parallel-audit.md) and
+[primary within-model, secondary cross-model results](docs/v3-responses-results.md).
+Both APIs/modes execute local functions sequentially within each response batch;
+all results are returned together in the next model request. This unchanged policy
+is now explicit in model configuration and its fingerprint. A sandbox overflow
+returned as an execution error with matching-result delivery and model continuation
+is counted, including in warm-ups, but is not infrastructure.
 
 **Historical fairness annotation (November 17):** these runs used a post-return-only
 turn check, not an enforced in-flight 20-request budget. Four of 15 Classic and one
@@ -347,8 +357,18 @@ writes a new comparison rather than repairing the source:
 
 ```bash
 dotnet src/SterlingVale.Benchmark/bin/Release/net9.0/SterlingVale.Benchmark.dll reclassify \
-  --comparison <original-comparison.json> --source-root <its-artifacts-root>
+  --comparison <original-comparison.json> --source-root <its-artifacts-root> \
+  --output-root <new-derived-report-root>
 ```
+
+`--output-root` is optional; use it to preserve every original source/index byte.
+The [remaining-Sol helper](scripts/vm/resume-sol-v3.py) invokes the committed
+runner/checker for N=3 then full Small and regenerates the combined report before
+committing/pushing each profile. It uses explicit reference/cohort/log-root
+arguments and the documented Azure/guest/dataset environment. Do not mix the new
+explicit-policy fingerprints with older literal fingerprints through the generic
+strict `--summarize` merger; the combined report checks audited policy compatibility
+without changing raw metadata.
 
 The earlier sample/diagnosis helpers are now portable too:
 [export_sample.py](scripts/vm/export_sample.py) exports one selected pair's condensed timelines,

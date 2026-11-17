@@ -424,6 +424,62 @@ public sealed class ComparisonWriterTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Reclassification_preserves_warmup_scores_and_raw_bytes_after_returned_overflow(bool legacyCapture)
+    {
+        string root = Path.Combine(Path.GetTempPath(), "sv-overflow-reclassify-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var source = SampleReport();
+            var warmups = source.RawTrials.Select(trial => trial with
+            {
+                Failure = trial.Mode == "codeact" ? new("SandboxOutputOverflow", "Original classification.") : null,
+                SandboxOutputOverflowErrors = trial.Mode == "codeact" ? 1 : 0,
+            }).ToArray();
+            source = source with { MeasuredTrials = 5, RawTrials = [], WarmupTrials = warmups };
+            foreach (var trial in warmups)
+            {
+                using var session = new SterlingVale.Telemetry.ExecutionSession(root, trial.Mode, "small",
+                    comparisonId: source.ComparisonId, runId: trial.RunId, isWarmup: true);
+                session.Emit("RUN_STARTED");
+                if (trial.Mode == "codeact")
+                {
+                    session.Emit("SANDBOX_OUTPUT_OVERFLOW", "failed", errorCategory: "SandboxOutputOverflow",
+                        data: new { invocationId = "overflow" });
+                    session.Emit("MODEL_TOOL_CALL_COMPLETED", data: new { invocationId = "overflow", success = false });
+                    object request = legacyCapture
+                        ? new { messages = new { truncated = false, content = """[{"results":[{"callId":"overflow","result":"execution error"}]}]""" } }
+                        : new { toolResultCallIds = new[] { "overflow" } };
+                    session.Emit("MODEL_REQUEST_STARTED", data: request);
+                }
+                File.WriteAllText(Path.Combine(session.RunDirectory, "metrics.json"),
+                    System.Text.Json.JsonSerializer.Serialize(new SterlingVale.Domain.Analysis.RunMetrics
+                        { Duration = TimeSpan.FromSeconds(1), TelemetryValid = true, SchemaValid = true },
+                        System.Text.Json.JsonSerializerOptions.Web));
+                File.WriteAllText(Path.Combine(session.RunDirectory, "result.json"),
+                    System.Text.Json.JsonSerializer.Serialize(new { runId = trial.RunId, status = "Completed" }));
+                File.WriteAllText(Path.Combine(session.RunDirectory, "metadata.json"),
+                    System.Text.Json.JsonSerializer.Serialize(new { configuration = new { mode = trial.Mode },
+                        pricingConfiguration = new { inputPerMillion = 2.5m, outputPerMillion = 10m } }));
+            }
+            var before = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                .ToDictionary(file => file, File.ReadAllBytes);
+            var derived = ComparisonReclassifier.Reclassify(source, root);
+            Assert.Empty(derived.RawTrials);
+            Assert.Empty(derived.WarmupFailures);
+            Assert.All(derived.WarmupTrials, trial => Assert.False(trial.InfrastructureFailed));
+            Assert.All(derived.WarmupTrials, trial => Assert.Equal(Exact, trial.Score));
+            Assert.Equal(1, derived.WarmupTrials.Single(trial => trial.Mode == "codeact").SandboxOutputOverflowErrors);
+            Assert.False(derived.Outcome.IsValid);
+            Assert.Contains("MissingOrUnpairedTrials", derived.Outcome.InfrastructureFailureCategories);
+            Assert.DoesNotContain("SandboxOutputOverflow", derived.Outcome.InfrastructureFailureCategories);
+            foreach (var (file, bytes) in before) Assert.Equal(bytes, File.ReadAllBytes(file));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Theory]
     [InlineData("prompt")]
     [InlineData("model")]
     [InlineData("pricing")]
