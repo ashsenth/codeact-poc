@@ -12,9 +12,9 @@ Deltas compare Sol to gpt-4o for the same scope/mode, including all outcomes. Th
 | gpt-6.1-sol-v3 | n1 | classic | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
 | gpt-4o-v3-enforced | n1 | codeact | 2/5 | 3 | 0 | 0 | 0 | 0 | 15,794 (0 / 2,557 / 9,984) | 0.0461825 | 22.908 | 0.000 | -- |
 | gpt-6.1-sol-v3 | n1 | codeact | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
-| gpt-4o-v3-enforced | n3 | classic | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
+| gpt-4o-v3-enforced | n3 | classic | 0/5 | 1 | 4 | 0 | 0 | 0 | 253,431 (0 / 1,161 / 246,144) | 0.3346050 | 65.573 | 0.000 | -- |
 | gpt-6.1-sol-v3 | n3 | classic | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
-| gpt-4o-v3-enforced | n3 | codeact | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
+| gpt-4o-v3-enforced | n3 | codeact | 0/5 | 5 | 0 | 0 | 0 | 0 | 7,594 (0 / 723 / 5,888) | 0.0170475 | 14.949 | 0.000 | -- |
 | gpt-6.1-sol-v3 | n3 | codeact | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
 | gpt-4o-v3-enforced | full-small | classic | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
 | gpt-6.1-sol-v3 | full-small | classic | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
