@@ -9,9 +9,9 @@ Deltas compare Sol to gpt-4o for the same scope/mode, including all outcomes. Th
 | Cohort | Scope | Mode | Correct | Unearned | TurnLimitReached | Argument errors | Overflow errors | HTTP 429 | Median tokens (R / V / C) | Median USD | Analysis s | Retry wait s | Delta tokens / cost / analysis vs 4o |
 |---|---|---|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---|
 | gpt-4o-v3-enforced | n1 | classic | 0/5 | 0 | 5 | 0 | 0 | 0 | 141,077 (0 / 1,179 / 137,856) | 0.1892150 | 67.891 | 0.000 | -- |
-| gpt-6.1-sol-v3 | n1 | classic | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
+| gpt-6.1-sol-v3 | n1 | classic | 5/5 | 0 | 0 | 0 | 0 | 0 | 36,694 (1,949 / 2,244 / 32,733) | 0.0452393 | 94.098 | 0.000 | -74.0% / -76.1% / +38.6% |
 | gpt-4o-v3-enforced | n1 | codeact | 2/5 | 3 | 0 | 0 | 0 | 0 | 15,794 (0 / 2,557 / 9,984) | 0.0461825 | 22.908 | 0.000 | -- |
-| gpt-6.1-sol-v3 | n1 | codeact | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
+| gpt-6.1-sol-v3 | n1 | codeact | 5/5 | 0 | 0 | 0 | 0 | 0 | 14,874 (29 / 1,787 / 9,957) | 0.0273612 | 33.013 | 0.000 | -5.8% / -40.8% / +44.1% |
 | gpt-4o-v3-enforced | n3 | classic | 0/5 | 1 | 4 | 0 | 0 | 0 | 253,431 (0 / 1,161 / 246,144) | 0.3346050 | 65.573 | 0.000 | -- |
 | gpt-6.1-sol-v3 | n3 | classic | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
 | gpt-4o-v3-enforced | n3 | codeact | 0/5 | 5 | 0 | 0 | 0 | 0 | 7,594 (0 / 723 / 5,888) | 0.0170475 | 14.949 | 0.000 | -- |
