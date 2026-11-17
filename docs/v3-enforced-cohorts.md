@@ -138,12 +138,14 @@ The smoke is isolated in `smoke-n1/`, never part of the five-pair cohorts or sum
 
 ## Execution status
 
-Release build: zero warnings/errors. **299 offline tests and six supported real
+Release build: zero warnings/errors. **300 offline tests and six supported real
 Hyperlight tests passed**, zero failed/skipped. Native-cancellation known issue stays
 excluded. The new tests cover stateless encrypted-reasoning history, non-strict
 schema/parallel function tools, exact 429/retry accounting and exhaustion, pricing
 tiers/caches, returned-model mismatches, and multi-message reasoning responses
-consuming only one shared turn in both modes.
+consuming only one shared turn in both modes. A direct mocked comparison against
+the pinned SDK's unmodified default also verifies that instrumentation preserves
+its retry-exhaustion request bound; neither smoke needed HTTP retries.
 
 Both isolated N=1 smoke gates passed on source `375c2d5`, in the required order:
 

@@ -105,6 +105,27 @@ public sealed class ResponsesAdapterTests : IDisposable
     }
 
     [Fact]
+    public async Task Observed_retry_policy_preserves_the_pinned_sdk_default_retry_limit()
+    {
+        using var baselineHandler = new ResponsesHandler("gpt-4o", "2024-11-20", throttle: true, exhaust: true);
+        using var observedHandler = new ResponsesHandler("gpt-4o", "2024-11-20", throttle: true, exhaust: true);
+        using var baselineHttp = new HttpClient(baselineHandler);
+        using var observedHttp = new HttpClient(observedHandler);
+        var sdk = new OpenAIClient(new ApiKeyCredential("test-key"), new OpenAIClientOptions
+        {
+            Endpoint = new Uri("https://responses.invalid/"), Transport = new HttpClientPipelineTransport(baselineHttp),
+        });
+        using var baseline = sdk.GetResponsesClient().AsIChatClient("gpt-4o");
+        using var observed = CreateClient(observedHttp, "gpt-4o", "2024-11-20", invokeFunctions: false);
+        await Assert.ThrowsAsync<ClientResultException>(() => baseline.GetResponseAsync([new ChatMessage(ChatRole.User, "test")]));
+        var model = new ModelConfiguration { DeploymentName = "gpt-4o" };
+        await Assert.ThrowsAsync<ClientResultException>(() => observed.GetResponseAsync(
+            [new ChatMessage(ChatRole.User, "test")],
+            model.CreateChatOptions("test", [AIFunctionFactory.Create(() => "[]", "list_households")])));
+        Assert.Equal(baselineHandler.Attempts, observedHandler.Attempts);
+    }
+
+    [Fact]
     public void Wrong_returned_snapshot_is_an_infrastructure_error()
     {
         var error = Assert.Throws<ModelRequestException>(() =>
@@ -176,10 +197,12 @@ public sealed class ResponsesAdapterTests : IDisposable
                  "usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":2,"cache_write_tokens":1},
                   "output_tokens":5,"output_tokens_details":{"reasoning_tokens":3},"total_tokens":15}}
                 """;
-            return new HttpResponseMessage(limited ? HttpStatusCode.TooManyRequests : HttpStatusCode.OK)
+            var response = new HttpResponseMessage(limited ? HttpStatusCode.TooManyRequests : HttpStatusCode.OK)
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json"),
             };
+            if (limited) response.Headers.Add("Retry-After", "0");
+            return response;
         }
     }
 
