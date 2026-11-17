@@ -17,6 +17,17 @@ This narrative preserves the final November 17, 2026 experiment record. The [lan
 
 See [cohort status and gates](v3-enforced-cohorts.md), [generated within-model results](v3-responses-results.md), and [known limits](sdk-findings.md#known-limits).
 
+## Time-budget sensitivity (120 s vs 600 s)
+
+The separately approved `gpt-6.1-sol-v3-t600` cohort changes only the timeout to
+600 seconds in both modes, including the worker watchdog; the 20-request cap and
+all model/prompt/schema/tool/pricing settings stay fixed. It is not pooled with
+the 120-second experiment above. See the [separate sensitivity results](v3-time-budget-sensitivity.md)
+for per-scope/mode correctness, timeouts, turn limits and medians, plus
+correctness-labelled within-model deltas and [manual launch instructions](running-experiments.md#time-budget-sensitivity-600-seconds).
+The wrapper is prepared for the operator; no sensitivity inference is launched
+by the preparation task.
+
 ## What the evidence says
 
 Read the evidence in this order; successful execution or a VALID comparison is not necessarily a correct answer.

@@ -45,6 +45,8 @@ Classic failures: **TL / U / W / TO** = TurnLimitReached / unearned completeness
 
 [Full results, cross-model comparison and evidence](docs/results.md); [generated detailed counters](docs/v3-responses-results.md). Equal correct counts do not guarantee identical correct pairs; cross-model comparisons are secondary.
 
+The separately approved [time-budget sensitivity (120 s vs 600 s)](docs/v3-time-budget-sensitivity.md) keeps the 600-second Sol cohort isolated and provides a manual-launch wrapper.
+
 ## Limitations
 
 - The pinned SDK has a **16,376-byte sandbox output buffer**, with no supported size override; telemetry capture has a separate bound.

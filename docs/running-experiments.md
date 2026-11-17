@@ -17,11 +17,55 @@ Use committed [runner](../scripts/vm/run-v3-profile.py), [checker](../scripts/vm
 | `DATASET_ROOT` | Absolute generated data root, shared by both modes. |
 | `ARTIFACTS_ROOT` | Distinct new root per cohort; runner adds `smoke-n1`, `n1`, `n3`, `full-small`. |
 
-The runner sets `BENCHMARK_REQUIRE_LIVE=true`, `BENCHMARK_MAX_TURNS=20`, `BENCHMARK_TIMEOUT_SECONDS=120`, `CLASSIC_BATCH_SIZE=0`, and clears `OTEL_EXPORTER_OTLP_ENDPOINT`. `--cohort` sets `MODEL_API_MODE=responses`, `AZURE_OPENAI_MODEL_NAME`, `AZURE_OPENAI_MODEL_VERSION`, `MODEL_DEFAULT_REASONING_EFFORT`, and all applicable pricing variables:
+The runner sets `BENCHMARK_REQUIRE_LIVE=true`, `BENCHMARK_MAX_TURNS=20`, `BENCHMARK_TIMEOUT_SECONDS=120` (600 only for `gpt-6.1-sol-v3-t600`), `CLASSIC_BATCH_SIZE=0`, and clears `OTEL_EXPORTER_OTLP_ENDPOINT`. `--cohort` sets `MODEL_API_MODE=responses`, `AZURE_OPENAI_MODEL_NAME`, `AZURE_OPENAI_MODEL_VERSION`, `MODEL_DEFAULT_REASONING_EFFORT`, and all applicable pricing variables:
 
 `PRICING_INPUT_PER_MILLION`, `PRICING_OUTPUT_PER_MILLION`, `PRICING_CACHED_INPUT_PER_MILLION`, `PRICING_CACHE_WRITE_PER_MILLION`, `PRICING_LONG_CONTEXT_THRESHOLD`, `PRICING_LONG_INPUT_PER_MILLION`, `PRICING_LONG_OUTPUT_PER_MILLION`, `PRICING_LONG_CACHED_INPUT_PER_MILLION`, `PRICING_LONG_CACHE_WRITE_PER_MILLION`, `PRICING_SOURCE_URL`, `PRICING_VERIFIED_ON`, `PRICING_BASIS`.
 
 Fresh clones default to [configs/v3-reference.json](../configs/v3-reference.json): shared prompt/schema/tools/Small-dataset fingerprints, output/request/deadline limits, historical pricing basis and explicit current execution/concurrency policy. It is derived from the existing valid historical reference; the cohort config replaces historical uncached pricing with verified cache/context rates. A regression test regenerates the data/tools and compares current prompt/schema/policy fingerprints to this file.
+
+### Time-budget sensitivity (600 seconds)
+
+Approved cohort: **`gpt-6.1-sol-v3-t600`**, separate from `gpt-6.1-sol-v3`.
+The committed reference explicitly approves its 600-second timeout; the cohort
+configuration copies the Sol deployment, version, reasoning effort and rates.
+Both modes use 600 seconds in model configuration and the external worker
+watchdog. Timeout is already part of the model fingerprint; the 20-request limit,
+16,384-token output cap, prompt/schema/tools/oracle/scorer and local concurrency
+policy do not change. No Medium/Large or new N=1 run is included.
+
+The [manual wrapper](../scripts/vm/run-sol-t600.sh) invokes the existing committed
+runner/checker for **N=3, then full Small, five pairs each**. After each profile it
+regenerates only [the sensitivity report](v3-time-budget-sensitivity.md), commits,
+and pushes before the next profile. Model timeouts/caps/invalid answers continue;
+infrastructure or checker/publication failure prevents the next launch. Per-profile
+and outer logs persist; existing profile directories/logs are never overwritten.
+The wrapper has not been launched as part of preparation.
+
+Export the Azure endpoint/resource ID, guest path and data root as above, and
+authenticate Azure CLI/SDK and git push. Use an inactive checkout with a clean,
+built, tested and pushed Release commit. Defaults use the existing
+`artifacts/v3-enforced-20261117/gpt-6.1-sol` baseline and a **new**
+`artifacts/gpt-6.1-sol-v3-t600` output root. To relocate evidence, export
+`SOL_BASELINE_ROOT`, `SOL_T600_ROOT` and `T600_LOG_ROOT`; optional
+`REFERENCE_COMPARISON` still selects a historical base contract. The 600-second
+override comes only from the named approved cohort, not a generic environment
+override. The runner, checker and reporter reject incorrect cohort/timeout labels;
+the controller also rejects overlapping 120/600 output roots.
+
+```bash
+# Operator only: preparation does not execute this launch.
+mkdir -p artifacts/v3-t600-gate
+setsid nohup bash scripts/vm/run-sol-t600.sh > artifacts/v3-t600-gate/sol-t600.log 2>&1 < /dev/null &
+tail -f artifacts/v3-t600-gate/sol-t600.log
+```
+
+Do not use the 120-second cross-model report or generic sweep merger to combine
+the two time budgets. The dedicated reporter reads each explicitly labelled
+cohort separately, checks shared prompt/schema/tools/dataset/pricing fingerprints,
+retains all measured outcomes in each row's medians and excludes warm-ups,
+smokes, aborted attempts and derived reports. Its within-Sol 600/120 deltas and
+CodeAct/Classic deltas are labelled correctness-equivalent only for matching
+correct counts; equal zero counts are explicitly not an efficiency win.
 
 **No historical artifact directory or fake seed run is required.** `--reference-comparison <path>` remains optional for historical replay; that explicit path still requires its sibling `runs/<runId>/metadata.json`. Do not mix the reference/control into measured model results. Without either `--cohort` or an explicit historical reference, run/check default to `gpt-4o-v3-enforced`. Always name Sol explicitly.
 

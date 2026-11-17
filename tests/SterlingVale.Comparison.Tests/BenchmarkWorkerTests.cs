@@ -13,6 +13,41 @@ namespace SterlingVale.Comparison.Tests;
 public sealed class BenchmarkWorkerTests
 {
     [Theory]
+    [InlineData("classic")]
+    [InlineData("codeact")]
+    public async Task Sensitivity_timeout_flows_to_worker_configuration_and_changes_only_the_model_fingerprint(string mode)
+    {
+        string root = Path.Combine(Path.GetTempPath(), "sv-worker-sensitivity-" + Guid.NewGuid().ToString("N"));
+        string[] keys = ["DATASET_ROOT", "ARTIFACTS_ROOT", "BENCHMARK_TIMEOUT_SECONDS", "HYPERLIGHT_PYTHON_GUEST_PATH"];
+        var saved = keys.ToDictionary(key => key, Environment.GetEnvironmentVariable);
+        try
+        {
+            new DatasetWriter().Write(new SyntheticDataGenerator().Generate(DatasetProfile.Small), Path.Combine(root, "small"));
+            Environment.SetEnvironmentVariable("DATASET_ROOT", root);
+            Environment.SetEnvironmentVariable("ARTIFACTS_ROOT", Path.Combine(root, "artifacts"));
+            Environment.SetEnvironmentVariable("BENCHMARK_TIMEOUT_SECONDS", "600");
+            Environment.SetEnvironmentVariable("HYPERLIGHT_PYTHON_GUEST_PATH", "");
+            using var composition = new Composition("fake");
+            var baseline = composition.Model with { TimeoutSeconds = 120 };
+            Assert.Equal(TimeSpan.FromSeconds(600), composition.Model.Timeout);
+            Assert.NotEqual(baseline.Fingerprint(), composition.Model.Fingerprint());
+            Assert.Equal(baseline.Fingerprint(), (composition.Model with { TimeoutSeconds = 120 }).Fingerprint());
+            var record = await BenchmarkWorker.RunAsync(composition, mode, new AnalysisRequest(),
+                "comparison-sensitivity", "trial-sensitivity", CancellationToken.None);
+            Assert.NotEqual(RunStatus.TimedOut, record.Response.Status);
+            Assert.Equal(composition.Model.Fingerprint(), record.Fingerprints.ModelFingerprint);
+            var configuration = Assert.Single(record.Events, entry => entry.EventType == "EXECUTION_CONFIGURATION");
+            var data = JsonSerializer.SerializeToElement(configuration.Data, JsonSerializerOptions.Web);
+            Assert.Equal(600, data.GetProperty("modelConfiguration").GetProperty("timeoutSeconds").GetInt32());
+        }
+        finally
+        {
+            foreach (var (key, value) in saved) Environment.SetEnvironmentVariable(key, value);
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Watchdog_reaps_an_uncooperative_process_on_deadline_or_caller_cancellation(bool callerCancellation)

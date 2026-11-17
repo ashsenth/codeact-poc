@@ -1,5 +1,10 @@
 {
   "referenceVersion": 1,
+  "cohortTimeoutSeconds": {
+    "gpt-4o-v3-enforced": 120,
+    "gpt-6.1-sol-v3": 120,
+    "gpt-6.1-sol-v3-t600": 600
+  },
   "referenceId": "exposure-analysis/v3-small",
   "derivedFrom": "small-20261116204456-a702d6024c2a4eb1afcc742408d492f0-reclassified",
   "promptRevision": "exposure-analysis/v3",

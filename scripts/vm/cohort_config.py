@@ -1,5 +1,6 @@
 """Pinned, public configuration for the approved stateless Responses v3 cohorts."""
 import json
+from copy import deepcopy
 import os
 import subprocess
 import urllib.parse
@@ -45,6 +46,7 @@ def price_url(query):
 
 COHORTS = {
     "gpt-4o-v3-enforced": {
+        "timeoutSeconds": 120,
         "deployment": "gpt-4o", "model": "gpt-4o", "version": "2024-11-20", "reasoning": "not-supported",
         "auditedLegacySequentialFingerprint": "041e8fc0a4d8cff418618fcfa63c767efcf9c16175a1caaa15b309a7309d003e",
         "rates": {"inputPerMillion": "2.5", "outputPerMillion": "10", "cachedInputPerMillion": "1.25"},
@@ -53,6 +55,7 @@ COHORTS = {
         "sourceUrl": price_url(FOUR_FILTER),
     },
     "gpt-6.1-sol-v3": {
+        "timeoutSeconds": 120,
         "deployment": "gpt-6.1-sol", "model": "gpt-6.1-sol", "version": "2026-09-29", "reasoning": "medium",
         "auditedLegacySequentialFingerprint": "309f1e281b2f33fe171f7809d8c0794340416ef83a869b257dedc0de96ed96bb",
         "rates": {"inputPerMillion": "2", "outputPerMillion": "10", "cachedInputPerMillion": ".1",
@@ -66,6 +69,9 @@ COHORTS = {
         "sourceUrl": price_url(SOL_FILTER),
     },
 }
+COHORTS["gpt-6.1-sol-v3-t600"] = deepcopy(COHORTS["gpt-6.1-sol-v3"])
+COHORTS["gpt-6.1-sol-v3-t600"]["timeoutSeconds"] = 600
+del COHORTS["gpt-6.1-sol-v3-t600"]["auditedLegacySequentialFingerprint"]
 
 RATE_ENV = {
     "inputPerMillion": "PRICING_INPUT_PER_MILLION", "outputPerMillion": "PRICING_OUTPUT_PER_MILLION",
@@ -80,9 +86,26 @@ def validate_function_policy(model, fingerprint, spec):
     policy = model.get("functionInvocationPolicy")
     if policy == "sequential-within-response/v1":
         return
-    if policy is None and fingerprint == spec["auditedLegacySequentialFingerprint"]:
+    if policy is None and fingerprint == spec.get("auditedLegacySequentialFingerprint") and fingerprint is not None:
         return
     raise ValueError("Local invocation policy is neither explicit sequential nor an audited legacy fingerprint.")
+
+
+def cohort_timeout(cohort, reference):
+    timeout = COHORTS[cohort]["timeoutSeconds"] if cohort else reference["modelConfiguration"]["timeoutSeconds"]
+    approved = json.loads(DEFAULT_REFERENCE.read_text())["cohortTimeoutSeconds"]
+    if cohort and approved[cohort] != timeout:
+        raise ValueError("Cohort timeout differs from the committed reference.")
+    return timeout
+
+
+def validate_cohort_root(root, cohort):
+    for path in root.glob("*/launch.json"):
+        if path.parent.name.startswith("aborted-"):
+            continue
+        launch = json.loads(path.read_text())
+        if launch.get("cohort") != cohort:
+            raise ValueError(f"Refusing to mix cohorts in one root: {path}")
 
 
 def deployment_metadata(spec):
@@ -139,6 +162,7 @@ def configure_environment(env, cohort):
     for key, value in spec["rates"].items():
         env[RATE_ENV[key]] = value
     env.update({
+        "BENCHMARK_TIMEOUT_SECONDS": str(spec["timeoutSeconds"]),
         "AZURE_OPENAI_DEPLOYMENT_NAME": spec["deployment"], "AZURE_OPENAI_MODEL_NAME": spec["model"],
         "AZURE_OPENAI_MODEL_VERSION": spec["version"], "MODEL_API_MODE": "responses",
         "MODEL_DEFAULT_REASONING_EFFORT": spec["reasoning"], "PRICING_SOURCE_URL": spec["sourceUrl"],

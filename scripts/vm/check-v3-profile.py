@@ -8,7 +8,7 @@ import statistics
 import subprocess
 from decimal import Decimal
 from pathlib import Path
-from cohort_config import COHORTS, load_reference, validate_function_policy
+from cohort_config import COHORTS, cohort_timeout, load_reference, validate_cohort_root, validate_function_policy
 
 
 def read(path):
@@ -49,6 +49,7 @@ def main():
     if not os.environ.get("ARTIFACTS_ROOT"):
         parser.error("ARTIFACTS_ROOT must name the v3 sweep directory.")
     root = Path(os.environ["ARTIFACTS_ROOT"]).resolve()
+    validate_cohort_root(root, args.cohort)
     if args.smoke and (not args.cohort or args.profile != "n1" or args.summarize):
         parser.error("--smoke requires a Responses N=1 cohort and cannot enter summaries.")
     count = 1 if args.smoke else 5
@@ -74,7 +75,10 @@ def main():
         assert model["contextPolicy"] == "full-context/no-previous-response-id/v1"
         assert model["turnLimitEnforcement"] == "model-request-boundary/v1"
         validate_function_policy(model, report["modelFingerprint"], spec)
-        assert (model["maxTurns"], model["timeoutSeconds"], model["maxOutputTokens"]) == (20, 120, 16384)
+        timeout = cohort_timeout(args.cohort, reference)
+        assert (model["maxTurns"], model["timeoutSeconds"], model["maxOutputTokens"]) == (20, timeout, 16384)
+        launch = read(path.parent.parent / "launch.json")
+        assert launch["cohort"] == args.cohort and launch["timeoutSeconds"] == timeout
         assert model["strict"] is False and model["parallel_tool_calls"] is True
         assert model["temperature"] == (None if spec["model"] == "gpt-6.1-sol" else 0)
         for key, value in spec["rates"].items():
