@@ -147,7 +147,7 @@ More detail: [architecture](docs/architecture.md) and [security model](docs/secu
 
 **Verification scope:** the sequence below succeeded in a clean local-source clone on Windows
 ARM64. Ubuntu x64 additionally passed local-source clean-clone locked restore, Release build and
-231 non-live tests at `3088451`, using an empty NuGet cache. The current offline changes pass 291.
+231 non-live tests at `3088451`, using an empty NuGet cache. The current offline changes pass 299.
 The complete quickstart on Linux/macOS and a remote-origin clone are **not yet verified**.
 
 Clone setup template (**remote clone not yet verified**; replace the placeholder):
@@ -205,7 +205,7 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Current result: **291 passed, 0 failed, 0 skipped across ten projects**, including
+Current result: **299 passed, 0 failed, 0 skipped across ten projects**, including
 worker containment/recovery and model-outcome/infrastructure-validity regressions. On the ARM64 laptop the six Hyperlight tests
 previously skipped; on Ubuntu x64 five pass, while native cancellation remains a labelled
 known issue. Neither a skip nor an excluded known issue is a pass.
@@ -215,6 +215,12 @@ known issue. Neither a skip nor an excluded known issue is a pass.
 ### Results
 
 #### v3 cohort
+
+New enforced cohorts are documented separately in
+[v3 stateless Responses cohorts](docs/v3-enforced-cohorts.md). Both new models/modes
+use the same function-only, full-context, `store=false` adapter; the Chat Completions
+path remains available for historical reproduction. The committed runner/checker
+accept `--cohort` and isolated `--smoke`; do not mix these results with the table below.
 
 **Historical fairness annotation (November 17):** these runs used a post-return-only
 turn check, not an enforced in-flight 20-request budget. Four of 15 Classic and one

@@ -99,6 +99,11 @@ public sealed class ObservedFunctionClient(IChatClient inner) : FunctionInvoking
 
                         stdoutAvailable = document.RootElement.TryGetProperty("stdout", out _);
                         stderrAvailable = document.RootElement.TryGetProperty("stderr", out _);
+                        if (session.SandboxRuntime == "hyperlight" && success == false &&
+                            document.RootElement.TryGetProperty("stderr", out var stderr) && stderr.ValueKind == JsonValueKind.String &&
+                            stderr.GetString()?.Contains("Not enough space in shared output buffer", StringComparison.Ordinal) == true)
+                            session.Emit("SANDBOX_OUTPUT_OVERFLOW", "failed", errorCategory: "SandboxOutputOverflow",
+                                data: new { invocationId, requiredAndAvailable = session.Payloads.Capture(stderr.GetString()) });
 
                         CaptureStream(session, document.RootElement, "stdout", invocationId, executionEventPrefix);
                         CaptureStream(session, document.RootElement, "stderr", invocationId, executionEventPrefix);

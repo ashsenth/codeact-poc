@@ -93,7 +93,9 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
                 : EmptyMetrics(stopwatch.Elapsed);
             incompleteMetrics = incompleteMetrics with
             {
-                EstimatedCostUsd = context.Pricing.EstimateCost(incompleteMetrics.InputTokens, incompleteMetrics.OutputTokens),
+                EstimatedCostUsd = SterlingVale.Telemetry.ExecutionSession.Current is { } usageSession
+                    ? context.Pricing.EstimateCost(usageSession.UsageSnapshot())
+                    : context.Pricing.EstimateCost(incompleteMetrics.InputTokens, incompleteMetrics.OutputTokens),
             };
             return BuildRecord(context, turnLimitReached ? RunStatus.Capped : failed ? RunStatus.Failed : RunStatus.TimedOut, rawOutput: string.Empty, report: null,
                 generatedCode: null, toolResults: null, toolCalls: toolCalls, transcript: [],
@@ -101,7 +103,9 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
         }
 
         var messages = run.Messages;
-        int turns = messages.Count(m => m.Role == ChatRole.Assistant);
+        int turns = SterlingVale.Telemetry.ExecutionSession.Current is { } observed
+            ? observed.Snapshot().Count(entry => entry.EventType == "MODEL_RESPONSE_RECEIVED")
+            : messages.Count(m => m.Role == ChatRole.Assistant);
         var calls = messages.SelectMany(m => m.Contents).OfType<FunctionCallContent>().ToList();
         var byName = calls
             .GroupBy(c => c.Name, StringComparer.Ordinal)
@@ -183,7 +187,7 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
             }
 
             metrics = metrics with { TelemetryErrors = reconciliationErrors, TelemetryValid = reconciliationErrors.Count == 0,
-                EstimatedCostUsd = context.Pricing.EstimateCost(metrics.InputTokens, metrics.OutputTokens) };
+                EstimatedCostUsd = context.Pricing.EstimateCost(execution.UsageSnapshot()) };
             execution.Emit("TELEMETRY_RECONCILIATION_COMPLETED", metrics.TelemetryValid ? "ok" : "failed", data: new { metrics.TelemetryErrors });
             if (!metrics.TelemetryValid)
             {

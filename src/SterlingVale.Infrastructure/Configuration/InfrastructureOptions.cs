@@ -27,6 +27,10 @@ public sealed class AzureOpenAIOptions
 
     /// <summary>Optional API key. Prefer DefaultAzureCredential (leave empty) when possible.</summary>
     public string ApiKey { get; set; } = string.Empty;
+    public string ApiMode { get; set; } = "chat-completions";
+    public string? ModelName { get; set; }
+    public string? ModelVersion { get; set; }
+    public string? ResourceId { get; set; }
 
     /// <summary>True when a live endpoint is configured.</summary>
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Endpoint);

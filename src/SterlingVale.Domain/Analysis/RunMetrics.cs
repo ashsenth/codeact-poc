@@ -38,6 +38,14 @@ public sealed record RunMetrics
 
     /// <summary>Total tokens, or null when the provider did not report usage.</summary>
     public long? TotalTokens { get; init; }
+    public long? CachedInputTokens { get; init; }
+    public long? ReasoningTokens { get; init; }
+    public long? VisibleOutputTokens { get; init; }
+    public long CacheWriteTokens { get; init; }
+    public int Http429Count { get; init; }
+    public double RetryWaitMs { get; init; }
+    public int SandboxOutputOverflowErrors { get; init; }
+    public int TurnLimitReached { get; init; }
 
     /// <summary>Estimated cost in USD, or null when token usage is unknown.</summary>
     public decimal? EstimatedCostUsd { get; init; }

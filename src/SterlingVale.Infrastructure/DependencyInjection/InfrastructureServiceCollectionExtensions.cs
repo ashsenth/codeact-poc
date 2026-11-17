@@ -32,6 +32,10 @@ public static class InfrastructureServiceCollectionExtensions
             Endpoint = configuration["AZURE_OPENAI_ENDPOINT"] ?? string.Empty,
             DeploymentName = configuration["AZURE_OPENAI_DEPLOYMENT_NAME"] ?? "gpt-4o",
             ApiKey = configuration["AZURE_OPENAI_API_KEY"] ?? string.Empty,
+            ApiMode = configuration["MODEL_API_MODE"] ?? "chat-completions",
+            ModelName = configuration["AZURE_OPENAI_MODEL_NAME"],
+            ModelVersion = configuration["AZURE_OPENAI_MODEL_VERSION"],
+            ResourceId = configuration["AZURE_OPENAI_RESOURCE_ID"],
         };
         if (selection.IsLive && (!azure.IsConfigured || string.IsNullOrWhiteSpace(configuration["AZURE_OPENAI_DEPLOYMENT_NAME"])))
         {
@@ -57,7 +61,9 @@ public static class InfrastructureServiceCollectionExtensions
         var model = new ModelConfiguration
         {
             DeploymentName = selection.IsLive ? azure.DeploymentName : "fake-model",
-            Temperature = benchmark.Temperature,
+            ApiMode = azure.ApiMode, ModelName = azure.ModelName, ModelVersion = azure.ModelVersion,
+            DefaultReasoningEffort = configuration["MODEL_DEFAULT_REASONING_EFFORT"] ?? "not-supported",
+            Temperature = azure.ModelName == "gpt-6.1-sol" ? null : benchmark.Temperature,
             MaxTurns = benchmark.MaxTurns,
             TimeoutSeconds = benchmark.TimeoutSeconds,
         };
@@ -70,6 +76,14 @@ public static class InfrastructureServiceCollectionExtensions
             SourceUrl = configuration["PRICING_SOURCE_URL"],
             VerifiedOn = configuration["PRICING_VERIFIED_ON"],
             Basis = configuration["PRICING_BASIS"],
+            CachedInputPerMillion = OptionalRate(configuration, "PRICING_CACHED_INPUT_PER_MILLION"),
+            CacheWritePerMillion = OptionalRate(configuration, "PRICING_CACHE_WRITE_PER_MILLION"),
+            LongContextThreshold = configuration["PRICING_LONG_CONTEXT_THRESHOLD"] is not null
+                ? ParsePositiveInt(configuration, "PRICING_LONG_CONTEXT_THRESHOLD", 272000) : null,
+            LongInputPerMillion = OptionalRate(configuration, "PRICING_LONG_INPUT_PER_MILLION"),
+            LongOutputPerMillion = OptionalRate(configuration, "PRICING_LONG_OUTPUT_PER_MILLION"),
+            LongCachedInputPerMillion = OptionalRate(configuration, "PRICING_LONG_CACHED_INPUT_PER_MILLION"),
+            LongCacheWritePerMillion = OptionalRate(configuration, "PRICING_LONG_CACHE_WRITE_PER_MILLION"),
         };
 
         var hyperlight = new HyperlightOptions
@@ -152,4 +166,7 @@ public static class InfrastructureServiceCollectionExtensions
 
         return parsed;
     }
+
+    private static decimal? OptionalRate(IConfiguration configuration, string key) =>
+        configuration[key] is null ? null : ParseNonNegativeDecimal(configuration, key, 0m);
 }

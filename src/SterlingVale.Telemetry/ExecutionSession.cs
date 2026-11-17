@@ -20,7 +20,13 @@ public sealed record ExecutionEvent(
     public bool IsWarmup { get; init; }
 }
 
-public sealed record ModelUsage(int ModelTurn, long? InputTokens, long? OutputTokens, long? TotalTokens);
+public sealed record ModelUsage(int ModelTurn, long? InputTokens, long? OutputTokens, long? TotalTokens)
+{
+    public long? CachedInputTokens { get; init; }
+    public long? ReasoningTokens { get; init; }
+    public long CacheWriteTokens { get; init; }
+    public long? VisibleOutputTokens => OutputTokens is { } output && ReasoningTokens is { } reasoning ? output - reasoning : null;
+}
 
 public sealed class ExecutionSession : IDisposable
 {

@@ -30,7 +30,12 @@ public sealed class ObservedChatClient(IChatClient inner, int maxTurns = int.Max
         try
         {
             var response = await base.GetResponseAsync(input, options, cancellationToken).ConfigureAwait(false);
-            var usage = new ModelUsage(modelTurn, response.Usage?.InputTokenCount, response.Usage?.OutputTokenCount, response.Usage?.TotalTokenCount);
+            var usage = new ModelUsage(modelTurn, response.Usage?.InputTokenCount, response.Usage?.OutputTokenCount, response.Usage?.TotalTokenCount)
+            {
+                CachedInputTokens = response.Usage?.CachedInputTokenCount,
+                ReasoningTokens = response.Usage?.ReasoningTokenCount,
+                CacheWriteTokens = response.Usage?.AdditionalCounts?.GetValueOrDefault("CacheWriteTokenCount") ?? 0,
+            };
             execution.RecordUsage(usage);
             string safeText = PayloadPolicy.Redact(response.Text ?? string.Empty);
             string preview = safeText.Length > 240 ? safeText[..240] : safeText;

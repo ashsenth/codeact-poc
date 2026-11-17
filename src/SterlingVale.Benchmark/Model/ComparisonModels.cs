@@ -36,6 +36,14 @@ public sealed record TrialResult(
     public IReadOnlyList<string> UnpricedSymbols { get; init; } = [];
     public double? AnalysisDurationMs { get; init; }
     public int? ToolArgumentErrors { get; init; }
+    public long? CachedInputTokens { get; init; }
+    public long? ReasoningTokens { get; init; }
+    public long? VisibleOutputTokens { get; init; }
+    public long CacheWriteTokens { get; init; }
+    public int? Http429Count { get; init; }
+    public double? RetryWaitMs { get; init; }
+    public int? SandboxOutputOverflowErrors { get; init; }
+    public int? TurnLimitReached { get; init; }
 
     public bool InfrastructureFailed => Failure is { HttpStatus: not null } ||
         Failure is { } failure && !RunValidity.IsModelOutcome(failure) ||

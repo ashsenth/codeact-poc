@@ -30,15 +30,15 @@ public static class SweepSummaryWriter
         markdown.AppendLine($"Shared prompt hash: `{reports[0].PromptHash}`. Model fingerprint: `{reports[0].ModelFingerprint}`.");
         markdown.AppendLine($"\nExecution kind: {reports[0].ExecutionKind}. Correct means Exact/WithinTolerance, not merely Completed.");
         markdown.AppendLine("\nMedians include every measured task outcome; warm-ups excluded. Unknown stays unavailable. Analysis time excludes worker startup/transport.");
-        markdown.AppendLine("Costs are retail token estimates, not invoices; cached-input discounts, unreported usage and infrastructure charges are excluded.");
+        markdown.AppendLine("Costs are retail token estimates, not invoices. Configured cache rates apply to reported usage; reasoning is included once in output/total tokens. Analysis excludes recorded retry wait, which is reported separately. Unreported usage and infrastructure charges are excluded.");
         markdown.AppendLine("\nUnearnedCompleteness means claimed complete but missing required components. Detection only: no feedback/retries. Unassessed trials are disclosed; historical v2 reports are not rescored.");
-        markdown.AppendLine("\n| Profile / scope | Mode | Correctness | UnearnedCompleteness | toolArgumentErrors (total) | Outcomes | Median tokens | Median est. USD | Median analysis s | Individual trials (timelines) |");
-        markdown.AppendLine("|---|---|---|---|---:|---|---:|---:|---:|---|");
+        markdown.AppendLine("\n| Profile / scope | Mode | Correctness | UnearnedCompleteness | toolArgumentErrors (total) | TurnLimitReached | Output overflows | HTTP 429 | Outcomes | Median tokens | Median est. USD | Median analysis s | Median retry wait s | Individual trials (timelines) |");
+        markdown.AppendLine("|---|---|---|---|---:|---:|---:|---:|---|---:|---:|---:|---:|---|");
         var html = new StringBuilder("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Cross-profile results</title><style>body{font-family:system-ui;margin:2rem;color:#172033}table{border-collapse:collapse;font-size:.9rem}th,td{border:1px solid #bbb;padding:.5rem;text-align:left}code{overflow-wrap:anywhere}a{color:#0645ad}</style></head><body><h1>Cross-profile results</h1>");
         html.Append($"<p>Shared prompt hash: <code>{Enc(reports[0].PromptHash!)}</code>. Execution kind: {Enc(reports[0].ExecutionKind)}.</p>");
-        html.Append("<p>Correct means Exact/WithinTolerance, not merely Completed. All measured outcomes remain in medians; warm-ups excluded. Unknown stays unavailable. Analysis excludes worker startup/transport. Costs are retail token estimates, not invoices; cached-input discounts, unreported usage and infrastructure charges are excluded.</p>");
+        html.Append("<p>Correct means Exact/WithinTolerance, not merely Completed. All measured outcomes remain in medians; warm-ups excluded. Unknown stays unavailable. Analysis excludes worker startup/transport and recorded retry wait. Costs use configured cache/context rates for reported usage; reasoning is included once in output tokens. Estimates are not invoices; unreported usage and infrastructure charges are excluded.</p>");
         html.Append("<p>UnearnedCompleteness means claimed complete but missing required components. Detection only: no feedback/retries. Unassessed trials are disclosed; historical v2 reports are not rescored.</p>");
-        html.Append("<table><tr><th>Profile / scope</th><th>Mode</th><th>Correctness</th><th>UnearnedCompleteness</th><th>toolArgumentErrors (total)</th><th>Outcomes</th><th>Median tokens</th><th>Median est. USD</th><th>Median analysis s</th><th>Individual trials (timelines)</th></tr>");
+        html.Append("<table><tr><th>Profile / scope</th><th>Mode</th><th>Correctness</th><th>UnearnedCompleteness</th><th>toolArgumentErrors (total)</th><th>TurnLimitReached</th><th>Output overflows</th><th>HTTP 429</th><th>Outcomes</th><th>Median tokens</th><th>Median est. USD</th><th>Median analysis s</th><th>Median retry wait s</th><th>Individual trials (timelines)</th></tr>");
         var deltas = new List<string[]>();
         var warmups = new List<string[]>();
         for (int index = 0; index < reports.Length; index++)
@@ -50,9 +50,13 @@ public static class SweepSummaryWriter
             var codeact = Measure(report, "codeact");
             foreach (var row in new[] { classic, codeact })
             {
-                string[] cells = [scope, row.Mode, row.Trials == 0 ? "not measured" : $"{row.Correct}/{row.Trials} ({Format(100m * row.Correct / row.Trials, "0.0")}%)",
-                    row.Unearned, row.ToolErrors, row.Outcomes, Format(row.Tokens, "0"), Format(row.Cost, "0.0000000"), Format(row.AnalysisMs / 1000m, "0.000")];
                 var trials = report.RawTrials.Where(trial => trial.Mode == row.Mode).OrderBy(trial => trial.PairId).ToArray();
+                string Total(Func<TrialResult, int?> select) => trials.Length == 0 || trials.Any(trial => select(trial) is null)
+                    ? "unavailable" : trials.Sum(trial => select(trial)!.Value).ToString(Invariant);
+                string[] cells = [scope, row.Mode, row.Trials == 0 ? "not measured" : $"{row.Correct}/{row.Trials} ({Format(100m * row.Correct / row.Trials, "0.0")}%)",
+                    row.Unearned, row.ToolErrors, Total(trial => trial.TurnLimitReached), Total(trial => trial.SandboxOutputOverflowErrors),
+                    Total(trial => trial.Http429Count), row.Outcomes, Format(row.Tokens, "0"), Format(row.Cost, "0.0000000"),
+                    Format(row.AnalysisMs / 1000m, "0.000"), Format(Median(trials.Select(trial => (decimal?)trial.RetryWaitMs)) / 1000m, "0.000")];
                 string Timeline(TrialResult trial) => Link(artifactsRoot, Path.Combine(Path.GetDirectoryName(comparisonPaths[index])!,
                     "..", "runs", trial.RunId, "timeline.md"));
                 string mdTrials = string.Join(", ", trials.Select(trial => $"[{trial.PairId}]({Timeline(trial)})"));

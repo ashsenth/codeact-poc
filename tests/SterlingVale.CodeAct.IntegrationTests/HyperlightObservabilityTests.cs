@@ -65,6 +65,9 @@ public sealed class HyperlightObservabilityTests(ITestOutputHelper output) : IDi
         Assert.Contains("Not enough space in shared output buffer", value.GetProperty("stderr").GetString());
         Assert.Contains("Available: 16376", value.GetProperty("stderr").GetString());
         Assert.Single(session.Snapshot(), e => e.EventType == "CODE_EXECUTION_FAILED");
+        Assert.Single(session.Snapshot(), e => e.EventType == "SANDBOX_OUTPUT_OVERFLOW");
+        Assert.Equal(1, TelemetryReconciler.FromEvidence(session, TimeSpan.FromSeconds(1), false, null).SandboxOutputOverflowErrors);
+        Assert.False(RunValidity.IsModelOutcome(Assert.IsType<FailureInfo>(RunValidity.FindFailure("Completed", session.Snapshot()))));
         Assert.DoesNotContain(session.Snapshot(), e => e.EventType == "MODEL_TOOL_CALL_FAILED");
         output.WriteLine("Returned to scripted client, which continued to final response: " + result);
     }

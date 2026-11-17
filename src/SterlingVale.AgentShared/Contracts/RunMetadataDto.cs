@@ -8,7 +8,7 @@ public sealed record RunMetadataDto(
     string PromptId,
     string SchemaId,
     string ModelDeployment,
-    float Temperature,
+    float? Temperature,
     int MaxTurns,
     int TimeoutSeconds,
     decimal PricingInputPerMillion,

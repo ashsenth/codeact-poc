@@ -57,12 +57,27 @@ public sealed class TurnLimitTests : IDisposable
         Assert.DoesNotContain(record.Events, e => e.EventType == "TURN_LIMIT_REACHED");
     }
 
-    private AnalysisService Service(string mode, IChatClientProvider provider)
+    [Theory]
+    [InlineData("classic")]
+    [InlineData("codeact")]
+    public async Task Reasoning_and_visible_messages_in_one_response_consume_one_turn(string mode)
+    {
+        var record = await Service(mode, new SplitMessageProvider(), budget: 1)
+            .AnalyzeAsync(new AnalysisRequest(), CancellationToken.None);
+        Assert.Equal(RunStatus.Incomplete, record.Response.Status);
+        Assert.True(record.Response.Metrics.TelemetryValid, string.Join("; ", record.Response.Metrics.TelemetryErrors));
+        Assert.Equal(1, record.Response.Metrics.ModelRequestCount);
+        Assert.Equal(1, record.Response.Metrics.ModelTurnCount);
+        Assert.Equal(2, record.Response.Metrics.ReasoningTokens);
+        Assert.Equal(1, record.Response.Metrics.VisibleOutputTokens);
+    }
+
+    private AnalysisService Service(string mode, IChatClientProvider provider, int budget = Budget)
     {
         IAgentFactory factory = mode == "classic"
             ? new ClassicAgentFactory() : new CodeActAgentFactory(new HyperlightOptions());
         return new(new Snapshots(), provider, factory, new AnalysisRunner(),
-            new ModelConfiguration { DeploymentName = "fake-model", MaxTurns = Budget, TimeoutSeconds = 120 },
+            new ModelConfiguration { DeploymentName = "fake-model", MaxTurns = budget, TimeoutSeconds = 120 },
             new PricingConfiguration(), new ToolMetrics(), new ExecutionOptions { ArtifactsRoot = _root });
     }
 
@@ -107,5 +122,26 @@ public sealed class TurnLimitTests : IDisposable
             count();
             return base.GetResponseAsync(messages, options, cancellationToken);
         }
+    }
+
+    private sealed class SplitMessageProvider : IChatClientProvider
+    {
+        public bool IsLive => false;
+        public string ModelId => "fake-model";
+        public IChatClient CreateChatClient(ChatClientRequest request) => new SplitMessageClient();
+    }
+
+    private sealed class SplitMessageClient() : DelegatingChatClient(new DeterministicFakeChatClient(new FakeChatPlan().Respond("unused")))
+    {
+        public override Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ChatResponse([
+                new ChatMessage(ChatRole.Assistant, [new TextReasoningContent("")]),
+                new ChatMessage(ChatRole.Assistant,
+                    """{"runId":"r","generatedAt":"2026-01-01","status":"incomplete","missingItems":["control"],"households":[]}"""),
+            ])
+            {
+                Usage = new UsageDetails { InputTokenCount = 2, OutputTokenCount = 3, TotalTokenCount = 5, ReasoningTokenCount = 2 },
+            });
     }
 }

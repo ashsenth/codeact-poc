@@ -132,7 +132,7 @@ public static class BenchmarkWorker
         session.Emit("WORKER_TERMINATED", status.ToString(), duration.TotalMilliseconds, failure.Category,
             new { failure, processTreeTerminated = true });
         var events = session.Snapshot();
-        foreach (string prefix in new[] { "MODEL_REQUEST", "MODEL_TOOL_CALL", "EXECUTE_CODE_CALL", "CODE_EXECUTION", "TOOL_CALL" })
+        foreach (string prefix in new[] { "MODEL_REQUEST", "MODEL_RETRY_WAIT", "MODEL_TOOL_CALL", "EXECUTE_CODE_CALL", "CODE_EXECUTION", "TOOL_CALL" })
         {
             string key = prefix == "MODEL_REQUEST" ? "requestId" : "invocationId";
             foreach (var started in events.Where(entry => entry.EventType == prefix + "_STARTED"))
@@ -145,6 +145,12 @@ public static class BenchmarkWorker
                     continue;
                 var interrupted = new Dictionary<string, object?> { [key] = id, ["failure"] = failure,
                     ["terminatedBySupervisor"] = true };
+                if (prefix == "MODEL_RETRY_WAIT")
+                {
+                    session.Emit(prefix + "_COMPLETED", "interrupted",
+                        Math.Max(0, (DateTimeOffset.UtcNow - started.Timestamp).TotalMilliseconds), data: interrupted);
+                    continue;
+                }
                 session.Emit(prefix + "_FAILED", status.ToString(), errorCategory: failure.Category, data: interrupted);
                 if (prefix == "CODE_EXECUTION")
                 {
@@ -160,7 +166,7 @@ public static class BenchmarkWorker
             .Select(entry => JsonSerializer.SerializeToElement(entry.Data, Json).GetProperty("toolName").GetString()!)
             .GroupBy(name => name, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
         metrics = metrics with { ToolCallsByName = byName,
-            EstimatedCostUsd = composition.Pricing.EstimateCost(metrics.InputTokens, metrics.OutputTokens) };
+            EstimatedCostUsd = composition.Pricing.EstimateCost(session.UsageSnapshot()) };
         session.Emit("RUN_FAILED", status.ToString(), duration.TotalMilliseconds, failure.Category, new { failure, diagnostics });
         session.WriteArtifact("summary.json", JsonSerializer.Serialize(new { status = status.ToString(), diagnostics, metrics }, Json));
         var tools = new List<ToolCallRecord>();

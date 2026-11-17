@@ -32,6 +32,14 @@ public static class TelemetryReconciler
         if (metrics.InputTokens != Sum(item => item.InputTokens)) errors.Add("Input token total mismatch");
         if (metrics.OutputTokens != Sum(item => item.OutputTokens)) errors.Add("Output token total mismatch");
         if (metrics.TotalTokens != Sum(item => item.TotalTokens)) errors.Add("Total token total mismatch");
+        if (metrics.CachedInputTokens != Sum(item => item.CachedInputTokens)) errors.Add("Cached input token total mismatch");
+        if (metrics.ReasoningTokens != Sum(item => item.ReasoningTokens)) errors.Add("Reasoning token total mismatch");
+        if (metrics.VisibleOutputTokens != Sum(item => item.VisibleOutputTokens)) errors.Add("Visible output token total mismatch");
+        if (usage.Any(item => item.ReasoningTokens > item.OutputTokens || item.CachedInputTokens + item.CacheWriteTokens > item.InputTokens ||
+                item.ReasoningTokens < 0 || item.CachedInputTokens < 0 || item.CacheWriteTokens < 0 ||
+                item.InputTokens is not null && item.OutputTokens is not null && item.TotalTokens is not null &&
+                item.TotalTokens != item.InputTokens + item.OutputTokens))
+            errors.Add("Invalid per-response token breakdown");
         return metrics with { TelemetryValid = errors.Count == 0, TelemetryErrors = errors };
     }
 
@@ -44,13 +52,21 @@ public static class TelemetryReconciler
         int granular = Count("TOOL_CALL_STARTED");
         return Reconcile(new RunMetrics
         {
-            Duration = duration, SchemaValid = schemaValid,
+            Duration = duration - TimeSpan.FromMilliseconds(events.Where(entry => entry.EventType == "MODEL_RETRY_WAIT_COMPLETED")
+                .Sum(entry => entry.DurationMs ?? 0)), SchemaValid = schemaValid,
             ModelRequestCount = Count("MODEL_REQUEST_STARTED"), ModelTurnCount = Count("MODEL_RESPONSE_RECEIVED"),
             ModelFacingToolCallCount = Count("MODEL_TOOL_CALL_STARTED"), GranularToolCallCount = granular,
             SandboxCallbackCount = session.Context.AgentMode == "codeact" ? granular : 0,
             ToolCallCount = granular, ExecuteCodeCallCount = Count("EXECUTE_CODE_CALL_STARTED"),
             InputTokens = Sum(item => item.InputTokens), OutputTokens = Sum(item => item.OutputTokens),
             TotalTokens = Sum(item => item.TotalTokens), EstimatedCostUsd = cost,
+            CachedInputTokens = Sum(item => item.CachedInputTokens), ReasoningTokens = Sum(item => item.ReasoningTokens),
+            VisibleOutputTokens = Sum(item => item.VisibleOutputTokens), CacheWriteTokens = usage.Sum(item => item.CacheWriteTokens),
+            Http429Count = events.Count(entry => entry.EventType == "MODEL_HTTP_429"),
+            RetryWaitMs = events.Where(entry => entry.EventType == "MODEL_RETRY_WAIT_COMPLETED").Sum(entry => entry.DurationMs ?? 0),
+            RetryCount = Count("MODEL_RETRY_WAIT_STARTED"),
+            SandboxOutputOverflowErrors = Count("SANDBOX_OUTPUT_OVERFLOW"),
+            TurnLimitReached = Count("TURN_LIMIT_REACHED"),
         }, session);
     }
 }

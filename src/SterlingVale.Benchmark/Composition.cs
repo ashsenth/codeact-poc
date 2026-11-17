@@ -32,6 +32,10 @@ public sealed class Composition : IDisposable
             Endpoint = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT") ?? string.Empty,
             DeploymentName = Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME") ?? "gpt-4o",
             ApiKey = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY") ?? string.Empty,
+            ApiMode = Environment.GetEnvironmentVariable("MODEL_API_MODE") ?? "chat-completions",
+            ModelName = Environment.GetEnvironmentVariable("AZURE_OPENAI_MODEL_NAME"),
+            ModelVersion = Environment.GetEnvironmentVariable("AZURE_OPENAI_MODEL_VERSION"),
+            ResourceId = Environment.GetEnvironmentVariable("AZURE_OPENAI_RESOURCE_ID"),
         };
         if (Selection.IsLive && (!azure.IsConfigured || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("AZURE_OPENAI_DEPLOYMENT_NAME"))))
         {
@@ -41,7 +45,9 @@ public sealed class Composition : IDisposable
         Model = new ModelConfiguration
         {
             DeploymentName = Selection.IsLive ? azure.DeploymentName : "fake-model",
-            Temperature = 0f,
+            ApiMode = azure.ApiMode, ModelName = azure.ModelName, ModelVersion = azure.ModelVersion,
+            DefaultReasoningEffort = Environment.GetEnvironmentVariable("MODEL_DEFAULT_REASONING_EFFORT") ?? "not-supported",
+            Temperature = azure.ModelName == "gpt-6.1-sol" ? null : 0f,
             MaxTurns = ParseInt(Environment.GetEnvironmentVariable("BENCHMARK_MAX_TURNS"), 12),
             TimeoutSeconds = ParseInt(Environment.GetEnvironmentVariable("BENCHMARK_TIMEOUT_SECONDS"), 120),
         };
@@ -53,6 +59,14 @@ public sealed class Composition : IDisposable
             SourceUrl = Environment.GetEnvironmentVariable("PRICING_SOURCE_URL"),
             VerifiedOn = Environment.GetEnvironmentVariable("PRICING_VERIFIED_ON"),
             Basis = Environment.GetEnvironmentVariable("PRICING_BASIS"),
+            CachedInputPerMillion = OptionalRate("PRICING_CACHED_INPUT_PER_MILLION"),
+            CacheWritePerMillion = OptionalRate("PRICING_CACHE_WRITE_PER_MILLION"),
+            LongContextThreshold = Environment.GetEnvironmentVariable("PRICING_LONG_CONTEXT_THRESHOLD") is { } threshold
+                ? int.Parse(threshold, CultureInfo.InvariantCulture) : null,
+            LongInputPerMillion = OptionalRate("PRICING_LONG_INPUT_PER_MILLION"),
+            LongOutputPerMillion = OptionalRate("PRICING_LONG_OUTPUT_PER_MILLION"),
+            LongCachedInputPerMillion = OptionalRate("PRICING_LONG_CACHED_INPUT_PER_MILLION"),
+            LongCacheWritePerMillion = OptionalRate("PRICING_LONG_CACHE_WRITE_PER_MILLION"),
         };
 
         Hyperlight = new HyperlightOptions { GuestPath = Environment.GetEnvironmentVariable("HYPERLIGHT_PYTHON_GUEST_PATH") };
@@ -117,6 +131,9 @@ public sealed class Composition : IDisposable
 
     private static decimal ParseDecimal(string? value, decimal fallback) =>
         decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) ? parsed : fallback;
+
+    private static decimal? OptionalRate(string key) => Environment.GetEnvironmentVariable(key) is { } value
+        ? decimal.Parse(value, CultureInfo.InvariantCulture) : null;
 
     private static LogLevel ParseLogLevel(string? value) =>
         Enum.TryParse<LogLevel>(value, ignoreCase: true, out var level) ? level : LogLevel.Information;

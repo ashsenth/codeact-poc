@@ -76,6 +76,8 @@ public static class ComparisonWriter
             sb.AppendLine($"    report status={trial.ReportStatus ?? "unavailable"}; missingItems={JsonSerializer.Serialize(trial.MissingItems, Json)}");
             sb.AppendLine($"    missing components by household (detection only): {CompletenessDetails(trial.Score)}");
             sb.AppendLine($"    toolArgumentErrors={trial.ToolArgumentErrors?.ToString(Invariant) ?? "unavailable"}");
+            sb.AppendLine($"    TurnLimitReached={trial.TurnLimitReached}; sandbox output overflows={trial.SandboxOutputOverflowErrors}; HTTP 429={trial.Http429Count}; retry wait={F(trial.RetryWaitMs)} ms (excluded from analysis)");
+            sb.AppendLine($"    cached input={trial.CachedInputTokens}; reasoning output={trial.ReasoningTokens}; visible output={trial.VisibleOutputTokens}; cache writes={trial.CacheWriteTokens}; reasoning is already included in output/total tokens");
             sb.AppendLine($"    get_price calls={trial.Diagnostics?.ToolCallsByName.GetValueOrDefault("get_price")}; positions in scope={report.ScopedPositionCount}; priced positions={trial.PricedPositionCount}; distinct symbols in scope={report.ScopedSymbolCount}");
             if (trial.Diagnostics is { } diagnostic)
             {
@@ -94,7 +96,7 @@ public static class ComparisonWriter
         {
             sb.AppendLine("Measurements include every task outcome. Efficiency deltas withheld: not every trial was oracle-correct; no efficiency winner is inferred.");
         }
-        sb.AppendLine("Costs are retail token estimates, not invoices; cached-input discounts, unreported usage and infrastructure charges are excluded.");
+        sb.AppendLine("Costs are retail token estimates, not invoices. Configured cache rates apply to reported cache usage; reasoning is billed once as output. Unreported usage and infrastructure charges are excluded.");
         return sb.ToString();
     }
 
@@ -105,7 +107,7 @@ public static class ComparisonWriter
         var sb = new StringBuilder();
         sb.Append("comparison_id,profile,dataset_hash,pair_id,order_in_pair,mode,duration_ms,status,");
         sb.Append("tool_calls,model_turns,execute_code_calls,total_tokens,estimated_cost_usd,match_class,");
-        sb.Append("flagged_precision,flagged_recall,breach_precision,breach_recall,allocation_mae,trade_notional_mae,max_allocation_error,execution_kind,finish_reason,tool_calls_by_name,input_tokens,output_tokens,generated_code_bytes,final_preview,report_status,missing_items,prompt_hash,previous_prompt_hash,scoped_positions,priced_positions,analysis_duration_ms,sandbox_callbacks,comparison_valid,infrastructure_failed,tool_argument_errors\n");
+        sb.Append("flagged_precision,flagged_recall,breach_precision,breach_recall,allocation_mae,trade_notional_mae,max_allocation_error,execution_kind,finish_reason,tool_calls_by_name,input_tokens,output_tokens,generated_code_bytes,final_preview,report_status,missing_items,prompt_hash,previous_prompt_hash,scoped_positions,priced_positions,analysis_duration_ms,sandbox_callbacks,comparison_valid,infrastructure_failed,tool_argument_errors,cached_input_tokens,reasoning_tokens,visible_output_tokens,cache_write_tokens,http_429_count,retry_wait_ms,sandbox_output_overflow_errors,turn_limit_reached\n");
         foreach (var t in report.RawTrials)
         {
             var s = t.Score;
@@ -146,7 +148,15 @@ public static class ComparisonWriter
             sb.Append(t.AnalysisDurationMs?.ToString("0.###", Invariant)).Append(',');
             sb.Append(t.SandboxCallbacks.ToString(Invariant)).Append(',');
             sb.Append(report.Outcome.IsValid).Append(',').Append(t.InfrastructureFailed).Append(',');
-            sb.Append(t.ToolArgumentErrors?.ToString(Invariant)).Append('\n');
+            sb.Append(t.ToolArgumentErrors?.ToString(Invariant)).Append(',');
+            sb.Append(t.CachedInputTokens?.ToString(Invariant)).Append(',');
+            sb.Append(t.ReasoningTokens?.ToString(Invariant)).Append(',');
+            sb.Append(t.VisibleOutputTokens?.ToString(Invariant)).Append(',');
+            sb.Append(t.CacheWriteTokens.ToString(Invariant)).Append(',');
+            sb.Append(t.Http429Count?.ToString(Invariant)).Append(',');
+            sb.Append(t.RetryWaitMs?.ToString(Invariant)).Append(',');
+            sb.Append(t.SandboxOutputOverflowErrors?.ToString(Invariant)).Append(',');
+            sb.Append(t.TurnLimitReached?.ToString(Invariant)).Append('\n');
         }
 
         return sb.ToString();
@@ -251,7 +261,7 @@ public static class ComparisonWriter
         sb.Append(SvgBars("Tool calls median", c.RoundTrips?.MedianToolCalls, a.RoundTrips?.MedianToolCalls, v => v.ToString("0.#", Invariant)));
         sb.Append(SvgBars("Estimated cost median (USD)", (double?)c.Cost?.Median, (double?)a.Cost?.Median, v => v.ToString("0.######", Invariant)));
         sb.Append("</section>");
-        sb.Append("<p class=\"disc\">A bar shown as <b>n/a</b> means no valid measurement. Every task outcome is retained, not an efficiency win. Cost is a retail token estimate, not an invoice; excludes cached-input discounts, unreported usage and infrastructure charges. Tool calls count granular host invocations, including real sandbox callbacks; execute_code calls are separate. Offline control measurements are not agent performance.</p>");
+        sb.Append("<p class=\"disc\">A bar shown as <b>n/a</b> means no valid measurement. Every task outcome is retained, not an efficiency win. Cost uses configured cache/context rates for reported usage; reasoning is billed once as output. Estimates are not invoices; unreported usage and infrastructure charges are excluded. Analysis excludes recorded retry wait. Tool calls count granular host invocations, including real sandbox callbacks; execute_code calls are separate. Offline control measurements are not agent performance.</p>");
 
         sb.Append("<h2>Per-trial duration (ms)</h2>");
         sb.Append(SvgStrip(report));
@@ -292,6 +302,8 @@ public static class ComparisonWriter
                 $"<td>{Enc(trial.Diagnostics?.Summary ?? "unavailable")}<br>preview: {Enc(trial.Diagnostics?.FinalPreview ?? "unavailable")}" +
                 $"<br>report status: {Enc(trial.ReportStatus ?? "unavailable")}; missingItems: {Enc(JsonSerializer.Serialize(trial.MissingItems, Json))}" +
                 $"<br>missing components by household: {Enc(CompletenessDetails(trial.Score))}" +
+                $"<br>TurnLimitReached: {trial.TurnLimitReached}; output overflows: {trial.SandboxOutputOverflowErrors}; HTTP 429: {trial.Http429Count}; retry wait: {F(trial.RetryWaitMs)} ms (excluded from analysis)" +
+                $"<br>cached input: {LongVal(trial.CachedInputTokens)}; reasoning: {LongVal(trial.ReasoningTokens)}; visible output: {LongVal(trial.VisibleOutputTokens)}; cache writes: {trial.CacheWriteTokens}" +
                 $"<br>get_price calls: {trial.Diagnostics?.ToolCallsByName.GetValueOrDefault("get_price")}; positions in scope: {report.ScopedPositionCount}; priced positions: {trial.PricedPositionCount}</td>" +
                 $"<td>{LongVal(trial.InputTokens)} / {LongVal(trial.OutputTokens)}" +
                 (report.ExecutionKind == "live-model-code-generation-only" && trial.Mode == "codeact"
