@@ -172,7 +172,7 @@ efficiency win.
 ## Execution status
 
 Current continuation gate: Release build, zero warnings/errors; **313 non-live
-.NET tests, four Python report checks, and six supported real Hyperlight tests
+.NET tests, seven Python report/continuation checks, and six supported real Hyperlight tests
 passed**, zero failed/skipped in the final selected evidence. The Comparison
 project was rerun with `xUnit.ParallelizeTestCollections=false` after an unchanged
 global `Console.SetOut` test encountered concurrent log output. No unrelated
@@ -247,6 +247,15 @@ Both original and derived attempts are excluded from measured summaries by
 explicit profile-directory selection. At the user's instruction, **do not launch**
 the continuation from this session: publish the committed wrapper and exact
 manual launch/progress commands instead.
+
+Preparation was committed and pushed first as
+`ae44baba7ca94dc9e4b1014cb2972817b9fdd0f4`. The subsequently committed
+[shell wrapper](../scripts/vm/run-sol-remaining.sh) delegates to the committed
+helper and streams every child stdout/stderr line to the outer persistent log,
+while also retaining per-profile logs. Offline tests verify that checker, report,
+commit and push precede the following profile, and that infrastructure or
+publication failure prevents that launch. See [manual environment and launch
+commands](../README.md#reproducing-v3-runs-and-derived-reports).
 
 Profiles used the committed runner under managed background supervision, not
 literal `nohup`. Both deployments retained their pinned versions throughout all

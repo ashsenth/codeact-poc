@@ -26,9 +26,17 @@ def main():
         print(f"START Sol {profile} {datetime.now(timezone.utc).isoformat()}", flush=True)
         with (logs / f"sol-{profile}.log").open("x") as log:
             for name in ("run-v3-profile.py", "check-v3-profile.py"):
-                subprocess.run(["python3", str(scripts / name), profile, "--cohort", "gpt-6.1-sol-v3",
-                                "--reference-comparison", str(reference)],
-                               cwd=repo, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
+                command = ["python3", str(scripts / name), profile, "--cohort", "gpt-6.1-sol-v3",
+                           "--reference-comparison", str(reference)]
+                with subprocess.Popen(command, cwd=repo, env=env, stdout=subprocess.PIPE,
+                                      stderr=subprocess.STDOUT, text=True, bufsize=1) as process:
+                    for line in process.stdout:
+                        print(line, end="", flush=True)
+                        log.write(line)
+                        log.flush()
+                    result = process.wait()
+                    if result:
+                        raise subprocess.CalledProcessError(result, command)
         subprocess.run(["python3", str(scripts / "report-v3-cohorts.py"), "--gpt4o-root", str(gpt4o),
                         "--sol-root", str(sol), "--output", str(output)], cwd=repo, check=True)
         subprocess.run(["git", "add", str(output)], cwd=repo, check=True)

@@ -207,9 +207,9 @@ dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperl
 
 Current result: **313 passed, 0 failed, 0 skipped across ten projects**, including
 worker containment/recovery and model-outcome/infrastructure-validity regressions. On the ARM64 laptop the six Hyperlight tests
-previously skipped; on Ubuntu x64 five pass, while native cancellation remains a labelled
+previously skipped; the November 16 Ubuntu x64 gate passed five, while native cancellation remains a labelled
 known issue. Neither a skip nor an excluded known issue is a pass.
-The November 17 continuation gate additionally passes four Python reporting checks
+The November 17 continuation gate additionally passes seven Python reporting/continuation checks
 and all six currently supported Hyperlight checks. Its Comparison project uses
 `-- xUnit.ParallelizeTestCollections=false` to avoid a pre-existing global console-capture race.
 
@@ -369,6 +369,31 @@ arguments and the documented Azure/guest/dataset environment. Do not mix the new
 explicit-policy fingerprints with older literal fingerprints through the generic
 strict `--summarize` merger; the combined report checks audited policy compatibility
 without changing raw metadata.
+
+The committed [manual-launch wrapper](scripts/vm/run-sol-remaining.sh) delegates to
+that helper. **It has not been launched.** It runs N=3 then full Small, five pairs
+each, with checker/report/commit/push after each profile; all progress is streamed
+to stdout and also retained in per-profile logs. Failures prevent the next profile.
+The existing cohort/reference paths default to this VM's repository-relative
+artifact directories; override `REFERENCE_COMPARISON`, `GPT4O_ENFORCED_ROOT`,
+`SOL_ROOT`, or `LOG_ROOT` when relocating evidence. It requires the four exported
+Azure/guest/dataset settings below and existing Azure CLI/SDK authentication:
+
+```bash
+# Example for the current VM, from the repository root; no credentials are embedded.
+export AZURE_OPENAI_ENDPOINT="https://codeact-openai.services.ai.azure.com/"
+export AZURE_OPENAI_RESOURCE_ID="$(az cognitiveservices account show \
+  --resource-group CodeAct --name codeact-openai --query id --output tsv)"
+export HYPERLIGHT_PYTHON_GUEST_PATH="$PWD/artifacts/guest/0.4.0/runtimes/linux-x64/native/python-sandbox.aot"
+export DATASET_ROOT="$PWD/artifacts/phase-b-20261116-1721/data"
+mkdir -p artifacts/v3-continuation-gate
+setsid nohup bash scripts/vm/run-sol-remaining.sh > artifacts/v3-continuation-gate/sol-remaining.log 2>&1 < /dev/null &
+tail -f artifacts/v3-continuation-gate/sol-remaining.log
+```
+
+Only the operator should run those last two lines. Offline validation uses
+`bash -n scripts/vm/run-sol-remaining.sh` and
+`python3 scripts/vm/test_cohort_reports.py`; it makes no inference requests.
 
 The earlier sample/diagnosis helpers are now portable too:
 [export_sample.py](scripts/vm/export_sample.py) exports one selected pair's condensed timelines,
