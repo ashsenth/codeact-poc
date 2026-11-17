@@ -19,7 +19,7 @@ Every arrow is Classic -> CodeAct. Deltas are (CodeAct / Classic - 1), including
 | gpt-4o-v3-enforced | n3 | 0/5 -> 0/5 | 1 -> 5 | 4 -> 0 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 253,431 -> 7,594 | 0.3346050 -> 0.0170475 | 65.573 -> 14.949 | 0.000 -> 0.000 | -97.0% / -94.9% / -77.2% | correctness-equivalent by count (0/5 each); neither mode correct, not an efficiency win |
 | gpt-6.1-sol-v3 | n3 | 0/5 -> 5/5 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 0 -> 1 | 0 -> 0 | 121,483 -> 30,504 | 0.1108500 -> 0.0539617 | 120.028 -> 50.546 | 0.000 -> 0.000 | -74.9% / -51.3% / -57.9% | not correctness-equivalent: correct counts differ |
 | gpt-4o-v3-enforced | full-small | 0/5 -> 0/5 | 0 -> 4 | 5 -> 0 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 422,918 -> 20,755 | 0.5553400 -> 0.0506150 | 78.515 -> 25.173 | 0.000 -> 0.000 | -95.1% / -90.9% / -67.9% | correctness-equivalent by count (0/5 each); neither mode correct, not an efficiency win |
-| gpt-6.1-sol-v3 | full-small | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
+| gpt-6.1-sol-v3 | full-small | 0/5 -> 5/5 | 0 -> 0 | 0 -> 0 | 0 -> 0 | 0 -> 1 | 0 -> 0 | 81,439 -> 44,606 | 0.0348349 -> 0.1132577 | 120.033 -> 100.498 | 0.000 -> 0.000 | -45.2% / +225.1% / -16.3% | not correctness-equivalent: correct counts differ |
 
 ## Secondary: cross-model comparison
 
@@ -36,6 +36,6 @@ Deltas compare Sol to gpt-4o for the same scope/mode, including all outcomes. Th
 | gpt-4o-v3-enforced | n3 | codeact | 0/5 | 5 | 0 | 0 | 0 | 0 | 7,594 (0 / 723 / 5,888) | 0.0170475 | 14.949 | 0.000 | -- |
 | gpt-6.1-sol-v3 | n3 | codeact | 5/5 | 0 | 0 | 0 | 1 | 0 | 30,504 (52 / 3,527 / 18,659) | 0.0539617 | 50.546 | 0.000 | +301.7% / +216.5% / +238.1% |
 | gpt-4o-v3-enforced | full-small | classic | 0/5 | 0 | 5 | 0 | 0 | 0 | 422,918 (0 / 2,278 / 415,232) | 0.5553400 | 78.515 | 0.000 | -- |
-| gpt-6.1-sol-v3 | full-small | classic | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
+| gpt-6.1-sol-v3 | full-small | classic | 0/5 | 0 | 0 | 0 | 0 | 0 | 81,439 (209 / 1,874 / 76,824) | 0.0348349 | 120.033 | 0.000 | -80.7% / -93.7% / +52.9% |
 | gpt-4o-v3-enforced | full-small | codeact | 0/5 | 4 | 0 | 0 | 0 | 0 | 20,755 (0 / 2,369 / 15,360) | 0.0506150 | 25.173 | 0.000 | -- |
-| gpt-6.1-sol-v3 | full-small | codeact | not run | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- |
+| gpt-6.1-sol-v3 | full-small | codeact | 5/5 | 0 | 0 | 0 | 1 | 0 | 44,606 (81 / 7,645 / 23,302) | 0.1132577 | 100.498 | 0.000 | +114.9% / +123.8% / +299.2% |
