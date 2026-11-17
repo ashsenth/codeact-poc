@@ -1,5 +1,22 @@
 # Optional x64 validation workflow
 
+## No-LLM v3 diagnostic gate (November 16, 2026)
+
+The [isolated feasibility control and complete failure-forensics report](../v3-diagnostics.md)
+records Exact results for N=1, N=3 and full Small through the shared real Hyperlight
+worker/recording path and 120-second limit, without any LLM calls.
+Control artifacts and both failed prototypes are outside model cohorts/summaries.
+All 13 non-correct measured CodeAct trials have per-trial execution/error/truncation,
+final-value provenance and first-missing-component findings.
+
+Release build: zero warnings/errors. **283 offline non-live tests plus five supported
+real-Hyperlight tests passed**, zero failed/skipped in the final selections.
+The existing native-cancellation known issue remains explicitly excluded.
+The real-guest tests need an absolute guest path because testhost changes its cwd.
+See the report for the preserved initial path-check failures, module/output-buffer
+constraints, source/input manifests, exact output sizes and reproduction commands.
+No prompt, schema, scorer/oracle, tools, datasets, model runs or model results changed.
+
 ## v3 full Small five-pair result (November 16, 2026)
 
 After N=3 was checked, committed and pushed at

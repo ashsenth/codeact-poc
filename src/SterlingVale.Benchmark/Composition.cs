@@ -108,8 +108,8 @@ public sealed class Composition : IDisposable
     public HyperlightOptions Hyperlight { get; }
 
     /// <summary>Builds an analysis service bound to a specific mode factory.</summary>
-    public AnalysisService ServiceFor(IAgentFactory factory) =>
-        new(Snapshots, ChatClientProvider, factory, Runner, Model, Pricing, ToolMetrics,
+    public AnalysisService ServiceFor(IAgentFactory factory, IChatClientProvider? chatClientProvider = null) =>
+        new(Snapshots, chatClientProvider ?? ChatClientProvider, factory, Runner, Model, Pricing, ToolMetrics,
             new ExecutionOptions { ArtifactsRoot = ArtifactsRoot });
 
     private static int ParseInt(string? value, int fallback) =>

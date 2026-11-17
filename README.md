@@ -147,7 +147,7 @@ More detail: [architecture](docs/architecture.md) and [security model](docs/secu
 
 **Verification scope:** the sequence below succeeded in a clean local-source clone on Windows
 ARM64. Ubuntu x64 additionally passed local-source clean-clone locked restore, Release build and
-231 non-live tests at `3088451`, using an empty NuGet cache. The current v3 changes pass 279.
+231 non-live tests at `3088451`, using an empty NuGet cache. The current offline changes pass 283.
 The complete quickstart on Linux/macOS and a remote-origin clone are **not yet verified**.
 
 Clone setup template (**remote clone not yet verified**; replace the placeholder):
@@ -205,7 +205,7 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Current result: **279 passed, 0 failed, 0 skipped across ten projects**, including
+Current result: **283 passed, 0 failed, 0 skipped across ten projects**, including
 worker containment/recovery and model-outcome/infrastructure-validity regressions. On the ARM64 laptop the six Hyperlight tests
 previously skipped; on Ubuntu x64 five pass, while native cancellation remains a labelled
 known issue. Neither a skip nor an excluded known issue is a pass.
@@ -357,6 +357,30 @@ Descriptive CodeAct-minus-Classic changes; no correctness-equivalent efficiency 
 | N=1 | -60.7%; correct 0/5 vs 2/5, unearned 4/5 vs 2/5; not a correctness-equivalent win | -44.9%; correct 0/5 vs 2/5, unearned 4/5 vs 2/5; not a correctness-equivalent win | -25.2%; correct 0/5 vs 2/5, unearned 4/5 vs 2/5; not a correctness-equivalent win |
 | N=3 | -89.0%; correct 0/5 vs 0/5, unearned 2/5 vs 3/5; not a correctness-equivalent win | -86.1%; correct 0/5 vs 0/5, unearned 2/5 vs 3/5; not a correctness-equivalent win | -69.1%; correct 0/5 vs 0/5, unearned 2/5 vs 3/5; not a correctness-equivalent win |
 | Full Small | -28.0%; correct 0/5 vs 0/5, unearned 5/5 vs 4/5; not a correctness-equivalent win | -4.3%; correct 0/5 vs 0/5, unearned 5/5 vs 4/5; not a correctness-equivalent win | +50.6%; correct 0/5 vs 0/5, unearned 5/5 vs 4/5; not a correctness-equivalent win |
+
+##### No-LLM diagnostics (not a model cohort)
+
+The [feasibility control and 13-trial failure-forensics report](docs/v3-diagnostics.md)
+records a hand-authored callback-only Python program executed through the same real
+Hyperlight/service/recording/worker path and 120-second deadline: **Exact at N=1, N=3
+and full Small**, with 23/39/84 callbacks and 1,638/4,698/15,274 stdout bytes.
+No live model or prompt changes. These controls are never included in the tables above
+or model summaries. The report documents the 65,536-character capture limit, an observed
+16,376-byte available guest output buffer, preserved failed prototypes, per-trial
+execution/error/provenance findings, usage commands, and five passing supported
+real-Hyperlight tests in addition to the 283 offline passes.
+
+With `DATASET_ROOT` and an absolute `HYPERLIGHT_PYTHON_GUEST_PATH` set, run from
+the repository root after a Release build; use a new directory outside model sweeps:
+
+```bash
+dotnet scripts/vm/Diagnosis/bin/Release/net9.0/Diagnosis.dll control \
+  scripts/vm/reference-analysis-control.py <new-control-artifacts-directory>
+python3 scripts/vm/inspect-v3-failures.py --sweep-root <existing-v3-sweep-root>
+```
+
+The control requires no Azure settings and echoes executed stdout without oracle
+substitution. The forensic helper only reads artifacts; it never executes captured code.
 
 #### Historical v2 cohort (not rescored)
 

@@ -406,6 +406,12 @@
           "xunit.extensibility.core": "[2.9.2]"
         }
       },
+      "diagnosis": {
+        "type": "Project",
+        "dependencies": {
+          "SterlingVale.Benchmark": "[1.0.0, )"
+        }
+      },
       "sterlingvale.agentshared": {
         "type": "Project",
         "dependencies": {

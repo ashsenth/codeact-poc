@@ -5,6 +5,16 @@ using SterlingVale.Application.Oracle;
 using SterlingVale.Benchmark.Model;
 using SterlingVale.Benchmark.Reporting;
 using SterlingVale.Infrastructure.Data;
+using SterlingVale.Diagnostics;
+
+if (args.Length > 0 && args[0] == "analysis-worker")
+{
+    return await BenchmarkWorkerEntryAsync(args);
+}
+if (args.Length > 0 && args[0] == "control")
+{
+    return await FeasibilityControl.RunAsync(args[1..]);
+}
 
 if (args.Length < 3)
     throw new ArgumentException("Usage: oracle <dataset-profile-dir> <output.json> [household IDs...] | sample <comparison.json> <output.html> [pair]");
@@ -41,6 +51,17 @@ else if (args[0] == "sample")
 else
 {
     throw new ArgumentException("Expected oracle or sample.");
+}
+return 0;
+
+static Task<int> BenchmarkWorkerEntryAsync(string[] arguments)
+{
+    if (arguments.Length != 5 || arguments[1] != "--request" || arguments[3] != "--model" || arguments[4] != "fake")
+        throw new ArgumentException("The feasibility worker only supports the offline scripted client.");
+    string programPath = Environment.GetEnvironmentVariable("FEASIBILITY_PROGRAM_PATH")
+        ?? throw new InvalidOperationException("FEASIBILITY_PROGRAM_PATH is required.");
+    return SterlingVale.Benchmark.BenchmarkWorker.ExecuteAsync(arguments[2], "fake",
+        new ReferenceProgramClientProvider(File.ReadAllText(programPath)));
 }
 
 static class OutputJson

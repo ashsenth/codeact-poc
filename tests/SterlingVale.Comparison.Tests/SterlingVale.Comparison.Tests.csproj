@@ -16,6 +16,7 @@
     <ProjectReference Include="..\..\src\SterlingVale.Benchmark\SterlingVale.Benchmark.csproj" />
     <ProjectReference Include="..\..\src\SterlingVale.AgentShared\SterlingVale.AgentShared.csproj" />
     <ProjectReference Include="..\..\src\SterlingVale.DataGenerator\SterlingVale.DataGenerator.csproj" />
+    <ProjectReference Include="..\..\scripts\vm\Diagnosis\Diagnosis.csproj" />
   </ItemGroup>
 
 </Project>

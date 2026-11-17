@@ -21,7 +21,7 @@ public static class BenchmarkWorker
 
     public sealed record Result(RunRecord Record, ExposureReportDto? Report);
 
-    public static async Task<int> ExecuteAsync(string requestPath, string modelMode)
+    public static async Task<int> ExecuteAsync(string requestPath, string modelMode, IChatClientProvider? chatClientProvider = null)
     {
         var request = JsonSerializer.Deserialize<Request>(await File.ReadAllTextAsync(requestPath).ConfigureAwait(false), Json)
             ?? throw new InvalidDataException("Missing benchmark worker request.");
@@ -32,7 +32,7 @@ public static class BenchmarkWorker
             "codeact" => new CodeActAgentFactory(composition.Hyperlight),
             _ => throw new InvalidDataException("Invalid benchmark worker mode."),
         };
-        var record = await composition.ServiceFor(factory).AnalyzeAsync(request.Analysis, CancellationToken.None,
+        var record = await composition.ServiceFor(factory, chatClientProvider).AnalyzeAsync(request.Analysis, CancellationToken.None,
             request.ComparisonId, request.TrialId, request.IsWarmup, request.RunId).ConfigureAwait(false);
         var result = new Result(record with { Response = record.Response with { Report = null } },
             record.Response.Report is null ? null : ReportJson.ToDto(record.Response.Report));
@@ -43,7 +43,8 @@ public static class BenchmarkWorker
     }
 
     public static async Task<RunRecord> RunAsync(Composition composition, string mode, AnalysisRequest analysis,
-        string comparisonId, string trialId, CancellationToken cancellationToken, bool isWarmup = false)
+        string comparisonId, string trialId, CancellationToken cancellationToken, bool isWarmup = false,
+        string? workerAssemblyPath = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         string runId = Guid.NewGuid().ToString("N");
@@ -53,7 +54,7 @@ public static class BenchmarkWorker
         await File.WriteAllTextAsync(requestPath, JsonSerializer.Serialize(
             new Request(mode, analysis, runId, comparisonId, trialId, isWarmup), Json), cancellationToken).ConfigureAwait(false);
         var startInfo = new ProcessStartInfo("dotnet") { UseShellExecute = false };
-        startInfo.ArgumentList.Add(typeof(BenchmarkWorker).Assembly.Location);
+        startInfo.ArgumentList.Add(workerAssemblyPath ?? typeof(BenchmarkWorker).Assembly.Location);
         startInfo.ArgumentList.Add("analysis-worker");
         startInfo.ArgumentList.Add("--request");
         startInfo.ArgumentList.Add(requestPath);
