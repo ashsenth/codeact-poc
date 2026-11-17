@@ -1,5 +1,12 @@
 # POC branch review and verified offline demo
 
+**Historical review, not the current operator runbook.** Later changes supersede
+its pending/live status, ECDSA finding, test counts and validity rules. Use the
+[current README](../../README.md), [canonical validity methodology](../benchmark-methodology.md#validity-rules)
+and [final enforced results](../v3-responses-results.md). The November 11 sanitization
+statement below describes that dated scan only; resource-specific examples introduced
+later have been removed in the README audit remediation.
+
 Reviewed November 5, 2026 (final control artifacts timestamped November 6 UTC).
 Scope: `main...9cde519` on `feature/observability-validation`, all six branch commits,
 source/test/script changes and dependency manifests/lock-file changes. The corrective commit
@@ -145,7 +152,7 @@ same shapes with new timestamps/IDs. The sanitized result table above is committ
 
 ## Best demo path and what x64 adds
 
-Use the [README offline quickstart](../../README.md#5-quickstart-offline-demo), then inspect the
+Use the [README offline quickstart](../../README.md#quickstart-without-azure), then inspect the
 new scaling report, a profile's correctness table and the corresponding event journal. Small is
 the simplest source/transcript walkthrough. The November 11 fix preserves transcript JSONL framing
 and later call records even when earlier payloads exceed the capture cap.
@@ -155,9 +162,11 @@ performance.
 An authorized live Azure OpenAI model plus a supported x64 Hyperlight guest would add actual
 model decisions, provider usage, generated Python execution, real data callbacks, failure behavior
 and an independently scored answer. Repeated live Small/Medium/Large pairs can then address the
-POC's accuracy/token/latency/cost/call-count question. First pass all six real-guest tests.
+POC's accuracy/token/latency/cost/call-count question. This was the historical
+proposal; current live scope is Small only, and the supported test selection
+explicitly excludes the native-cancellation known issue.
 
-Prioritized follow-up is in [README Next steps](../../README.md#10-next-steps).
+Current constraints and follow-up are in [README Known limits](../../README.md#known-limits).
 ### November 11 pre-push follow-up
 
 - Historical live claims now identify source commits `03cb30a` and `5a65c6e` (September 29, 2026),

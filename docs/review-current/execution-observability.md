@@ -1,5 +1,10 @@
 # Execution Observability Remediation
 
+**Historical record.** Current operations/results are in the [README](../../README.md);
+the [methodology](../benchmark-methodology.md#validity-rules) is canonical for validity.
+Current Responses instrumentation records HTTP 429s and actual retry wait; the
+unmeasured-retry statements below describe the earlier pipeline only.
+
 Historical acceptance status: NOT COMPLETE / NOT DEMO-READY under the original full-live criteria.
 The project is now scoped as a demoable POC: those criteria are future work, not an offline-demo
 release gate. See the [current POC review](poc-demo-review.md) for fresh evidence and open issues.

@@ -2,8 +2,9 @@
 
 This document defines (1) the exact computation rules of the deterministic correctness **oracle**
 (`SterlingVale.Application.Oracle.ExposureOracle`) and (2) the precision, rounding, and tolerance
-conventions used throughout the domain. Benchmark/telemetry metric definitions are added in a later
-phase.
+conventions used throughout the domain. For benchmark usage, cache/reasoning accounting,
+analysis versus process time, all-outcome medians, null propagation and correctness-first
+within-model deltas, see the [canonical methodology](benchmark-methodology.md#reporting).
 
 ## Valuation
 

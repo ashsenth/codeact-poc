@@ -4,6 +4,10 @@ November 16, 2026. **No live model calls and no prompt changes.** These controls
 not model trials, rates, paired comparisons, or additions to the v3/v2 summaries.
 All existing model evidence and summaries are read-only inputs.
 
+This is a historical diagnostic record, not a second validity policy. Use the
+[canonical methodology](benchmark-methodology.md#validity-rules) for current
+classification/stop rules and the [README](../README.md) for final model results.
+
 **November 17 follow-up:** the [infrastructure gate](infrastructure-gate-20261117.md)
 fixes the historical post-return-only turn cap, annotates all available over-20-request
 trials, and confirms that the pinned SDK cannot configure the shared output buffer.

@@ -13,6 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\..\configs\v3-reference.json" Link="v3-reference.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\..\src\SterlingVale.Benchmark\SterlingVale.Benchmark.csproj" />
     <ProjectReference Include="..\..\src\SterlingVale.AgentShared\SterlingVale.AgentShared.csproj" />
     <ProjectReference Include="..\..\src\SterlingVale.DataGenerator\SterlingVale.DataGenerator.csproj" />

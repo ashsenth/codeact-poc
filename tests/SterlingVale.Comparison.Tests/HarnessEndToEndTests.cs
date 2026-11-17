@@ -1,6 +1,14 @@
+using System.Text.Json;
+using Microsoft.Extensions.Options;
+using SterlingVale.AgentShared;
+using SterlingVale.AgentShared.Configuration;
+using SterlingVale.AgentShared.Prompting;
 using SterlingVale.Benchmark;
-using SterlingVale.DataGenerator;
 using SterlingVale.Benchmark.Reporting;
+using SterlingVale.DataGenerator;
+using SterlingVale.Infrastructure.Configuration;
+using SterlingVale.Infrastructure.Data;
+using SterlingVale.Tools;
 using Xunit;
 
 namespace SterlingVale.Comparison.Tests;
@@ -13,6 +21,45 @@ namespace SterlingVale.Comparison.Tests;
 [Collection("environment")]
 public sealed class HarnessEndToEndTests
 {
+    [Fact]
+    public void Committed_reference_matches_current_prompt_schema_tools_dataset_and_execution_contract()
+    {
+        using var reference = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "v3-reference.json")));
+        var root = reference.RootElement;
+        var fingerprints = root.GetProperty("fingerprints");
+        string tmp = Path.Combine(Path.GetTempPath(), "sv-reference-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            new DatasetWriter().Write(new SyntheticDataGenerator().Generate(DatasetProfile.Small), Path.Combine(tmp, "small"));
+            var snapshots = new DatasetSnapshotProvider(new DatasetLoader(),
+                Options.Create(new DatasetOptions { DataRoot = tmp, Profiles = ["small"] }));
+            var snapshot = snapshots.GetSnapshot("small");
+            var tools = new ToolCatalog().CreateTools(new PortfolioToolService(snapshot));
+            Assert.Equal(Prompt.PromptId, root.GetProperty("promptRevision").GetString());
+            Assert.Equal(Hashing.Sha256Hex(Prompt.Shared), root.GetProperty("promptHash").GetString());
+            Assert.Equal(Hashing.Sha256Hex(Prompt.Shared), fingerprints.GetProperty("prompt").GetString());
+            Assert.Equal(Hashing.Sha256Hex(OutputSchema.SchemaText), fingerprints.GetProperty("schema").GetString());
+            Assert.Equal(ToolCatalog.ComputeFingerprint(tools), fingerprints.GetProperty("tools").GetString());
+            Assert.Equal(snapshots.GetDatasetHash("small"), fingerprints.GetProperty("dataset").GetString());
+            var pricing = root.GetProperty("pricingConfiguration").Deserialize<PricingConfiguration>(JsonSerializerOptions.Web)!;
+            Assert.Equal(pricing.Fingerprint(), fingerprints.GetProperty("pricing").GetString());
+            var model = JsonSerializer.Deserialize<ModelConfiguration>(
+                """{"deploymentName":"gpt-4o","maxTurns":20,"timeoutSeconds":120}""", JsonSerializerOptions.Web)!;
+            var actualModel = JsonSerializer.SerializeToElement(model, JsonSerializerOptions.Web);
+            foreach (var field in root.GetProperty("modelConfiguration").EnumerateObject())
+                Assert.Equal(field.Value.GetRawText(), actualModel.GetProperty(field.Name).GetRawText());
+            var policy = root.GetProperty("executionPolicy");
+            var responses = JsonSerializer.SerializeToElement(model with { ApiMode = "responses" }, JsonSerializerOptions.Web);
+            foreach (var field in policy.EnumerateObject().Where(field => field.Name != "classicBatchSize"))
+                Assert.Equal(field.Value.GetRawText(), responses.GetProperty(field.Name).GetRawText());
+            Assert.Equal(0, policy.GetProperty("classicBatchSize").GetInt32());
+        }
+        finally
+        {
+            Directory.Delete(tmp, recursive: true);
+        }
+    }
+
     private static readonly string[] EnvKeys =
         ["DATASET_ROOT", "ARTIFACTS_ROOT", "AZURE_OPENAI_ENDPOINT", "HYPERLIGHT_PYTHON_GUEST_PATH", "BENCHMARK_TRIALS", "CLASSIC_BATCH_SIZE"];
 

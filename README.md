@@ -1,792 +1,580 @@
 # Sterling Vale: Classic tool-calling vs. CodeAct
 
-A .NET proof of concept comparing two ways an AI agent can analyze the same synthetic
-wealth-management portfolio: call data tools directly, or write Python that calls those tools
-inside a Hyperlight sandbox. The project includes reproducible datasets, a reference calculation,
-paired comparisons, and inspectable execution artifacts. **The offline demo works on ARM64
-without Azure or a sandbox. Ubuntu x64 now has real Hyperlight execution and an Exact
-one-household live CodeAct result. Classic's InvalidSchema is a recorded model task outcome,
-not an infrastructure-invalid comparison.**
-This is a POC, not a production service or investment advice.
+Sterling Vale is a .NET proof of concept asking whether an AI agent analyzes a synthetic wealth portfolio more correctly or efficiently by calling seven read-only tools directly (**Classic**) or by writing Python that calls the same tools inside a **Hyperlight** micro-VM (**CodeAct**). Both modes receive the same data, shared task instructions, report schema and within-model configuration. A deterministic oracle scores their structured answers; paired trials retain failures and expose execution evidence. Correctness comes before tokens, time or estimated cost. This is an experiment, not a production service or investment advice.
 
-## 1. Goal
+## Current state
 
-Does CodeAct-style code execution improve **accuracy, tokens, latency, estimated cost, or
-number of calls** compared with classic tool-calling as the dataset grows?
+**November 17, 2026:** the enforced Responses experiment is complete and pushed through `6a50d817dc485fb49344133d3f081363bf45de09`. Both models completed five measured pairs at Small N=1, N=3 and full Small. Sol Classic was correct only at N=1; Sol CodeAct was correct in every measured trial. Never launch another controller against an active checkout or output root.
 
-The intended comparison holds data, seven underlying tools, task instructions, output schema,
-model configuration, and pricing constant. The orchestration changes.
-The shared prompt body is fingerprinted; each mode also has a different mechanism addendum.
-Matching fingerprints checks configuration consistency, not scientific equivalence by itself.
+| Area | State |
+|---|---|
+| Offline | Oracle-backed fake model; exercises datasets, harness, scoring and reports, not model reasoning. No Azure or virtualization needed. |
+| Real-guest feasibility | A hand-authored, no-LLM program scored Exact at Small N=1, N=3 and all 10 households. |
+| Live models | Historical 4o Chat Completions and newer enforced 4o/Sol Responses are separate cohorts. |
+| Validation | Audit remediation gate: 314 non-live .NET tests, 13 Python checks and six supported Hyperlight tests. The native-cancellation known issue is excluded, not passed. |
+| Scaling | Live scope is Small only. Medium/Large cannot fit complete single-output reports under the pinned output design; v4 redesign is pending. |
+| Containment | Benchmark workers have external watchdogs. Native guest cancellation is unsupported; standalone API hosts lack that watchdog. |
 
-**No winner is assumed.** Offline controls answer a narrower question: does the comparison
-harness produce correct reports and internally consistent telemetry?
+See [cohort status and gates](docs/v3-enforced-cohorts.md), [generated within-model results](docs/v3-responses-results.md), and [known limits](#known-limits).
 
-## 2. Premise & background
+## What the evidence says
 
-| Term | Plain-English meaning |
-| --- | --- |
-| Classic tool-calling | The model requests named functions with structured arguments, receives results, and decides what to do next. A response can contain multiple tool calls; one call does not necessarily mean one network round-trip. |
-| CodeAct | The model writes and runs code that calls tools, loops, and computes intermediate results. This can move work out of repeated model interactions. |
-| Hyperlight | An embedded, hypervisor-isolated micro-VM for untrusted code. Here it hosts the Python guest; it needs supported x64 hardware and virtualization. |
-| Microsoft Agent Framework | The .NET agent layer managing model interactions and function invocation. Both modes use it; CodeAct additionally uses its Hyperlight provider. |
+Read the evidence in this order; successful execution or a VALID comparison is not necessarily a correct answer.
 
-Why compare them? Larger portfolios require repeated retrieval, arithmetic, and structured
-output. Code may make that work easier to express, but generated code, sandbox overhead,
-output limits, and model errors can offset the benefit. Measure correctness before efficiency.
-The current CodeAct prompt requests multiple small code executions to accommodate guest output
-limits; this implementation does **not** promise one program or constant model calls.
+### 1. Feasibility control: the Small task can be done
 
-Background sources:
-[function calling](https://platform.openai.com/docs/guides/function-calling),
-[CodeAct paper](https://arxiv.org/abs/2402.01030),
-[Hyperlight](https://github.com/hyperlight-dev/hyperlight), and
-[Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework/overview/).
-The pinned preview APIs are recorded in [SDK findings](docs/sdk-findings.md).
+A hand-authored callback-only Python program ran through the real Hyperlight/service/worker path, without an LLM or oracle substitution. It scored **Exact** for N=1, N=3 and full Small, emitting 1,638 / 4,698 / 15,274 UTF-8 bytes with 23 / 39 / 84 host callbacks.
 
-## 3. The scenario
+This demonstrates feasibility for those inputs and concise output, not model ability or a speed comparison. It is separate from the no-guest fake-model demo.
+Evidence: [program, control method and failed prototypes](docs/v3-diagnostics.md#1-hand-authored-feasibility-control).
 
-**Sterling Vale** is a fictional wealth manager. Its synthetic households own accounts and
-positions across asset classes and currencies. Seeded generation produces these sizes:
+### 2. gpt-4o: both orchestrations have correctness failures
+
+Historical prompt-v3 Chat Completions produced unearned completeness in both modes. Across five pairs per scope, Classic was correct 0/5 at N=1, N=3 and full Small; CodeAct was correct 2/5, 0/5 and 0/5. Schema-valid complete claims often omitted allocations, required breaches or trades.
+
+Those historical runs did **not** enforce the configured 20-request cap in flight: four Classic and one CodeAct measured trials exceeded it. Their resources are not a fair enforced-budget baseline.
+
+The newer enforced Responses cohort is separate. Its 4o results again show Classic 0/5 in every scope and CodeAct 2/5, 0/5, 0/5. Most Classic outcomes hit TurnLimitReached, while CodeAct still emitted unearned complete reports. This does not mean 4o never succeeds or establish a model-internal cause.
+
+Evidence: [failure forensics](docs/v3-diagnostics.md#2-all-non-correct-measured-v3-codeact-trials), [historical request audit](docs/infrastructure-gate-20261117.md#2-read-only-historical-audit).
+
+### 3. Sol: correct in both modes at N=1, CodeAct correct at larger scopes
+
+At N=1 Sol scored **5/5 in both modes**: Classic WithinTolerance, CodeAct Exact. At N=3 and full Small, Classic timed out in **all five trials per scope**, while CodeAct scored **Exact 5/5**. No Sol measured trial claimed unearned completeness. One returned sandbox overflow was counted in CodeAct at each larger scope.
+
+Do not generalize N=1's equivalence to the larger scopes, or count timeouts as cheap successful analyses. Evidence: [final cohort record](docs/v3-enforced-cohorts.md#final-status-november-17-2026).
+
+### 4. CodeAct efficiency: compare within the same model first
+
+The primary view is **CodeAct versus Classic within one model and scope**, after correctness. At Sol N=1, both modes were 5/5 correct and CodeAct used median -59.5% total tokens, -39.5% estimated cost and -64.9% analysis time. This is a small, scope-specific observation, not a guaranteed speedup.
+
+At Sol N=3/full Small, correctness differs: resource deltas are descriptive, not equivalent-work wins. Full Small CodeAct costs **225.1% more** than Classic's timed-out attempts while producing correct reports; fewer tokens do not necessarily mean lower cache-adjusted cost. Cross-model differences are secondary and confound model capability, pricing and API behavior.
+
+## Results (gpt-6.1-sol v3)
+
+Five measured pairs per scope, one unmeasured warm-up per mode. Historical cohorts, smoke pairs, controls, aborted attempts and derived reclassifications are excluded. All measured outcomes remain in medians. Correct = Exact/WithinTolerance; TL = TurnLimitReached; A/O/429 = tool-argument / sandbox-overflow / HTTP-429 counts. Counts are totals, not medians.
+
+### Primary: within-model CodeAct versus Classic
+
+Every arrow is **Classic -> CodeAct**. Tokens show median total **(reasoning)**; reasoning is already included, never added twice. Time is median analysis seconds, not process-inclusive wall time. Delta = `(CodeAct / Classic - 1)`. Every measured retry wait was zero.
+
+| Model / scope | Correct | Unearned | TL | A/O/429 | Median tokens (reasoning) | Median USD | Analysis s | Delta tokens / cost / time | Correctness context |
+|---|---|---|---|---|---|---|---|---|---|
+| 4o / N=1 | 0/5 -> 2/5 | 0 -> 3 | 5 -> 0 | 0/0/0 -> 0/0/0 | 141,077 (0) -> 15,794 (0) | 0.1892150 -> 0.0461825 | 67.891 -> 22.908 | -88.8% / -75.6% / -66.3% | Correct counts differ; descriptive only |
+| Sol / N=1 | 5/5 -> 5/5 | 0 -> 0 | 0 -> 0 | 0/0/0 -> 0/0/0 | 36,694 (1,949) -> 14,874 (29) | 0.0452393 -> 0.0273612 | 94.098 -> 33.013 | -59.5% / -39.5% / -64.9% | Correctness-equivalent by count (5/5 each) |
+| 4o / N=3 | 0/5 -> 0/5 | 1 -> 5 | 4 -> 0 | 0/0/0 -> 0/0/0 | 253,431 (0) -> 7,594 (0) | 0.3346050 -> 0.0170475 | 65.573 -> 14.949 | -97.0% / -94.9% / -77.2% | Correctness-equivalent by count (0/5 each); neither correct, no efficiency win |
+| Sol / N=3 | 0/5 -> 5/5 | 0 -> 0 | 0 -> 0 | 0/0/0 -> 0/1/0 | 121,483 (102) -> 30,504 (52) | 0.1108500 -> 0.0539617 | 120.028 -> 50.546 | -74.9% / -51.3% / -57.9% | Correct counts differ; Classic timed out 5/5 |
+| 4o / full Small | 0/5 -> 0/5 | 0 -> 4 | 5 -> 0 | 0/0/0 -> 0/0/0 | 422,918 (0) -> 20,755 (0) | 0.5553400 -> 0.0506150 | 78.515 -> 25.173 | -95.1% / -90.9% / -67.9% | Correctness-equivalent by count (0/5 each); neither correct, no efficiency win |
+| Sol / full Small | 0/5 -> 5/5 | 0 -> 0 | 0 -> 0 | 0/0/0 -> 0/1/0 | 81,439 (209) -> 44,606 (81) | 0.0348349 -> 0.1132577 | 120.033 -> 100.498 | -45.2% / +225.1% / -16.3% | Correct counts differ; Classic timed out 5/5 |
+
+Equal correct counts do not guarantee the same correct pairs or useful equivalence; 0/5 versus 0/5 never establishes an efficiency win.
+
+### Secondary: cross-model view
+
+Arrows here are **4o -> Sol**, same mode/scope. All deltas are descriptive; differing correctness is not equivalent work. R/V/C = median reasoning / visible-output / cached-input tokens, each a separate median. Total/output include reasoning once.
+
+| Scope / mode | Correct | Unearned | TL | A/O/429 | Median total tokens (R / V / C) | Median USD | Analysis s | Delta tokens / cost / time |
+|---|---|---|---|---|---|---|---|---|
+| N=1 / Classic | 0/5 -> 5/5 | 0 -> 0 | 5 -> 0 | 0/0/0 -> 0/0/0 | 141,077 (0 / 1,179 / 137,856) -> 36,694 (1,949 / 2,244 / 32,733) | 0.1892150 -> 0.0452393 | 67.891 -> 94.098 | -74.0% / -76.1% / +38.6% |
+| N=1 / CodeAct | 2/5 -> 5/5 | 3 -> 0 | 0 -> 0 | 0/0/0 -> 0/0/0 | 15,794 (0 / 2,557 / 9,984) -> 14,874 (29 / 1,787 / 9,957) | 0.0461825 -> 0.0273612 | 22.908 -> 33.013 | -5.8% / -40.8% / +44.1% |
+| N=3 / Classic | 0/5 -> 0/5 | 1 -> 0 | 4 -> 0 | 0/0/0 -> 0/0/0 | 253,431 (0 / 1,161 / 246,144) -> 121,483 (102 / 6,020 / 100,003) | 0.3346050 -> 0.1108500 | 65.573 -> 120.028 | -52.1% / -66.9% / +83.0% |
+| N=3 / CodeAct | 0/5 -> 5/5 | 5 -> 0 | 0 -> 0 | 0/0/0 -> 0/1/0 | 7,594 (0 / 723 / 5,888) -> 30,504 (52 / 3,527 / 18,659) | 0.0170475 -> 0.0539617 | 14.949 -> 50.546 | +301.7% / +216.5% / +238.1% |
+| Full Small / Classic | 0/5 -> 0/5 | 0 -> 0 | 5 -> 0 | 0/0/0 -> 0/0/0 | 422,918 (0 / 2,278 / 415,232) -> 81,439 (209 / 1,874 / 76,824) | 0.5553400 -> 0.0348349 | 78.515 -> 120.033 | -80.7% / -93.7% / +52.9% |
+| Full Small / CodeAct | 0/5 -> 5/5 | 4 -> 0 | 0 -> 0 | 0/0/0 -> 0/1/0 | 20,755 (0 / 2,369 / 15,360) -> 44,606 (81 / 7,645 / 23,302) | 0.0506150 -> 0.1132577 | 25.173 -> 100.498 | +114.9% / +123.8% / +299.2% |
+
+### Evidence
+
+- [Generated full results](docs/v3-responses-results.md): full counters, token partitions, retry wait and correctness-labelled deltas.
+- [Model/API/pricing and execution record](docs/v3-enforced-cohorts.md), [same-turn parallel-call audit](docs/v3-parallel-audit.md), [canonical methodology](docs/benchmark-methodology.md).
+- Sol publication commits: N=1 `80c35245bf926e6c26a753eab777ae5dabb1fcb1`, N=3 `1b55bea6871614a1f564381f416519582a9ae909`, full Small `6a50d817dc485fb49344133d3f081363bf45de09`.
+- Comparison IDs, scopes N=1 / N=3 / full Small: Sol `small-20261117175030-08e828b0af534dfdbaea775967807011`, `small-20261117190251-4e21059d12b740ad99ebae1811d9d9d4`, `small-20261117192039-a9fbc87c067546e891e0690922317f78`; 4o `small-20261117172306-877c46337ba1469aa242d5fc11783121`, `small-20261117173158-1dda532076ea4b31b13eca81e8fa3f3f`, `small-20261117173950-867fc9f253c04d61a33121bc4a9c79b1`.
+- Raw local evidence layout: `artifacts/v3-enforced-20261117/{gpt-4o,gpt-6.1-sol}/{n1,n3,full-small}/comparisons/` and sibling `runs/`. These are **ignored local evidence**, not files supplied by a fresh clone. Request a reviewed evidence bundle for independent raw-event inspection.
+
+## Scenario and implementation
+
+Seeded synthetic data contains:
 
 | Profile | Households | Accounts | Positions |
-| --- | ---: | ---: | ---: |
+|---|---:|---:|---:|
 | Small | 10 | 33 | 370 |
 | Medium | 40 | 156 | 2,201 |
 | Large | 120 | 485 | 7,198 |
 
-For each household, the agent should:
+For each in-scope household the agent retrieves holdings, prices, FX and policy; values holdings in base currency; calculates allocations/drift; checks drift, concentration, FX and crypto breaches; proposes asset-class buy/sell notionals; and returns `exposure-report/v2`.
 
-1. Retrieve its policy, accounts, positions, prices, FX rates, and classifications.
-2. Value positions in the household's base currency and compute allocations.
-3. Flag drift, concentration, foreign-currency, and crypto policy breaches.
-4. Propose asset-class buy/sell notionals, not named securities.
-5. Return a schema-valid `ExposureReport`.
+Classic exposes seven granular functions to the model. CodeAct exposes `execute_code`; Python calls those same functions via `call_tool`. Tools are direct **AIFunction callbacks, not MCP**, and expose no oracle calculations. Both modes allow multiple calls per model response; local function execution is sequential within the response, and results are returned together in the next request.
 
-The deterministic **oracle** independently calculates the reference report for live scoring.
-It checks flagged households, breaches, allocations, and trade notionals using documented
-rounding and tolerances. It is not exposed as an agent tool.
-**Offline only:** the fake model's answer is deliberately generated from this same oracle,
-so an exact match validates plumbing, not independent model reasoning.
-See [calculation rules](docs/metrics.md) and [comparison methodology](docs/benchmark-methodology.md).
+The CLI runs paired trials and scoring without separate HTTP hosts. The two optional APIs share `POST /api/v1/analyses` and run retrieval.
 
-## 4. How it works
+- [Architecture](docs/architecture.md), [oracle calculation and tolerance rules](docs/metrics.md), [SDK findings](docs/sdk-findings.md).
+- [Committed sanitized live sample](docs/sample-run/README.md) and [independent household hand-check](docs/sample-run/diagnosis.md): historical v2 evidence, not current scorer results.
 
-```mermaid
-flowchart TD
-    Data["Seeded datasets"] --> Snapshot["Shared portfolio snapshot"]
-    CLI["Benchmark CLI: paired trials"] --> Shared["AnalysisService / AnalysisRunner"]
-    APIs["Classic.Api / CodeAct.Api"] --> Shared
-    Shared --> Classic["Classic: model calls functions"]
-    Shared --> Code["CodeAct: model requests execute_code"]
-    Code --> Sandbox["Live x64: Hyperlight Python guest"]
-    Sandbox --> Tools["Seven read-only host tools"]
-    Classic --> Tools
-    Snapshot --> Tools
-    Code -. "No guest: no-code stand-in" .-> Fake["Offline fake-model control"]
-    Shared --> Evidence["Events, timelines, results, metrics"]
-    Snapshot --> Oracle["Deterministic oracle"]
-    CLI --> Score["Correctness + fairness + telemetry"]
-    Oracle --> Score
-    Evidence --> Score
-    Score --> Reports["JSON / Markdown / CSV / HTML"]
+## Quickstart without Azure
+
+Requires Git, Bash and a .NET 9 SDK selected by [global.json](global.json): 9.0.317 with `latestFeature` roll-forward. Initial locked restore needs package-feed access. No Azure, Python, guest or hypervisor is needed for this demo. Windows users can use an approved Bash/WSL environment with its own .NET installation; do not paste Bash syntax into PowerShell.
+
+Clone your authorized repository URL and select the published source revision to reproduce. No private clone URL belongs in shared documentation.
+
+```bash
+git clone "<repository-url>" codeact-poc
+cd codeact-poc
+git switch --detach "<published-source-commit>"
 ```
 
-The CLI generates one oracle reference per profile, warms up each mode once, randomizes paired
-execution order, runs both modes, scores their reports, and writes artifacts. Warm-ups are
-excluded from measured comparisons. Both APIs expose the same analysis and run-retrieval contract.
-Tools use direct `AIFunction` callbacks, **not MCP**.
+In a new Bash shell at the repository root, stop on any failure:
 
-### Source projects
-
-All names below live under [src/](src/), with the `SterlingVale.` prefix.
-
-| Project suffix | Responsibility |
-| --- | --- |
-| Domain | Portfolio model, money, financial math, reports, and metrics. |
-| Application | Portfolio snapshots, FX conversion, and the reference oracle. |
-| Tools | Seven read-only retrieval/classification functions and invocation recording. |
-| AgentShared | Prompts, schemas, shared runner/service, Classic factory, and fake model. |
-| CodeAct | Hyperlight agent factory and explicit no-guest stand-in. |
-| Infrastructure | Dataset loading, Azure/fake client selection, DI, and file run storage. |
-| Telemetry | Correlation, ordered event journals, payload policy, timelines, and console output. |
-| Api.Shared | Shared HTTP endpoints, validation, and response mapping. |
-| Classic.Api | Thin ASP.NET host for the Classic factory. |
-| CodeAct.Api | Thin ASP.NET host for the CodeAct factory. |
-| DataGenerator | Seeded Small/Medium/Large data and hash manifests. |
-| Benchmark | Paired execution, scoring, aggregation, CLI, and report rendering. |
-
-### Test projects
-
-All names below live under [tests/](tests/), also prefixed `SterlingVale.`.
-
-| Project suffix | Coverage |
-| --- | --- |
-| Domain.Tests | Value objects, math, and invariants. |
-| Application.Tests | Oracle, FX, and portfolio calculations. |
-| Data.Tests | Deterministic generation, loading, and manifests. |
-| Tools.Tests | Tool contracts, recording, event isolation, payloads, and timelines. |
-| AgentShared.Tests | Runner limits, fake clients, schemas, artifacts, and reconciliation. |
-| Architecture.Tests | Dependency boundaries. |
-| Contract.Tests | Cross-mode HTTP/schema/tool consistency. |
-| Classic.IntegrationTests | Classic API using offline clients, plus opt-in live tests. |
-| CodeAct.IntegrationTests | Offline API and separately gated real-Hyperlight tests. |
-| Comparison.Tests | Scoring, aggregation, reports, and all-profile offline comparisons. |
-
-More detail: [architecture](docs/architecture.md) and [security model](docs/security-model.md).
-
-## 5. Quickstart: offline demo
-
-### Prerequisites
-
-- Git and .NET 9 SDK per [global.json](global.json); validated with SDK **9.0.320** on the laptop
-  and pinned **9.0.317** on Ubuntu x64, with configured roll-forward.
-- A terminal running PowerShell: Windows PowerShell works here; PowerShell 7 is available
-  for Windows, Linux, and macOS. No Python, Azure account, guest image, or virtualization required.
-- Package-feed access for the first restore. Allow a few minutes for initial downloads.
-
-**Verification scope:** the sequence below succeeded in a clean local-source clone on Windows
-ARM64. Ubuntu x64 additionally passed local-source clean-clone locked restore, Release build and
-231 non-live tests at `3088451`, using an empty NuGet cache. The current offline changes pass 300.
-The complete quickstart on Linux/macOS and a remote-origin clone are **not yet verified**.
-
-Clone setup template (**remote clone not yet verified**; replace the placeholder):
-
-```powershell
-git clone --branch feature/observability-validation <repository-url> codeact-poc
-Set-Location codeact-poc
-```
-
-From the repository root, paste these into one terminal. The explicit environment settings
-prevent inherited Azure, guest, batching, pricing, or output-directory settings changing the demo:
-
-```powershell
-$env:AZURE_OPENAI_ENDPOINT = ""
-$env:HYPERLIGHT_PYTHON_GUEST_PATH = ""
-$env:BENCHMARK_REQUIRE_LIVE = "false"
-$env:CLASSIC_BATCH_SIZE = "0"
-$env:DATASET_ROOT = "data"
-$env:ARTIFACTS_ROOT = "artifacts"
-$env:BENCHMARK_MAX_TURNS = "12"
-$env:BENCHMARK_TIMEOUT_SECONDS = "120"
-$env:PRICING_INPUT_PER_MILLION = "2.50"
-$env:PRICING_OUTPUT_PER_MILLION = "10.00"
-$env:ENABLE_LIVE_TESTS = "false"
-$env:OTEL_EXPORTER_OTLP_ENDPOINT = ""
-$generator = Join-Path src SterlingVale.DataGenerator
-$benchmark = Join-Path src SterlingVale.Benchmark
+```bash
+set -euo pipefail
+unset AZURE_OPENAI_ENDPOINT AZURE_OPENAI_API_KEY AZURE_OPENAI_DEPLOYMENT_NAME
+unset AZURE_OPENAI_RESOURCE_ID AZURE_OPENAI_MODEL_NAME AZURE_OPENAI_MODEL_VERSION
+unset MODEL_API_MODE MODEL_DEFAULT_REASONING_EFFORT
+unset PRICING_CACHED_INPUT_PER_MILLION PRICING_CACHE_WRITE_PER_MILLION
+unset PRICING_LONG_CONTEXT_THRESHOLD PRICING_LONG_INPUT_PER_MILLION
+unset PRICING_LONG_OUTPUT_PER_MILLION PRICING_LONG_CACHED_INPUT_PER_MILLION
+unset PRICING_LONG_CACHE_WRITE_PER_MILLION PRICING_SOURCE_URL PRICING_VERIFIED_ON PRICING_BASIS
+export MODEL_MODE=fake HYPERLIGHT_PYTHON_GUEST_PATH=""
+export BENCHMARK_REQUIRE_LIVE=false CLASSIC_BATCH_SIZE=0 ENABLE_LIVE_TESTS=false
+export BENCHMARK_MAX_TURNS=12 BENCHMARK_TIMEOUT_SECONDS=120
+export PRICING_INPUT_PER_MILLION=2.50 PRICING_OUTPUT_PER_MILLION=10.00
+export DATASET_ROOT="$PWD/data" ARTIFACTS_ROOT="$PWD/artifacts/offline-demo"
+export OTEL_EXPORTER_OTLP_ENDPOINT=""
+test ! -e "$ARTIFACTS_ROOT"
 dotnet restore --locked-mode
 dotnet build -c Release --no-restore
-dotnet run -c Release --no-build --project $generator -- data
-dotnet run -c Release --no-build --project $benchmark -- validate-data
-dotnet run -c Release --no-build --project $benchmark -- compare --trials 1 --model fake --log-level normal --payload-capture full
-dotnet run -c Release --no-build --project $benchmark -- visualize
+dotnet run -c Release --no-build --project src/SterlingVale.DataGenerator -- "$DATASET_ROOT"
+dotnet run -c Release --no-build --project src/SterlingVale.Benchmark -- validate-data
+dotnet run -c Release --no-build --project src/SterlingVale.Benchmark -- \
+  compare --trials 1 --model fake --log-level normal --payload-capture full
+dotnet run -c Release --no-build --project src/SterlingVale.Benchmark -- visualize
+dotnet test -c Release --no-build \
+  --filter 'Category!=LiveModel&Category!=Hyperlight&Category!=HyperlightKnownIssue' \
+  -- xUnit.ParallelizeTestCollections=false
 ```
 
-Stop on failure; an old dashboard is not evidence of success. `compare` runs all available profiles;
-`visualize` combines the latest per profile. Its printed HTML path opens without external assets.
+Expected: all three datasets validate; each comparison has two measured trials (one per mode), both Exact, matched fingerprints and valid telemetry. Open the HTML path printed by `visualize`. Do not reuse a stale dashboard as evidence of success.
 
-Representative output shape, with changing IDs omitted and current validity labels:
+The fake model deliberately emits an oracle-derived answer. With the guest unset, CodeAct's stand-in runs **no Python and no host data callbacks**. Fake tokens/costs are synthetic. Medium/Large offline Exact scores do not establish real-sandbox feasibility.
 
-```text
-[small] VALID — 10 households, 33 accounts, 370 positions; on-disk manifest present
-[medium] VALID — 40 households, 156 accounts, 2201 positions; on-disk manifest present
-[large] VALID — 120 households, 485 accounts, 7198 positions; on-disk manifest present
-Model selected: fake. Reason: explicit fake control; Azure environment variables are ignored.
-Correctness (Exact/WithinTolerance): 2/2; completion: 2/2
-COMPARISON VALID: model task outcomes recorded; oracle correct 2/2
-Execution kind: offline-fake-control
-Fairness: MATCHED; telemetry: VALID (accounting only, not success)
-```
-
-Optional verification, also run successfully:
-
-```powershell
-dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
-```
-
-Current result: **313 passed, 0 failed, 0 skipped across ten projects**, including
-worker containment/recovery and model-outcome/infrastructure-validity regressions. On the ARM64 laptop the six Hyperlight tests
-previously skipped; the November 16 Ubuntu x64 gate passed five, while native cancellation remains a labelled
-known issue. Neither a skip nor an excluded known issue is a pass.
-The November 17 continuation gate additionally passes seven Python reporting/continuation checks
-and all six currently supported Hyperlight checks. Its Comparison project uses
-`-- xUnit.ParallelizeTestCollections=false` to avoid a pre-existing global console-capture race.
-
-## 6. What the results show
-
-### Results
-
-#### v3 cohort
-
-New enforced cohorts are documented separately in
-[v3 stateless Responses cohorts](docs/v3-enforced-cohorts.md). Both new models/modes
-use the same function-only, full-context, `store=false` adapter; the Chat Completions
-path remains available for historical reproduction. The committed runner/checker
-accept `--cohort` and isolated `--smoke`; do not mix these results with the table below.
-See the [read-only parallel-call audit](docs/v3-parallel-audit.md) and
-[primary within-model, secondary cross-model results](docs/v3-responses-results.md).
-Both APIs/modes execute local functions sequentially within each response batch;
-all results are returned together in the next model request. This unchanged policy
-is now explicit in model configuration and its fingerprint. A sandbox overflow
-returned as an execution error with matching-result delivery and model continuation
-is counted, including in warm-ups, but is not infrastructure.
-
-**Historical fairness annotation (November 17):** these runs used a post-return-only
-turn check, not an enforced in-flight 20-request budget. Four of 15 Classic and one
-of 15 CodeAct measured trials exceeded 20 requests. Raw results/summaries below are
-preserved, not rescored or rerun; their resource deltas are not fair enforced-20-request
-comparisons. The [infrastructure gate and audit](docs/infrastructure-gate-20261117.md)
-lists every affected trial and the unavailable v1 evidence. Future runs block request
-21 in the shared client, report Capped/TurnLimitReached as a model outcome, and carry
-a new enforcement-version model fingerprint. No new live runs have started.
-
-The shared prompt is now `exposure-analysis/v3`: the three approved additions require
-scope-aware household coverage, policy-target allocations/drifts and required breaches/trades,
-and honest disclosure of uncomputed components. Both modes receive identical shared text.
-Shared SHA-256 (canonical LF-normalized text): `f0cf5bce1c07cceb82ef7e9b2552788dc6154f7eb5e7b4a61a0e8d4d426b667c`.
-Schema, tools, model, limits (20 turns / 120 seconds), and pricing are unchanged.
-
-Completeness is scored only against the oracle's in-scope households. Missing households,
-policy-target allocation/drift entries, oracle-required breach coverage and breached-class
-trades are reported per household, along with flags inconsistent with reported breaches.
-**UnearnedCompleteness** means **claimed complete but missing required components**;
-declared incomplete reports remain Partial. Missing numeric components produce unavailable
-error metrics, not zero error. Invalid/unusable outputs are unassessed. This detects omissions,
-not proof that every limit was evaluated; an empty breach list is legitimate when none is due.
-Semantic checks only detect/report after the run: neither mode receives feedback or retries.
-Out-of-scope households cannot earn an oracle pass.
-
-The authorized live sequence is five measured pairs each for N=1, N=3, then full Small,
-with one unmeasured warm-up per mode per profile. Infrastructure failures stop the sequence;
-model task outcomes remain recorded. Medium/Large are not authorized. v3 results and
-contextual deltas are recorded separately in
-[v3 summary Markdown](artifacts/v3-sweep-20261116/summary.md) and
-[HTML](artifacts/v3-sweep-20261116/summary.html); no v2 trials are mixed or retroactively rescored.
-The first v3 launcher serialized the unchanged USD 2.50/10.00 rates as 2.5/10.0.
-Pricing fingerprints now normalize decimal values; actual v2/v3 rates and full provenance
-were verified equal. Their normalized fingerprint is
-`1d3ecc56b26a79ade912464e4e17a7d00548faeb991f10846bb3a8e06a2ad41c`.
-Historical raw fingerprints are preserved, not edited.
-
-Five measured pairs per completed scope; all outcomes remain in the medians, warm-ups excluded.
-Unearned counts are over all trials; capped/schema-invalid outputs are unassessed.
-
-| Small scope | Mode | Oracle-correct | UnearnedCompleteness | toolArgumentErrors | Outcomes | Median tokens | Median est. USD | Median analysis s |
-| --- | --- | --- | --- | ---: | --- | ---: | ---: | ---: |
-| N=1 | Classic | 0/5 (0%) | 4/5 (assessed 4/5) | 0 | Unearned 4, Capped 1 | 25,302 | 0.0690825 | 16.432 |
-| N=1 | CodeAct | 2/5 (40%) | 2/5 (assessed 4/5) | 0 | Exact 2, Unearned 2, InvalidSchema 1 | 9,955 | 0.0380500 | 12.288 |
-| N=3 | Classic | 0/5 (0%) | 2/5 (assessed 2/5) | 0 | Unearned 2, Capped 3 | 225,429 | 0.5759400 | 49.642 |
-| N=3 | CodeAct | 0/5 (0%) | 3/5 (assessed 4/5) | 8 | Unearned 3, InvalidSchema 1, Partial 1 | 24,730 | 0.0802000 | 15.344 |
-| Full Small | Classic | 0/5 (0%) | 5/5 (assessed 5/5) | 0 | Unearned 5 | 71,677 | 0.1943500 | 21.851 |
-| Full Small | CodeAct | 0/5 (0%) | 4/5 (assessed 4/5) | 0 | Unearned 4, TimedOut 1 | 51,643 | 0.1860475 | 32.905 |
-
-**The original sweep stopped at N=3 before measured trials.** The CodeAct warm-up
-called `get_fx` with `"Unknown"` and then null as `toCurrency`, later finishing with a
-schema-valid placeholder report and valid telemetry. The previous failure selection promoted the first
-error-category event (even a recoverable model-generated tool-argument error) to a run failure;
-warm-up classification then marks the comparison INVALID before measured trials start.
-This was a **harness classification blocker**, not an observed Azure/auth/worker outage.
-The approved correction now treats explicit tool input errors returned to the model with
-subsequent model continuation as model behavior in both modes and in warm-ups.
-The first continuation attempt also stopped before measured trials: the shared analysis
-service copied a recovered argument error into the terminal schema-failure event.
-Failure selection is now shared by the service, benchmark and offline reclassifier;
-regressions cover both modes and historical copied terminal errors. The exact stopped
-raw evidence reclassifies as a model/schema failure, with valid telemetry and no
-infrastructure failure; zero measured trials remain zero. Both stopped attempts are preserved.
-The fresh N=3 comparison is VALID: all five measured pairs and both warm-ups have valid
-telemetry and no infrastructure failures. Classic's warm-up was UnearnedCompleteness;
-CodeAct's was schema-invalid. Both were recorded and execution continued as approved.
-Full Small (10 households) then completed five pairs after N=3 was committed/pushed:
-also VALID infrastructure evidence, including one measured CodeAct deadline timeout.
-Its warm-ups were Classic Incomplete/Partial and CodeAct Completed/UnearnedCompleteness.
-All model outcomes remain recorded; no Medium/Large runs were started.
-`toolArgumentErrors` counts explicit tool argument/not-found validation failures once per
-invocation (not duplicate model/host wrapper events); it is unavailable in unassessed historical
-reports. Warm-up outcomes/counts are saved separately and excluded from measured aggregates.
-Provider/auth failures, exhausted HTTP requests, non-timeout worker termination, actual runtime
-failures, tool implementation exceptions, fairness/config mismatch and telemetry failure still stop.
-
-N=1 was reclassified from saved events into a separate `-reclassified` comparison, **without
-rerunning or modifying the raw artifacts or original comparison** (all source SHA-256s verified).
-Validity, all ten match labels, correctness/unearned counts and every median are unchanged;
-all ten measured tool-argument counts are zero. Old warm-up oracle scores remain unassessed.
-
-N=1 CodeAct's three non-correct trials:
-- Pair 2: complete claim with total zero and empty allocations/drifts, all four required breaches
-  and required Cash/Crypto trades missing.
-- Pair 4: valuation present, but all four required breaches omitted and `flagged:true`
-  inconsistent with an empty breach list.
-- Pair 5: schema-invalid because `baseCurrency:null` is not a currency string; empty analytical
-  components would also be incomplete even if that schema error were repaired.
-
-##### Reproducing v3 runs and derived reports
-
-Use the committed [runner](scripts/vm/run-v3-profile.py) and
-[checker](scripts/vm/check-v3-profile.py), not session-state files or the older VM launcher.
-Python 3 standard library only. Run from the repository root after a Release build and clean
-commit/push. Set `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT_NAME`,
-`HYPERLIGHT_PYTHON_GUEST_PATH`, `DATASET_ROOT` (an existing generated data root), and
-`ARTIFACTS_ROOT` (the sweep root). Authentication uses the app's existing Azure credential
-configuration; never put credentials in scripts or commits.
-
-The runner refuses to overwrite a profile, records its source commit in `launch.json`, and
-holds 5 pairs, 20 turns, 120 seconds, no Classic batching, model and pricing/provenance fixed
-to the explicit reference. Dataset validation makes no model calls. The checker verifies
-raw event counts, telemetry, scope, fingerprints, model and numeric pricing/provenance.
+For Python runner/report/provisioning-plan checks, use Python 3:
 
 ```bash
-export ARTIFACTS_ROOT="artifacts/v3-sweep-20261116"
-reference="$ARTIFACTS_ROOT/n1/comparisons/small-20261116204456-a702d6024c2a4eb1afcc742408d492f0-reclassified.json"
-# After tests and push, preserve the stopped n3 directory/log under aborted-<UTC timestamp>.
-nohup python3 scripts/vm/run-v3-profile.py n3 --reference-comparison "$reference" \
-  > "$ARTIFACTS_ROOT/n3.log" 2>&1 < /dev/null &
-# Wait for exit; stop on infrastructure failure, retain all model outcomes.
-python3 scripts/vm/check-v3-profile.py n3 --reference-comparison "$reference" --summarize
-# Commit/push the N=3 record before launching the next profile.
-nohup python3 scripts/vm/run-v3-profile.py full-small --reference-comparison "$reference" \
-  > "$ARTIFACTS_ROOT/full-small.log" 2>&1 < /dev/null &
-python3 scripts/vm/check-v3-profile.py full-small --reference-comparison "$reference" --summarize
+python3 scripts/vm/test_cohort_reports.py
+bash -n scripts/vm/run-sol-remaining.sh
 ```
 
-`--summarize` selects only the named `n1`, `n3`, `full-small` directories (preferring an explicit
-reclassification), never `aborted-*`; it rejects ambiguous comparisons and mixed cohorts.
-It preserves v2 and all raw trial data. Reclassification itself is an offline command that
-writes a new comparison rather than repairing the source:
+These are offline checks; provisioning tests inspect printed plans, not Azure resources. Counts change with source; inspect actual results, not just an old total.
+Historical Windows ARM64 and Ubuntu x64 local-source clean-clone checks are recorded in [the x64 workflow](docs/review-current/x64-validation.md). A remote-origin, completely fresh OS reproduction is not certified.
+
+## Azure setup, end to end
+
+**Administrative templates, not automatic actions.** Obtain approval for resources, quotas, costs and access assignments. The committed cohort verifier currently accepts **East US only**. If the exact model/version/SKU is unavailable, stop; do not silently substitute another model, region or deployment type.
+
+### Account, deployments and capacity
+
+Run administrative commands in an authorized operator shell. Use placeholders locally; keep actual IDs/endpoints out of published logs.
 
 ```bash
-dotnet src/SterlingVale.Benchmark/bin/Release/net9.0/SterlingVale.Benchmark.dll reclassify \
-  --comparison <original-comparison.json> --source-root <its-artifacts-root> \
-  --output-root <new-derived-report-root>
+export SUBSCRIPTION="<subscription-id>" AZURE_RG="<new-model-resource-group>"
+export ACCOUNT="<globally-unique-account-name>" REGION=eastus
+az login --tenant "<tenant-id>"
+az account set --subscription "$SUBSCRIPTION"
+az provider register --namespace Microsoft.CognitiveServices
+az group create --name "$AZURE_RG" --location "$REGION"
+az cognitiveservices account create --resource-group "$AZURE_RG" --name "$ACCOUNT" \
+  --location "$REGION" --kind OpenAI --sku S0 --custom-domain "$ACCOUNT"
 ```
 
-`--output-root` is optional; use it to preserve every original source/index byte.
-The [remaining-Sol helper](scripts/vm/resume-sol-v3.py) invokes the committed
-runner/checker for N=3 then full Small and regenerates the combined report before
-committing/pushing each profile. It uses explicit reference/cohort/log-root
-arguments and the documented Azure/guest/dataset environment. Do not mix the new
-explicit-policy fingerprints with older literal fingerprints through the generic
-strict `--summarize` merger; the combined report checks audited policy compatibility
-without changing raw metadata.
-
-The committed [manual-launch wrapper](scripts/vm/run-sol-remaining.sh) delegates to
-that helper. **It has not been launched.** It runs N=3 then full Small, five pairs
-each, with checker/report/commit/push after each profile; all progress is streamed
-to stdout and also retained in per-profile logs. Failures prevent the next profile.
-The existing cohort/reference paths default to this VM's repository-relative
-artifact directories; override `REFERENCE_COMPARISON`, `GPT4O_ENFORCED_ROOT`,
-`SOL_ROOT`, or `LOG_ROOT` when relocating evidence. It requires the four exported
-Azure/guest/dataset settings below and existing Azure CLI/SDK authentication:
+Confirm model availability, subscription quota, and approved **SKU capacity units** for each deployment before creating it. Capacity units are model-specific, not a universal TPM/RPM conversion. The old Sol account reported 300 requests and 300,000 tokens per 60 seconds; that does not document its SKU capacity. Fill capacity from approved quota; this repository does not establish a portable numeric capacity.
 
 ```bash
-# Example for the current VM, from the repository root; no credentials are embedded.
-export AZURE_OPENAI_ENDPOINT="https://codeact-openai.services.ai.azure.com/"
+export GPT4O_CAPACITY="<approved-gpt4o-capacity-units>"
+export SOL_CAPACITY="<approved-sol-capacity-units>"
+az cognitiveservices account list-models --resource-group "$AZURE_RG" --name "$ACCOUNT"
+az cognitiveservices account deployment create --resource-group "$AZURE_RG" \
+  --name "$ACCOUNT" --deployment-name gpt-4o --model-format OpenAI \
+  --model-name gpt-4o --model-version 2024-11-20 \
+  --sku-name GlobalStandard --sku-capacity "$GPT4O_CAPACITY" \
+  --version-upgrade-option NoAutoUpgrade
+az cognitiveservices account deployment create --resource-group "$AZURE_RG" \
+  --name "$ACCOUNT" --deployment-name gpt-6.1-sol --model-format OpenAI \
+  --model-name gpt-6.1-sol --model-version 2026-09-29 \
+  --sku-name GlobalStandard --sku-capacity "$SOL_CAPACITY" \
+  --version-upgrade-option NoAutoUpgrade
+az cognitiveservices account deployment list --resource-group "$AZURE_RG" --name "$ACCOUNT" \
+  --query '[].{deployment:name,model:properties.model,sku:sku,upgrade:properties.versionUpgradeOption,limits:properties.rateLimits}'
 export AZURE_OPENAI_RESOURCE_ID="$(az cognitiveservices account show \
-  --resource-group CodeAct --name codeact-openai --query id --output tsv)"
-export HYPERLIGHT_PYTHON_GUEST_PATH="$PWD/artifacts/guest/0.4.0/runtimes/linux-x64/native/python-sandbox.aot"
-export DATASET_ROOT="$PWD/artifacts/phase-b-20261116-1721/data"
-mkdir -p artifacts/v3-continuation-gate
-setsid nohup bash scripts/vm/run-sol-remaining.sh > artifacts/v3-continuation-gate/sol-remaining.log 2>&1 < /dev/null &
-tail -f artifacts/v3-continuation-gate/sol-remaining.log
+  --resource-group "$AZURE_RG" --name "$ACCOUNT" --query id -o tsv)"
+export AZURE_OPENAI_ENDPOINT="$(az cognitiveservices account show \
+  --resource-group "$AZURE_RG" --name "$ACCOUNT" --query properties.endpoint -o tsv)"
 ```
 
-Only the operator should run those last two lines. Offline validation uses
-`bash -n scripts/vm/run-sol-remaining.sh` and
-`python3 scripts/vm/test_cohort_reports.py`; it makes no inference requests.
+Use the supported **base HTTPS resource endpoint**, such as `https://<resource-name>.openai.azure.com/`, with `/` and no `/openai/v1`, deployment/project path, query or fragment. A supported `services.ai.azure.com` resource endpoint may also be used. Do not invent an endpoint from a project URL.
 
-The earlier sample/diagnosis helpers are now portable too:
-[export_sample.py](scripts/vm/export_sample.py) exports one selected pair's condensed timelines,
-input excerpt, reports and unchanged Python; it rejects obvious endpoint/path/credential
-content, but all generated samples still need human review before sharing.
-[Diagnosis](scripts/vm/Diagnosis/Program.cs) renders that pair's HTML or an offline oracle:
+For a new reproducible setup pin both upgrades to `NoAutoUpgrade`. Historical provenance differs: observed 4o had `OnceNewDefaultVersionAvailable` with a version guard; Sol had `NoAutoUpgrade`. The verifier checks exact model/version/GlobalStandard; it does not pin numeric capacity.
+
+### Managed identity and permissions
+
+After provisioning the VM below, an authorized administrator enables its system-assigned identity and grants inference access at the model account scope:
 
 ```bash
-python3 scripts/vm/export_sample.py --comparison <comparison.json> \
-  --dataset-profile <data-root/small> --output <new-sample-dir> --household H0001 --pair 1
-dotnet run -c Release --project scripts/vm/Diagnosis -- sample \
-  <comparison.json> <new-sample-dir/comparisons/sample.html> 1
-dotnet run -c Release --project scripts/vm/Diagnosis -- oracle \
-  <data-root/small> <oracle.json> H0001
+PRINCIPAL_ID="$(az vm identity assign --resource-group "$VM_RG" --name "$VM_NAME" \
+  --query systemAssignedIdentity -o tsv)"
+az role assignment create --assignee-object-id "$PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Cognitive Services OpenAI User" --scope "$AZURE_OPENAI_RESOURCE_ID"
 ```
 
-Descriptive CodeAct-minus-Classic changes; no correctness-equivalent efficiency win:
+The runner's CLI and app's SDK also need management-plane deployment metadata read access. Verify effective permissions; if necessary an administrator can grant resource-scoped Reader:
 
-| Scope | Median tokens | Median est. cost | Median analysis time |
-| --- | --- | --- | --- |
-| N=1 | -60.7%; correct 0/5 vs 2/5, unearned 4/5 vs 2/5; not a correctness-equivalent win | -44.9%; correct 0/5 vs 2/5, unearned 4/5 vs 2/5; not a correctness-equivalent win | -25.2%; correct 0/5 vs 2/5, unearned 4/5 vs 2/5; not a correctness-equivalent win |
-| N=3 | -89.0%; correct 0/5 vs 0/5, unearned 2/5 vs 3/5; not a correctness-equivalent win | -86.1%; correct 0/5 vs 0/5, unearned 2/5 vs 3/5; not a correctness-equivalent win | -69.1%; correct 0/5 vs 0/5, unearned 2/5 vs 3/5; not a correctness-equivalent win |
-| Full Small | -28.0%; correct 0/5 vs 0/5, unearned 5/5 vs 4/5; not a correctness-equivalent win | -4.3%; correct 0/5 vs 0/5, unearned 5/5 vs 4/5; not a correctness-equivalent win | +50.6%; correct 0/5 vs 0/5, unearned 5/5 vs 4/5; not a correctness-equivalent win |
+```bash
+az role assignment create --assignee-object-id "$PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal --role Reader --scope "$AZURE_OPENAI_RESOURCE_ID"
+```
 
-##### No-LLM diagnostics (not a model cohort)
+On the VM, unset unintended identity/key overrides if the intended identity is the VM's system identity:
 
-The [feasibility control and 13-trial failure-forensics report](docs/v3-diagnostics.md)
-records a hand-authored callback-only Python program executed through the same real
-Hyperlight/service/recording/worker path and 120-second deadline: **Exact at N=1, N=3
-and full Small**, with 23/39/84 callbacks and 1,638/4,698/15,274 stdout bytes.
-No live model or prompt changes. These controls are never included in the tables above
-or model summaries. The report documents the 65,536-character capture limit, an observed
-16,376-byte available guest output buffer, preserved failed prototypes, per-trial
-execution/error/provenance findings, usage commands, and five passing supported
-real-Hyperlight tests in addition to the 283 offline passes.
+```bash
+unset AZURE_OPENAI_API_KEY AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID
+unset AZURE_FEDERATED_TOKEN_FILE AZURE_CLIENT_CERTIFICATE_PATH
+az login --identity
+az account set --subscription "<subscription-id>"
+az rest --url "https://management.azure.com${AZURE_OPENAI_RESOURCE_ID}?api-version=2024-10-01" \
+  --query location -o tsv
+```
 
-The [November 17 capacity investigation](docs/infrastructure-gate-20261117.md)
-adds an offline overflow regression: the guest abort is returned as an explicit error
-to the client, not silent truncation or a host crash. The pinned SDK has **no shared
-output-buffer setting**; Medium/Large canonical oracle reports are **64,764/196,685
-bytes**. Per the stop condition, no Medium/Large sandbox controls ran. The current
-gate is **291 offline plus six supported real-Hyperlight passes**. Further scaling
-requires an approved SDK change or output-protocol design.
+CLI login supplies the runner's metadata checks; the app independently uses `DefaultAzureCredential` (recorded VM selection: `ManagedIdentityCredential`). An inference API key does not remove authenticated metadata checks. Allow RBAC propagation and account network access; a 403 does not uniquely identify a missing role.
 
-With `DATASET_ROOT` and an absolute `HYPERLIGHT_PYTHON_GUEST_PATH` set, run from
-the repository root after a Release build; use a new directory outside model sweeps:
+### API routes and model settings
+
+| Setting | Current enforced cohorts | Historical reproduction |
+|---|---|---|
+| `MODEL_API_MODE` | `responses` | `chat-completions` |
+| SDK route | `/openai/v1/responses` | `/openai/deployments/{deployment}/chat/completions` with SDK API-version handling |
+| State | Full history, `store=false`, no conversation/`previous_response_id`; encrypted reasoning items preserved where emitted | Chat history |
+| Tools/output | Function-only, `parallel_tool_calls=true`, non-strict JSON schema (`strict=false`), unchanged full local validation | Select historical source/configuration explicitly |
+| 4o | `gpt-4o`, snapshot `2024-11-20`, temperature 0 | Separate API/enforcement cohort |
+| Sol | `gpt-6.1-sol`, snapshot `2026-09-29`, medium reasoning; unsupported sampling settings omitted | Sol tool calling requires Responses |
+
+Keep the environment endpoint at the resource base: the adapter appends its route.
+
+### Verify prices before inference
+
+[cohort_config.py](scripts/vm/cohort_config.py) contains exact official Azure Retail Prices API URLs and meter names. The runner follows pagination and fails closed if a selected USD Consumption meter is missing, ambiguous or changed. Do not filter only on the old service name `Cognitive Services`; these meters can be under `Foundry Models`.
+
+Recorded November 17, 2026, East US GlobalStandard, USD per million:
+
+| Model/request context | Input | Cached read | Cache write | Output, including reasoning |
+|---|---:|---:|---:|---:|
+| 4o 2024-11-20 | 2.50 | 1.25 | No separate selected meter | 10.00 |
+| Sol, <=272,000 input tokens/request | 2.00 | 0.10 | 2.50 | 10.00 |
+| Sol, >272,000 input tokens/request | 4.00 | 0.20 | 5.00 | 15.00 |
+
+4o meters are per 1K, multiplied by 1,000; Sol meters are per 1M. Long-context pricing applies per request, not across a trial. Cached reads/writes replace their part of ordinary input billing; reasoning is already output. Unknown usage stays unknown.
+
+Metadata/retail-only check from the repository root (no inference):
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
+import sys
+sys.path.insert(0, "scripts/vm")
+from cohort_config import verify
+for cohort in ("gpt-4o-v3-enforced", "gpt-6.1-sol-v3"):
+    value = verify(cohort)
+    print(cohort, value["verifiedAtUtc"], "deployment and retail meters verified")
+PY
+```
+
+Costs are retail estimates, not invoices; negotiated discounts, missing usage and VM/storage/network charges are excluded. [Full pricing provenance](docs/v3-enforced-cohorts.md#verified-retail-pricing).
+
+## Ubuntu x64 VM and real Hyperlight
+
+Use Ubuntu 24.04 **x64**, with nested virtualization and readable/writable `/dev/kvm`. The recorded host used `Standard_D4s_v5`. SKU documentation alone is not proof of working KVM; ARM64, ordinary containers and hosted development environments are not substitutes.
+
+### Provisioning and corporate-network SSH
+
+Review current VM price/quota, networking and corporate policy first. The historical USD 0.192/hour estimate is not current approval.
+
+For this corporate environment register the subscription feature before provisioning the approved public-IP setup:
+
+```bash
+az feature register --namespace Microsoft.Network --name AllowBringYourOwnPublicIpAddress
+az feature show --namespace Microsoft.Network --name AllowBringYourOwnPublicIpAddress \
+  --query properties.state -o tsv
+# Wait for Registered; then refresh provider registration.
+az provider register --namespace Microsoft.Network
+```
+
+Registration can require administrator approval. Connect the client to the corporate VPN. **Both the NIC NSG and subnet NSG must allow TCP 22 from `CorpNetPublic`.** A rule on only one NSG is insufficient.
+
+The [provisioning script](scripts/provision-vm.sh) now creates separate NIC/subnet NSGs, the VNet/subnet association, and CorpNetPublic rules on both. It no longer discovers your current public IP or accepts `--ssh-ip`. Its ECDSA public-key token bug is fixed. It prints a plan by default; creation requires a new dedicated resource group and explicit approval:
+
+```bash
+export VM_RG="<new-vm-resource-group>" VM_NAME="<vm-name>" VM_REGION="<approved-vm-region>"
+export ADMIN_USER="<ssh-user>" SSH_PUBLIC_KEY="<absolute-path-to-approved-public-key.pub>"
+bash scripts/provision-vm.sh --subscription "$SUBSCRIPTION" --resource-group "$VM_RG" \
+  --location "$VM_REGION" --name "$VM_NAME" --admin-user "$ADMIN_USER" \
+  --ssh-public-key "$SSH_PUBLIC_KEY" --estimated-hourly-usd "<reviewed-compute-price>"
+# Review the complete plan, feature registration, price/quota and policy; only then
+# repeat the same command with --approved-create.
+```
+
+Corporate policy can delete SSH allow rules after creation. Before first connection and after a timeout/restart inspect BOTH associations/effective rules:
+
+```bash
+NIC_ID="$(az vm show --resource-group "$VM_RG" --name "$VM_NAME" \
+  --query 'networkProfile.networkInterfaces[0].id' -o tsv)"
+SUBNET_ID="$(az network nic show --ids "$NIC_ID" --query 'ipConfigurations[0].subnet.id' -o tsv)"
+az network nic show --ids "$NIC_ID" --query networkSecurityGroup.id -o tsv
+az network vnet subnet show --ids "$SUBNET_ID" --query networkSecurityGroup.id -o tsv
+az network nic list-effective-nsg --ids "$NIC_ID"
+```
+
+If policy removed the approved allow, an authorized operator can recreate it on each affected NSG (script-created names below):
+
+```bash
+for nsg in "$VM_NAME-nsg" "$VM_NAME-subnet-nsg"; do
+  az network nsg rule create --resource-group "$VM_RG" --nsg-name "$nsg" \
+    --name AllowSshFromCorpNet --priority 100 --direction Inbound --access Allow \
+    --protocol Tcp --source-address-prefixes CorpNetPublic --source-port-ranges '*' \
+    --destination-address-prefixes '*' --destination-port-ranges 22
+done
+```
+
+Resolve recurring deletion with the policy administrator; do not bypass policy with a world-open/current-IP rule. If `CorpNetPublic` is unavailable, use only the administrator-approved equivalent. Verify the SSH host-key fingerprint through a trusted channel, then connect from the VPN:
+
+```bash
+ssh -i "<client-private-key-path>" "<ssh-user>@<vm-public-ip>"
+```
+
+### Repository access, bootstrap and guest path
+
+On the VM use a repository-specific deploy key approved by the repository administrator. Generate it in the SSH user's home, never the checkout; register only the `.pub` value in repository **Settings > Deploy keys**. Read access suffices for cloning; automatic publication requires **Allow write access**. Protect the private file and never publish key material or authentication logs.
+
+```bash
+ssh-keygen -t ed25519 -f "$HOME/.ssh/codeact-repo" -C "benchmark-repo-deploy-key"
+chmod 600 "$HOME/.ssh/codeact-repo"
+```
+
+Verify GitHub host fingerprints through the organization's trusted process; never disable host-key checking. Load the key into an approved agent, or set a process-local transport:
+
+```bash
+export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/codeact-repo -o IdentitiesOnly=yes"
+git clone "<approved-SSH-repository-URL>" codeact-poc
+cd codeact-poc
+git switch "<approved-results-branch>"
+git config --local user.name "<approved-commit-author>"
+git config --local user.email "<approved-commit-email>"
+bash scripts/bootstrap-vm.sh
+# After reviewing its plan and obtaining installation approval:
+bash scripts/bootstrap-vm.sh --approved-install
+```
+
+Bootstrap installs prerequisites, pinned .NET SDK, Azure CLI, PowerShell and Hyperlight Python 0.4.0, loads KVM and adds the SSH user to `kvm`. Its current ordinary-sudo calls require an approved interactive sudo authentication setup; do not run it as an unattended job that may wait for a password.
+
+Disconnect **all** SSH/Remote-SSH sessions and reconnect so the new group applies:
+
+```bash
+cd "<clone-directory>"
+id -nG
+test -r /dev/kvm && test -w /dev/kvm
+export HYPERLIGHT_PYTHON_GUEST_PATH="$PWD/artifacts/guest/0.4.0/runtimes/linux-x64/native/python-sandbox.aot"
+test -f "$HYPERLIGHT_PYTHON_GUEST_PATH"
+export DATASET_ROOT="$PWD/data"
+dotnet restore --locked-mode
+dotnet build -c Release --no-restore
+dotnet run -c Release --no-build --project src/SterlingVale.DataGenerator -- "$DATASET_ROOT"
+dotnet test tests/SterlingVale.CodeAct.IntegrationTests -c Release --no-build \
+  --filter 'Category=Hyperlight&Category!=HyperlightKnownIssue' \
+  --blame-hang --blame-hang-timeout 3m
+```
+
+Require actual execution with zero skips; the supported selection has six tests. **Never include the retained native-cancellation known-issue test in an unattended unfiltered run.** Always use an absolute guest path: testhost changes its working directory. Guest presence is not proof of callbacks or correct execution.
+
+Optional no-Azure real-guest feasibility check, using a fresh directory outside model cohort roots:
 
 ```bash
 dotnet scripts/vm/Diagnosis/bin/Release/net9.0/Diagnosis.dll control \
-  scripts/vm/reference-analysis-control.py <new-control-artifacts-directory>
-python3 scripts/vm/inspect-v3-failures.py --sweep-root <existing-v3-sweep-root>
+  scripts/vm/reference-analysis-control.py "<new-control-output-directory>"
 ```
 
-The control requires no Azure settings and echoes executed stdout without oracle
-substitution. The forensic helper only reads artifacts; it never executes captured code.
+### Auto-shutdown, deallocation and restart
 
-#### Historical v2 cohort (not rescored)
+Configure reviewed auto-shutdown as a cost backstop, outside the cohort run window:
 
-The [raw-request audit](docs/infrastructure-gate-20261117.md#2-read-only-historical-audit)
-finds zero over-20-request trials in either mode, including both this nine-pair sweep
-and the earlier single pair (0/10 per mode total). These remain historical
-pre-enforcement results, not a rerun under the corrected request-boundary guard.
-
-Live VM sweep, three measured pairs per scope, shared prompt v2; **correctness first**.
-All comparisons are VALID infrastructure evidence, not proof of correct model answers.
-Medians include every measured task outcome, excluding warm-ups. Tokens are median **total**
-tokens per trial, not the sum of independently calculated input/output medians.
-
-| Small scope | Mode | Oracle-correct rate | Outcomes | Median tokens | Median est. USD | Median analysis s |
-| --- | --- | --- | --- | ---: | ---: | ---: |
-| N=1 | Classic | 0/3 (0%) | Partial 3 | 24,463 | 0.0665875 | 16.429 |
-| N=1 | CodeAct | 3/3 (100%) | Exact 3 | 18,826 | 0.0691975 | 16.945 |
-| N=3 | Classic | 0/3 (0%) | Partial 3 | 40,967 | 0.1147625 | 17.510 |
-| N=3 | CodeAct | 2/3 (66.7%) | Exact 2, InvalidSchema 1 | 29,126 | 0.1216850 | 27.201 |
-| Full Small (10) | Classic | 0/3 (0%) | Partial 3 | 70,188 | 0.1873200 | 23.418 |
-| Full Small (10) | CodeAct | 0/3 (0%) | Partial 3 | 23,263 | 0.0738175 | 16.350 |
-
-Descriptive CodeAct-minus-Classic changes; **each delta includes correctness context**:
-
-| Scope | Median tokens | Median est. cost | Median analysis time |
-| --- | --- | --- | --- |
-| N=1 | -23.0%; Classic 0/3 vs CodeAct 3/3 correct; not a correctness-equivalent win | +3.9%; Classic 0/3 vs CodeAct 3/3 correct; not a correctness-equivalent win | +3.1%; Classic 0/3 vs CodeAct 3/3 correct; not a correctness-equivalent win |
-| N=3 | -28.9%; Classic 0/3 vs CodeAct 2/3 correct; not a correctness-equivalent win | +6.0%; Classic 0/3 vs CodeAct 2/3 correct; not a correctness-equivalent win | +55.3%; Classic 0/3 vs CodeAct 2/3 correct; not a correctness-equivalent win |
-| Full Small | -66.9%; both Partial, 0/3 correct; not a correctness-equivalent win | -60.6%; both Partial, 0/3 correct; not a correctness-equivalent win | -30.2%; both Partial, 0/3 correct; not a correctness-equivalent win |
-
-The generated [summary Markdown](artifacts/summary.md) and [summary HTML](artifacts/summary.html)
-link all 18 individual trial timelines directly, plus all three full comparison reports.
-These ignored local artifacts are generated from existing JSON, not new model/guest calls:
-
-```powershell
-$comparisonFiles = @(
-  "artifacts/phase-b-sweep-20261116/n1/comparisons/small-20261116183315-756172429e844d8a89569f332174cce4.json",
-  "artifacts/phase-b-sweep-20261116/n3/comparisons/small-20261116183702-cd37a0744d8245e1ae955d9cf00cd06c.json",
-  "artifacts/phase-b-sweep-20261116/full-small/comparisons/small-20261116184051-6a9a3fe1d0c148d8bff90034aee2e297.json"
-)
-$env:ARTIFACTS_ROOT = "artifacts"
-dotnet run -c Release --no-build --project src/SterlingVale.Benchmark -- summarize --comparisons ($comparisonFiles -join ",")
+```bash
+az vm auto-shutdown --resource-group "$VM_RG" --name "$VM_NAME" --time "<HHmm-UTC>"
+# After all runs/publication finish, explicitly stop billable compute:
+az vm deallocate --resource-group "$VM_RG" --name "$VM_NAME"
+az vm get-instance-view --resource-group "$VM_RG" --name "$VM_NAME" \
+  --query "instanceView.statuses[?starts_with(code, 'PowerState/')].code" -o tsv
+# Resume later:
+az vm start --resource-group "$VM_RG" --name "$VM_NAME"
+az vm show --resource-group "$VM_RG" --name "$VM_NAME" --show-details --query publicIps -o tsv
 ```
 
-The summary selects files explicitly so N=1/N=3/full Small do not overwrite each other as
-the same profile; mixed shared-prompt/model/pricing/execution cohorts are rejected.
-For peers without local artifacts, open the committed [sanitized sample](docs/sample-run/README.md)
-and [field-by-field diagnosis / hand verification](docs/sample-run/diagnosis.md).
-H0001's CodeAct valuation is correct; its first computational divergence is omitted allocation/
-drift analysis, followed by hard-coded no flags/breaches/trades. Classic stopped prematurely
-with one fabricated household after querying positions for only 10 of 33 accounts.
-The unchanged oracle matches an independent decimal hand calculation for H0001.
-The diagnosis preceded the approved v3 shared-prompt and detection-only scoring/reporting
-changes above. These historical v2 results retain their original labels; completeness was
-not assessed. No Medium/Large or new live runs were performed for that diagnosis/reporting work.
+Verify `PowerState/deallocated`: an OS shutdown or stopped-but-allocated VM may still incur compute charges. Disks and some networking remain billable. Recheck public IP, VPN and BOTH NSGs after restart; restore shell environment, verify KVM/guest, identity access and repository state. Never deallocate while the controller is running or publishing.
 
-### Fake-model controls, NOT real performance
+## Running current cohorts
 
-This laptop's fake client makes one representative tool request, then emits a precomputed oracle
-report. Classic calls `list_households`; CodeAct calls a stand-in `execute_code` that runs
-**no Python** and invokes **no data callbacks**. Neither mode performs live model analysis.
+Use committed [runner](scripts/vm/run-v3-profile.py), [checker](scripts/vm/check-v3-profile.py), and [combined reporter](scripts/vm/report-v3-cohorts.py). Python 3 standard library only. Legacy setup/run helpers now delegate to these approved paths; they no longer assume a root-user checkout or silently regenerate lock files.
 
-Fresh local-clone run at `2026-11-06T00:30Z` (November 5 local time), one measured pair per
-profile after warm-up; values below were read from the generated comparison JSON:
+### Environment and committed reference
 
-| Profile | Oracle match, both | Fairness / telemetry | Fake tokens, each mode | Formula USD, each mode | Harness ms, Classic / CodeAct |
-| --- | --- | --- | ---: | ---: | ---: |
-| Small | Exact | MATCHED / VALID | 4,174 | 0.041425 | 20.1399 / 17.7399 |
-| Medium | Exact | MATCHED / VALID | 16,230 | 0.161970 | 40.9000 / 40.1731 |
-| Large | Exact | MATCHED / VALID | 49,208 | 0.491765 | 113.1979 / 106.6385 |
+| Operator variable | Required value |
+|---|---|
+| `AZURE_OPENAI_ENDPOINT` | Supported account base HTTPS endpoint. |
+| `AZURE_OPENAI_RESOURCE_ID` | Full account ARM resource ID; keep actual value private. |
+| `AZURE_OPENAI_DEPLOYMENT_NAME` | `gpt-4o` or `gpt-6.1-sol`, matching `--cohort`. |
+| `HYPERLIGHT_PYTHON_GUEST_PATH` | Absolute 0.4.0 guest path. |
+| `DATASET_ROOT` | Absolute generated data root, shared by both modes. |
+| `ARTIFACTS_ROOT` | Distinct new root per cohort; runner adds `smoke-n1`, `n1`, `n3`, `full-small`. |
 
-For every profile: two model turns per mode, one model-facing invocation per mode,
-Classic/CodeAct granular calls **1/0**, `execute_code` invocations **0/1**, sandbox callbacks **0/0**.
-Both modes had flagged/breach precision and recall 1, allocation/trade error 0.
-Fake tokens and formula costs are identical; wall-clock timings vary.
-**These numbers validate the harness and telemetry, not a speedup, model accuracy, or Azure bill.**
+The runner sets `BENCHMARK_REQUIRE_LIVE=true`, `BENCHMARK_MAX_TURNS=20`, `BENCHMARK_TIMEOUT_SECONDS=120`, `CLASSIC_BATCH_SIZE=0`, and clears `OTEL_EXPORTER_OTLP_ENDPOINT`. `--cohort` sets `MODEL_API_MODE=responses`, `AZURE_OPENAI_MODEL_NAME`, `AZURE_OPENAI_MODEL_VERSION`, `MODEL_DEFAULT_REASONING_EFFORT`, and all applicable pricing variables:
 
-| Metric | Interpretation |
-| --- | --- |
-| Correctness | Schema validity plus oracle match class, flagged/breach precision and recall, allocation MAE, and trade-notional error as a household-value fraction. |
-| Duration | Reported trial wall time around analysis; includes observation/persistence inside the service, excludes warm-up and later report rendering. Not model-only or micro-VM CPU time. |
-| Tokens | Per-response input/output/total usage aggregated across the run; unknown remains null. Offline usage is synthetic. |
-| Estimated USD | Input/output tokens times configured per-million prices; not an invoice. |
-| Model turns | Assistant responses observed at the model boundary; distinguish them from function invocations. |
-| Model-facing calls | Functions requested by the model: granular tools for Classic, `execute_code` for CodeAct. |
-| Granular calls | Actual host data-tool invocations, including real CodeAct callbacks; legacy `toolCallCount` now means this. |
-| Sandbox callbacks | Granular calls originating from CodeAct; zero in this no-guest control. |
-| Telemetry valid | Events, invocation counts, and token totals reconcile. It does not imply correctness or real sandbox execution. |
+`PRICING_INPUT_PER_MILLION`, `PRICING_OUTPUT_PER_MILLION`, `PRICING_CACHED_INPUT_PER_MILLION`, `PRICING_CACHE_WRITE_PER_MILLION`, `PRICING_LONG_CONTEXT_THRESHOLD`, `PRICING_LONG_INPUT_PER_MILLION`, `PRICING_LONG_OUTPUT_PER_MILLION`, `PRICING_LONG_CACHED_INPUT_PER_MILLION`, `PRICING_LONG_CACHE_WRITE_PER_MILLION`, `PRICING_SOURCE_URL`, `PRICING_VERIFIED_ON`, `PRICING_BASIS`.
 
-### Reports and evidence
+Fresh clones default to [configs/v3-reference.json](configs/v3-reference.json): shared prompt/schema/tools/Small-dataset fingerprints, output/request/deadline limits, historical pricing basis and explicit current execution/concurrency policy. It is derived from the existing valid historical reference; the cohort config replaces historical uncached pricing with verified cache/context rates. A regression test regenerates the data/tools and compares current prompt/schema/policy fingerprints to this file.
 
-| Relative location | Contents |
-| --- | --- |
-| `<ARTIFACTS_ROOT>/index.md` | Comparisons and runs, status, warm-up labels, and available timeline/code/tool-invocation links. |
-| `<ARTIFACTS_ROOT>/summary.{md,html}` | Explicitly selected cross-profile/scoped comparisons, correctness rates, medians, correctness-labelled descriptive deltas, and direct links to every measured trial. |
-| `artifacts/comparisons/{id}.{json,md,csv,html}` | Raw trials, summaries, scores, fingerprints, execution kind, and dashboards. |
-| `artifacts/comparisons/{id}/summary.{json,md}` | Additional comparison summary. |
-| `artifacts/comparisons/scaling-{timestamp}.html` | Latest-per-profile overview; check execution kinds before mixing runs. |
-| `artifacts/runs/{runId}/result.json`, `metrics.json`, `metadata.json` | Structured result, metrics, identity, and configuration. |
-| `events.jsonl`, `timeline.json`, `timeline.md` within each run | Ordered boundary events and their references. |
-| `model/`, `tools/`, `classic/`, `codeact/` within each run | Requests/responses, invocations, final-response captures, generated programs, and available streams. |
+**No historical artifact directory or fake seed run is required.** `--reference-comparison <path>` remains optional for historical replay; that explicit path still requires its sibling `runs/<runId>/metadata.json`. Do not mix the reference/control into measured model results. Without either `--cohort` or an explicit historical reference, run/check default to `gpt-4o-v3-enforced`. Always name Sol explicitly.
 
-Default payload capture is metadata only; live generated Python is saved independently of this mode.
-The demo uses `full`; payloads/source are redacted and capped at 65,536 characters. Exact source must be safe and complete.
-Use capture flags, not assumptions about a missing stream or source file.
-`transcript.jsonl` retains every message and call/result identity. For observed runs, text, arguments
-and results are separate capture envelopes with content/length/truncation/redaction fields; large
-payloads can be partial, but no whole-file cutoff removes later calls or breaks JSONL framing.
-Separate generated Python captures still require an unredacted, untruncated program for a `.py` file;
-otherwise a `.capture.json` explicitly marks the unavailable exact source.
-Current evidence and IDs: [POC demo review](docs/review-current/poc-demo-review.md).
+### Smoke gates, then measured profiles
 
-Correctness comes first in console/JSON/HTML summaries, alongside both modes' full metrics.
-Comparison validity is independent of model success:
+Build/test the clean source first. Select an approved publication branch rather than detached HEAD; ensure its commit is already pushed. The runner checks clean worktree, not whether HEAD is pushed or binaries are fresh.
 
-- **INVALID; stop the sweep:** infrastructure/harness failures, including auth/model-call
-  errors, worker crashes, missing guest/execution, fairness/config/prompt-hash mismatches,
-  missing/unpaired trials, or telemetry reconciliation failures. Warm-up infrastructure failures
-  also stop execution. Exit nonzero; suppress aggregate performance statistics, retain raw evidence.
-- **VALID; record and continue:** model task outcomes such as InvalidSchema, Partial, declared
-  incomplete, turn cap, or TimedOut at the configured deadline, with intact harness evidence.
-  Exit zero; retain every trial in medians, including failed/slow task outcomes. VALID is not a pass.
-
-Both modes' status/oracle, turns, named calls, input/output tokens, analysis duration, estimated
-cost, execute_code and callbacks are shown per trial and as medians. Unknown remains unavailable.
-Per-comparison efficiency-win cards/deltas are withheld unless every measured trial is
-oracle-correct. The cross-profile summary additionally shows descriptive resource deltas for
-task outcomes, with each delta explicitly labelled by both modes' correctness and never as a
-correctness-equivalent win. Process-inclusive timing remains separately available.
-Telemetry can reconcile a failed request: **VALID accounting is not successful analysis**.
-Warm-ups are persisted and labelled **WARM-UP, not measured**. Normal logs show full IDs at
-RUN STARTED, then an eight-character run prefix; verbose/debug and disk journals retain full IDs.
-
-## 7. Running live
-
-**Live ARM64, November 11:** connectivity works. New scoped trials below are oracle-scored,
-not performance claims. Classic's schema-valid reports were **Partial**, not correct; CodeAct
-generated Python but was **NotExecuted: no Hyperlight guest**. Both comparisons returned exit 1.
-Configure these variables in the same terminal; do not put real values in source or artifacts:
-
-| Variable | Purpose |
-| --- | --- |
-| `AZURE_OPENAI_ENDPOINT` | HTTPS resource address; pasted `/openai/v1` paths are normalized to the base with a one-line notice. |
-| `AZURE_OPENAI_DEPLOYMENT_NAME` | Exact chat deployment name, not merely a model identifier. |
-| `AZURE_OPENAI_API_KEY` | Optional alternative to `DefaultAzureCredential`; keep outside artifacts. |
-
-Default is `--model fake`, **even with Azure variables set**. Only `--model live` opts in; no fallback.
-APIs also default to fake; opt in with `--model live` or `MODEL_MODE=live`.
-Copying [.env.example](.env.example) does not load shell variables.
-
-Identity/deployment setup templates below are **not yet verified/executed**; replace placeholders:
-
-```powershell
-az login --tenant <tenant-id>
-az account set --subscription <subscription-id>
-az cognitiveservices account deployment list --resource-group <resource-group> --name <resource-name> --query "[].name" --output tsv
+```bash
+set -euo pipefail
+export GPT4O_ENFORCED_ROOT="$PWD/artifacts/<new-experiment>/gpt-4o"
+export SOL_ROOT="$PWD/artifacts/<new-experiment>/gpt-6.1-sol"
+export LOG_ROOT="$PWD/artifacts/<new-experiment>/logs"
+mkdir -p "$LOG_ROOT"
+export ARTIFACTS_ROOT="$GPT4O_ENFORCED_ROOT" AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
+python3 scripts/vm/run-v3-profile.py n1 --smoke --cohort gpt-4o-v3-enforced
+python3 scripts/vm/check-v3-profile.py n1 --smoke --cohort gpt-4o-v3-enforced
+export ARTIFACTS_ROOT="$SOL_ROOT" AZURE_OPENAI_DEPLOYMENT_NAME=gpt-6.1-sol
+python3 scripts/vm/run-v3-profile.py n1 --smoke --cohort gpt-6.1-sol-v3
+python3 scripts/vm/check-v3-profile.py n1 --smoke --cohort gpt-6.1-sol-v3
 ```
 
-Use the **deployment name**, not the model name. Example base: `https://<resource-name>.openai.azure.com/`.
-The SDK uses this authority with `/`; path/query/fragment are removed, not silently sent as a second route.
-An authorized administrator can grant **Cognitive Services OpenAI User** at the resource scope;
-See [RBAC steps and diagnosis](docs/review-current/poc-demo-review.md#azure-setup-templates); no resource changes were performed.
+Both isolated smoke gates must pass. Interpret VALID using the [canonical validity rules](docs/benchmark-methodology.md#validity-rules), not as oracle success.
+Run measured **4o n1 -> n3 -> full-small**, then **Sol n1 -> n3 -> full-small**. Each profile is five measured pairs (10 trials) plus two unmeasured warm-ups. Never start the next until the previous was checked, reported, committed and pushed.
 
-Laptop connectivity/generation check, **executed but not yet verified as a successful comparison**:
+For one direct profile use `setsid nohup`; conditional `wait` records a failed child exit before the explicit success check stops the sequence:
 
-```powershell
-$env:BENCHMARK_REQUIRE_LIVE = "false"
-$env:HYPERLIGHT_PYTHON_GUEST_PATH = ""
-$env:BENCHMARK_MAX_TURNS = "20"
-$env:BENCHMARK_TIMEOUT_SECONDS = "120"
-$benchmark = Join-Path src SterlingVale.Benchmark
-dotnet run -c Release --no-build --project $benchmark -- run --profile small --trials 1 --households 1 --model live --log-level normal --payload-capture full
-dotnet run -c Release --no-build --project $benchmark -- run --profile small --trials 1 --households 3 --model live --log-level normal --payload-capture full
+```bash
+set -euo pipefail
+export ARTIFACTS_ROOT="$GPT4O_ENFORCED_ROOT" AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
+profile=n1
+log="$LOG_ROOT/gpt4o-$profile.log"
+test ! -e "$log"
+setsid nohup python3 scripts/vm/run-v3-profile.py "$profile" \
+  --cohort gpt-4o-v3-enforced > "$log" 2>&1 < /dev/null &
+pid=$!
+printf '%s\n' "$pid" > "$LOG_ROOT/gpt4o-$profile.pid"
+if wait "$pid"; then rc=0; else rc=$?; fi
+printf '%s\n' "$rc" > "$LOG_ROOT/gpt4o-$profile.exit"
+test "$rc" -eq 0
+python3 scripts/vm/check-v3-profile.py "$profile" --cohort gpt-4o-v3-enforced
 ```
 
-`--households N` selects the first N dataset households for both agents, warm-ups and oracle; default is all.
-Measured runs after warm-up, **live ARM64, November 12, 2026**, shared prompt v2 with plain JSON mode (before schema-format changes).
-CodeAct tokens: **first turn only, code not executed: not comparable to Classic totals**.
+Monitor in another terminal with `tail -f "$log"` and `ps -p <recorded-pid> -o pid,etime,args`. If the launching shell disconnects, its exit file may be absent although the nohup child continues; absence of a process or exit file is not success. Inspect the completed comparison and rerun the checker. Never launch a replacement while the original is alive.
 
-| N | Classic status / finish / turns | Input / output tokens | Duration ms | Oracle | CodeAct turns / input / output / Python bytes |
-| ---: | --- | ---: | ---: | --- | --- |
-| 1 | Failed / stop / 6 | 21,079 / 1,082 | 16,003.170 | InvalidSchema (`Hold`) | 1 / 2,176 / 1,258 / 5,017 |
-| 3 | Completed / stop / 5 | 37,101 / 974 | 14,763.335 | Partial (zero reports) | 1 / 2,184 / 536 / 1,616 |
+After each checked profile regenerate and publish:
 
-Classic retrieved complete price evidence for all scoped positions but produced zero/placeholder values while declaring complete.
-**Hypothesis (unverified until CodeAct executes):** in-context arithmetic across many positions is unreliable.
-`get_price` / positions: **13 / 26** (N=1), **17 / 117** (N=3); all 13/17 distinct symbols covered.
-Asset class already comes with position data; `asset_class=0` is **not** a classification shortcut.
-The earlier full-Small run's gap was missing prices (`get_price=0`); these scoped runs also show
-incorrect computation despite price coverage. Both CodeAct runs were NotExecuted.
-V2 requires `status` and `missingItems`; explicit `incomplete` is **Partial, never Exact**, even with exact values.
-Classic runs with parallel tool calls enabled (model default); disabling it would multiply Classic's turns and isn't how the pattern is used in practice.
-Both modes explicitly set `parallel_tool_calls=true`, non-strict `json_schema` (`strict=false`), and a 16,384-token output cap.
-The schema guides output; full local v2 validation, not server-side strict guarantees, decides acceptance.
-The scoped VM result below exercises these settings; full-profile correctness remains unverified.
-Startup prints the format, parallel and strict choices for both modes.
-Settings and both schema hashes are recorded; scaling rejects mixed prompt/model configurations.
-See [prompt boundary, per-tool tables and prior results](docs/review-current/poc-demo-review.md#approved-shared-prompt-v2-live-follow-up).
-Finish reason, last-response output tokens, a redacted 240-character preview and zero-inclusive counts
-are persisted in each run's `summary.json`, final event and comparison; generated-source events include byte counts.
-N=3's two CodeAct calls were distinct requests in one model response (159 + 1,457 bytes), both NotExecuted, not two turns.
-Safe live Python lands in `codeact/generated-code-*.py` even with metadata/none capture; unsafe/oversized source gets markers.
-Failure events contain safe category/status/code/guidance, not raw server text. Live calls incur charges.
+```bash
+python3 scripts/vm/report-v3-cohorts.py --gpt4o-root "$GPT4O_ENFORCED_ROOT" \
+  --sol-root "$SOL_ROOT" --output docs/v3-responses-results.md
+git add docs/v3-responses-results.md
+git commit -m "Record checked v3 profile results" \
+  -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+git push origin HEAD
+```
 
-An x64 guest adds **actual Python execution, callbacks and a scoreable report**; pass the five
-supported runtime tests first, explicitly excluding the retained `HyperlightKnownIssue`.
-The optional `BENCHMARK_REQUIRE_LIVE=true` strict gate refuses a missing guest; leave it false
-for laptop code generation. It does not prove auth, capacity or correctness.
+These are operator actions for an approved reproduction, not instructions to interfere with an active controller. Repeat with the next profile; for Sol use its root/deployment and `--cohort gpt-6.1-sol-v3`. Inspect only intended changes before publication. Do not use generic strict `--summarize` across different literal model fingerprints: the combined reporter accepts only the explicit sequential policy or exact audited legacy fingerprints, keeping scope rows separate.
 
-`CLASSIC_BATCH_SIZE` optionally decomposes Classic into household batches; default zero disables it.
-This is a separate experimental variant: the aggregate references child runs, not one model answer.
+### Remaining-Sol controller and completion signals
 
-## 8. Running real Hyperlight on x64 (optional)
+For an experiment with all 4o profiles and Sol N=1 already checked, [run-sol-remaining.sh](scripts/vm/run-sol-remaining.sh) invokes [resume-sol-v3.py](scripts/vm/resume-sol-v3.py). It runs Sol N=3 then full Small, checks each, regenerates the report, commits and pushes **before** proceeding.
 
-**Ubuntu x64 runtime validation, November 16, 2026:** all five supported runtime checks pass.
-The sixth test, `Real_running_program_observes_cancellation_and_retains_source`, remains unchanged
-except for an additional `HyperlightKnownIssue` category: the pinned SDK cannot interrupt running
-native code. The gate explicitly selects `Category=Hyperlight&Category!=HyperlightKnownIssue`;
-it does not claim six passes. See [SDK evidence](docs/sdk-findings.md#native-execution-cancellation-november-16-2026).
+Export endpoint, resource ID, guest path, data root and explicit `GPT4O_ENFORCED_ROOT`, `SOL_ROOT`, `LOG_ROOT`. The wrapper/helper set Sol deployment/artifact root. They default to the committed reference; optional `REFERENCE_COMPARISON` overrides it for historical replay. Do not reuse the completed experiment's existing remaining-profile directories/logs:
 
-Benchmarks now supervise a separate process for **every** analysis in both modes, including
-warm-ups and Classic batches. A configured per-run deadline kills and reaps only that worker
-process tree, records `TimedOut`/INCOMPLETE and retains source, usage and the failure timeline.
-No background native guest is left running by merely abandoning its Task. The deadline includes
-worker startup; trial duration includes process overhead, while run metrics retain analysis duration.
-Direct API hosting has no process watchdog and still has the SDK cancellation limitation.
+```bash
+# Only on an inactive, approved checkout with new remaining-profile directories/logs:
+outer_log="$LOG_ROOT/sol-remaining.log"
+test ! -e "$outer_log"
+mkdir -p "$LOG_ROOT"
+setsid nohup bash scripts/vm/run-sol-remaining.sh > "$outer_log" 2>&1 < /dev/null &
+printf '%s\n' "$!" > "$LOG_ROOT/sol-remaining.pid"
+# In a monitoring terminal:
+tail -f "$LOG_ROOT/sol-remaining.log"
+```
 
-Use an x64 Linux host with accessible KVM/MSHV or
-Windows x64 with WHP, plus the version-matched Python guest. ARM64 is not a supported substitute.
-There is no claim that an ordinary container or hosted development environment supplies virtualization.
+Progress includes `START Sol n3`, checker output, then `PUBLISHED Sol n3 <commit> <UTC>`; the same follows for `full-small`. Child progress is retained in `sol-n3.log` and `sol-full-small.log`. **Done means both profiles have checked VALID five-pair comparisons and both PUBLISHED lines, including the final full-small push.** A completed log line or stopped PID alone is not enough.
 
-See the [x64 workflow](docs/review-current/x64-validation.md), approval-gated
-[provisioning](scripts/provision-vm.sh), [bootstrap](scripts/bootstrap-vm.sh),
-[validation helper](scripts/verify-observability.ps1), and older [VM helpers](scripts/vm/).
-Nothing in the offline quickstart provisions resources, installs a guest, or changes execution policy.
+Any nonzero runner/checker/report/commit/push stops the helper and prevents the next launch. Follow the [canonical validity rules](docs/benchmark-methodology.md#validity-rules) for stop/continue decisions and preserved model outcomes. Review stopped attempts only after the process ends; archive explicitly rather than overwrite/retry in place.
 
-### Initial VM live result: stopped under the previous validity rule
+Only generated results Markdown is staged by this controller. Raw evidence is ignored by Git; publication of the report does **not** publish the raw artifact tree. Distribute a separately reviewed/sanitized evidence bundle for peer raw-event inspection.
 
-Ubuntu 24.04 x64, Standard_D4s_v5; source `3088451dbbdc9e833e1cc990cf90b3b7666a89d0`
-plus the worker-safety working-tree changes present during execution. Existing `DefaultAzureCredential` selected
-`ManagedIdentityCredential`; one minimal call succeeded on its first attempt. No credential-chain
-or laptop behavior changed. Shared prompt SHA-256:
-`630a3a841752d3b4475fadde5050b2884c11b59b28f87e4c43a694fc57ebbc86`.
+## Methodology and interpretation
 
-Small, `--households 1`, one measured pair after warm-ups; unchanged 20 turns, 120 seconds,
-`parallel_tool_calls=true`, `strict=false`, v2 schema and 16,384-token output cap:
+[Benchmark methodology](docs/benchmark-methodology.md) is canonical, especially its [validity rules](docs/benchmark-methodology.md#validity-rules). Other documents link there rather than defining competing classification rules.
 
-| Mode | Status / oracle | Finish | Turns | Input / output tokens | Trial / analysis seconds | execute_code | Callbacks |
-| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Classic | Failed / InvalidSchema | stop | 6 | 23,739 / 518 | 15.476 / 14.815 | 0 | 0 |
-| CodeAct | Completed / Exact | stop | 2 | 8,235 / 1,923 | 13.267 / 12.556 | 1 | 49 |
+- **Fairness:** same data/scope, seven underlying tools, shared prompt body, schema/validator, oracle/scorer, within-model version/settings, pricing and budgets. Mechanism addenda/model-facing tool surfaces intentionally differ; matching shared hashes alone does not establish scientific equivalence.
+- **Trials:** one warm-up per mode, then paired measurements in seeded randomized order. Keep five-pair cohorts distinct from historical three-pair runs and isolated smoke pairs.
+- **Cohorts/hashes:** prompt v3 canonical LF-normalized SHA-256 is `f0cf5bce1c07cceb82ef7e9b2552788dc6154f7eb5e7b4a61a0e8d4d426b667c`; historical v2 is `630a3a841752d3b4475fadde5050b2884c11b59b28f87e4c43a694fc57ebbc86`. Report schema remains v2. API/model/enforcement/pricing/scope cohorts are separate; historical data is not rewritten or silently rescored.
+- **Aggregation:** retain every measured outcome, slow or failed; exclude warm-ups. Show individual trials plus median/min/max. Median total tokens is the median of each trial's total, not a sum of input/output medians. Unknown stays unavailable, never dropped or invented.
+- **Accounting:** reasoning is included once in output/total; visible output is output minus reasoning when known. Current analysis time excludes recorded retry wait; process-inclusive time and the 120-second deadline include it and startup/transport. Model requests, HTTP retries, model-facing calls and sandbox callbacks are distinct.
+- **Primary view:** within-model, same-scope deltas. Efficiency-win cards require every measured trial Exact/WithinTolerance. Descriptive all-outcome deltas always carry both modes' correctness context; cross-model comparisons are secondary.
 
-Classic fetched every required price but returned `totalValue: null` while declaring complete.
-CodeAct actually executed Python, completed 49 callbacks and matched the oracle.
-This pair exited **INVALID under the previous rule**; the current rule records it as a valid
-comparison with Classic's failed model outcome. It is not a performance win. The original
-artifacts are unchanged. N=3 and full profiles were not run in that initial attempt.
-See [per-tool counts, SDK evidence and validation details](docs/review-current/x64-validation.md#phase-b-vm-validation-november-16-2026).
+## Evidence and sharing
 
-### Pricing provenance (verified November 16, 2026)
+| Location | Meaning |
+|---|---|
+| [Final results](docs/v3-responses-results.md) | Committed generated current-cohort tables; within-model first. |
+| [Cohort record](docs/v3-enforced-cohorts.md) | Model/API/pricing policy, gates and dated execution record. |
+| [Diagnostics](docs/v3-diagnostics.md) | Real-guest no-LLM control and historical failed-trial forensics. |
+| [Sanitized sample](docs/sample-run/) | Committed historical pair, inputs, reports, Python and diagnosis. |
+| `<ARTIFACTS_ROOT>/<scope>/launch.json` | Source commit and configuration recorded by the runner. |
+| `<scope>/deployment-pricing-verification.json` | Pre-launch metadata/meter verification; review identifiers before sharing. |
+| `<scope>/comparisons/` | Comparison JSON/Markdown/CSV/HTML and per-trial scores. |
+| `<scope>/runs/<runId>/` | Result, metadata, metrics, events, timeline, requests/results, generated code and streams. |
 
-Azure deployment metadata identifies GPT-4o **2024-11-20**, **GlobalStandard**, resource region
-**East US**. The official [Azure Retail Prices API](https://prices.azure.com/api/retail/prices?%24filter=productName%20eq%20%27Azure%20OpenAI%27%20and%20armRegionName%20eq%20%27eastus%27%20and%20contains(meterName,%27gpt%204o%201120%27))
-lists `gpt 4o 1120 Inp glbl Tokens` at USD **0.0025/1K** and `gpt 4o 1120 Outp glbl Tokens`
-at USD **0.01/1K**, effective December 1, 2024. Thus the existing
-`PRICING_INPUT_PER_MILLION=2.50` / `PRICING_OUTPUT_PER_MILLION=10.00` values are unchanged.
-Source, verification date and basis are in [.env.example](.env.example); set the corresponding
-`PRICING_SOURCE_URL`, `PRICING_VERIFIED_ON` and `PRICING_BASIS` variables to preserve provenance
-in each run's pricing configuration. Reverify for another model version, deployment type or region.
+`artifacts/` is ignored, not a clean-clone input. A local raw-evidence link may not be available to peers. Preserve original trials; derived reclassification must identify its source. Do not execute captured generated programs on the host.
 
-All costs are **estimates**, not Azure invoices: observed input/output tokens times uncached
-USD retail rates, excluding cached-input discounts, negotiated rates, unreported usage and
-VM/infrastructure charges. See the [official pricing overview](https://azure.microsoft.com/en-us/pricing/details/azure-openai/).
+Full capture is explicit and bounded; generated Python may be captured independently of payload mode. Redacted/truncated source is marked unavailable as an exact program. Redaction is defense in depth, not permission to share arbitrary logs.
 
-### Approved three-trial VM sweep (November 16, 2026)
+Before sharing remove real subscription/tenant/principal IDs, resource-specific endpoints/names, public IPs, personal machine paths, keys/tokens and internal URLs. Public price meter IDs, source hashes, synthetic report IDs and public documentation links are not credentials. Keep deploy keys and environment files outside published evidence.
 
-Implementation source: `7fea4ec53faa5b83973c04400edd3d23db3c1dc6`; same VM, guest,
-deployment, prompt and limits as above. Three measured pairs per scope after warm-ups.
-Correctness comes first; measurements include all task outcomes, not just oracle passes.
+## Known limits
 
-| Small scope | Comparison | Classic status / oracle | CodeAct status / oracle | Median input/output tokens, Classic / CodeAct | Median analysis seconds, Classic / CodeAct | Median est. USD, Classic / CodeAct |
-| --- | --- | --- | --- | --- | --- | --- |
-| N=1 | VALID | Completed / Partial, 3/3 | Completed / Exact, 3/3 | 23,739/724 / 15,875/2,951 | 16.429 / 16.945 | 0.0665875 / 0.0691975 |
-| N=3 | VALID | Completed / Partial, 3/3 | Completed / Exact, 2/3; Failed / InvalidSchema, 1/3 | 39,321/1,646 / 22,610/6,365 | 17.510 / 27.201 | 0.1147625 / 0.1216850 |
-| Full Small (10) | VALID | Completed / Partial, 3/3 | Completed / Partial, 3/3 | 68,608/1,580 / 21,175/2,088 | 23.418 / 16.350 | 0.1873200 / 0.0738175 |
+1. **Guest shared output: 16,376 available bytes.** Oversize results can abort guest serialization and return an explicit failure envelope with empty stdout; this is not silent truncation. Heap/stack or output-directory settings do not resize this buffer in the pinned SDK.
+2. **Medium/Large infeasible under the current output design.** Canonical compact reports are 64,764 / 196,685 UTF-8 bytes, before transport overhead. The pinned provider exposes no output-buffer control. v4 supported-buffer/output-protocol work is pending; no current live scalability claim. Full Small canonical output is 16,547 bytes, while concise feasibility output is 15,274: serialization/descriptions matter.
+3. **Telemetry is a different bound:** 65,536 characters per captured payload, with explicit flags; not the guest buffer and not necessarily the actual model-input size.
+4. **No native mid-execution cancellation.** The pinned provider can wait forever despite a cancellation token. Benchmark parent processes kill/reap the worker tree at the configured deadline in both modes, including warm-ups/batches. The excluded `HyperlightKnownIssue` test is not a pass.
+5. **API-host watchdog gap:** standalone Classic/CodeAct API hosting lacks the benchmark's worker isolation. Do not describe direct API native execution as deadline-contained.
+6. **MCP is not used.** This measures direct AIFunction integration, not MCP transport overhead or behavior.
+7. Small cohorts, provider nondeterminism, cache effects, retail estimates and preview SDK behavior limit generalization. Optional Classic batching changes the experiment and remains separately labelled.
 
-No efficiency winner is inferred from different correctness. All individual trials, turns,
-named calls, execute_code and callback counts are in the
-[sweep record](docs/review-current/x64-validation.md#three-trial-sweep-and-revised-validity-november-16-2026).
-The approved sweep is complete and stopped. Medium/Large were not run and require approval.
-Full Small produced no oracle-correct trial in either mode, despite schema-valid completion.
+Evidence: [SDK findings](docs/sdk-findings.md), [capacity and stop decision](docs/infrastructure-gate-20261117.md), [security model](docs/security-model.md).
 
-## 9. Project status
+## Troubleshooting
 
-| Area | Status and evidence |
-| --- | --- |
-| Offline POC demo | Working: local-source clean clones; current validity/reporting changes have 255 non-live passes. |
-| HTTP contract | Offline integration tests pass; a standalone live Classic request completed for one household, with valid schema/telemetry but no oracle score. |
-| Observability | Working offline: correlation, journals, capture policy, timelines, counts, reconciliation. |
-| Large payload capture | Bounded payloads with explicit flags; transcript records remain valid JSONL and retain later calls. Exact oversized payloads remain unavailable. |
-| Batched Classic | Offline tested; live quality and the changed comparison methodology remain unverified. |
-| Live Azure OpenAI | Three-trial N=1, N=3 and full Small sweep complete: all comparisons VALID. Oracle-correct Classic/CodeAct counts: 0/3 vs 3/3; 0/3 vs 2/3; 0/3 vs 0/3. Real guest/callback evidence verified. No efficiency-win claim; Medium/Large not run. |
-| Real Hyperlight | Five runtime tests pass on x64. Native cancellation is a retained known issue; benchmark workers provide external deadline containment. |
-| Remote clone / Linux / macOS | Ubuntu x64 local-source clean-clone restore/build/tests verified; remote-origin clone and macOS pending. |
-| Provision/bootstrap scripts | VM bootstrap ran with approval November 13; KVM access verified after reconnect. Provisioning script remains unexecuted here. |
+| Symptom | Check/action |
+|---|---|
+| Azure 404 | Use the supported account base endpoint, not `/openai/v1` or a project URL; verify exact deployment/API mode. Let the adapter append its route. |
+| Azure 401/403 | Check actual SDK identity/key, resource-scoped OpenAI User role, metadata-read permissions, propagation and network policy. An inference key alone does not supply management metadata access. |
+| Azure configured but fake selected | Safe default: explicitly pass `--model live`; APIs use that flag or `MODEL_MODE=live`. No live-to-fake fallback. |
+| Changed variables ignored in VS Code | An existing editor/Remote-SSH server, task or extension host may retain stale environment. Export in the actual launcher; reconnect/restart the relevant host. Inspect non-secret policy values/presence, never tokens or the whole environment. `.env.example` is not auto-loaded. |
+| PowerShell surprises | Use `$env:NAME=...`, not Bash `export`; do not paste heredocs or `setsid nohup` into PowerShell. Quote paths/filters; check `$LASTEXITCODE` after native commands. Use `Get-Content -LiteralPath` for bracketed TRX names, resetting XML variables before recounting. Never bypass execution policy. |
+| SSH timeout | Verify running/not auto-deallocated VM, current public IP, corporate VPN route and BOTH NSGs. Policy may delete CorpNetPublic allows; recreate only approved rules through an authorized operator. A timeout differs from `Permission denied (publickey)`. |
+| SSH key failure | Check SSH user, intended client key and trusted host fingerprint; repository deploy key is separate from VM login authentication. Never copy private keys into the repository. |
+| `/dev/kvm` denied | Confirm x64/nested virtualization and `kvm` membership; disconnect all old sessions and reconnect. Do not globally loosen device permissions. |
+| Guest not found / skipped tests | Use the absolute bootstrap guest path and validate it in the test shell. Skips are not runtime passes. Exclude only the documented native-cancellation known issue. |
+| Sandbox overflow | Inspect required/available bytes and matching result/continuation evidence under the canonical validity rules. Do not invent a buffer setting, drop fields or silently truncate reports. |
+| Runner refuses a profile | Check clean committed source, required environment, default reference (or explicit comparison AND sibling metadata), and existing profile/log paths. Never erase/reuse an active/failed attempt. |
+| Missing data / API 503 | Generate data first; use absolute roots. API-relative roots resolve under the project content root. |
+| VALID but incorrect / INVALID | Read the [canonical validity rules](docs/benchmark-methodology.md#validity-rules) and inspect oracle scores versus infrastructure evidence. Accounting is not analytical success. |
+| Controller stops after a profile | Check checker, report generation, commit identity, deploy-key write permission and push result. No next profile should launch after publication failure. |
+| Old dashboard/counts disagree | Check comparison/source commit, cohort, scope and execution kind. Historical docs/reports are not automatically regenerated. |
+| Locked restore fails | Verify selected SDK and approved package feed; do not regenerate locks merely to hide failure. |
 
-The original [observability acceptance audit](docs/review-current/execution-observability.md)
-retains the TRX recount, acceptance matrix, and SKU findings as historical deep detail.
-[Historical live notes](docs/review-current/historical-live-notes.md) retain the old README claims
-with source commits/dates and **NOT RE-VERIFIED** labels, not as current verified results.
-
-## 10. Next steps
-
-1. **Native cancellation:** retain the `HyperlightKnownIssue` test until a supported SDK interrupt exists; benchmark watchdog containment is not an SDK fix.
-2. **API watchdog gap:** the Classic and CodeAct API hosts lack the benchmark worker watchdog; native execution can still hang a direct API request. Add equivalent containment before treating live API hosting as protected.
-3. **Further live scaling needs approval:** three paired trials at N=1, N=3 and full Small are recorded. Investigate Partial/InvalidSchema task outcomes before interpreting efficiency; Medium/Large require separate approval.
-4. **Remote clean-clone check:** repeat the quickstart with an empty checkout/package environment; local cached restore is narrower evidence.
-5. **Linux script verification:** fix the SSH-key regex rejecting valid ECDSA keys such as `ecdsa-sha2-nistp256`, then test approved setup/validation on x64; static review is not a KVM test.
-6. **Exercise new transcript captures live:** JSONL framing is fixed and regression-tested offline; confirm the per-field capture envelopes with real generated Python and callbacks on x64.
-7. **Revisit Classic batching only if needed:** measure the unbatched baseline first; any decomposition changes the experiment and needs an explicit label.
-8. **Verify dashboard appearance and CodeAct API hosting:** reports and scoped Classic serving passed; browser appearance and standalone CodeAct serving remain unchecked.
-9. **Investigate live Classic correctness:** approved shared v2 did not fix fabricated/zero reports or false completion; validate arithmetic, schema and self-reported missing evidence, not redundant classification calls.
-10. **Monitor the fixed telemetry-listener race:** `TelemetryRedactionTests.Tool_metrics_and_activity_expose_only_whitelisted_tags` now isolates its trace and uses concurrent collectors; keep parallel stress coverage to prevent recurrence.
-
-## 11. Troubleshooting
-
-| Symptom | What to do |
-| --- | --- |
-| ARM64 / no guest; Hyperlight tests skip | Expected on the laptop. For the supported x64 gate explicitly exclude `HyperlightKnownIssue`; an unfiltered guest run can hang in the retained cancellation test. |
-| PowerShell script blocked by policy | Paste the individual quickstart commands into an approved terminal. Do not change execution policy or bypass it. |
-| OneDrive paths contain spaces or files are locked | Run from the repo root, quote paths, and avoid concurrent writers. The local clone check used an unsynchronized workspace. |
-| TRX total looks too high | Use a fresh results directory and literal-path reads for filenames containing brackets; clear the XML variable before each read. Historical 297 was an invalid recount of 197. |
-| Profile unavailable / readiness 503 | Generate data first. Standalone APIs resolve relative roots under their project content root; supply absolute data/artifact roots. |
-| Old transcript cannot be parsed | Regenerate artifacts after the framing fix. Old files are not rewritten; new per-field capture envelopes explicitly flag partial payloads. |
-| Azure 404 / 403 | 404 was reproduced with a path-bearing endpoint; base address fixed connectivity. For 403 check the resource-scoped OpenAI User role and networking. |
-| Azure configured but fake selected | Intentional safe default. Pass `--model live`; environment variables alone never opt in. |
-| INVALID comparison with VALID telemetry | Inspect infrastructure failure, worker/guest availability, fairness and trial-pair evidence. A task's InvalidSchema/Partial/Incomplete/TimedOut alone is VALID and recorded, not successful analysis. |
-| Dashboard disagrees with a recent run | Check comparison ID, execution kind, and timestamp. Old reports are not rewritten automatically. |
-| Locked restore fails | Check SDK selection and authorized feed access; do not silently regenerate lock files to conceal a failure. |
-
-License: [MIT](LICENSE). Security boundaries and reporting: [SECURITY.md](SECURITY.md).
+License: [MIT](LICENSE). Reporting boundaries: [SECURITY.md](SECURITY.md).

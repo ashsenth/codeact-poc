@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# Wait until the whole bench run finishes (its "bench done" marker) or a cap, then dump the tail.
-for i in $(seq 1 150); do
-  grep -q 'bench done' /tmp/bench.log 2>/dev/null && break
-  sleep 20
+set -euo pipefail
+
+: "${LOG_FILE:?Set LOG_FILE to the remaining-Sol controller log}"
+for ((i = 0; i < 150; i++)); do
+    if [[ -f "$LOG_FILE" ]] &&
+       grep -q '^PUBLISHED Sol n3 ' "$LOG_FILE" &&
+       grep -q '^PUBLISHED Sol full-small ' "$LOG_FILE"; then
+        tail -60 "$LOG_FILE"
+        exit 0
+    fi
+    sleep 20
 done
-echo "=== tail bench.log ==="
-tail -60 /tmp/bench.log
-echo "=== newest comparison json per profile ==="
-for p in small medium large; do ls -1t /root/codeact-poc/artifacts/comparisons/$p-*.json 2>/dev/null | head -1; done
+echo 'Timed out waiting for both publication markers; inspect controller status and checker results. No success inferred.' >&2
+exit 1

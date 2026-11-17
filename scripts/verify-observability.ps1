@@ -12,6 +12,9 @@ if ($Live) {
     $Mode = 'Live'
 }
 $Live = $Mode -eq 'Live'
+if ($Live) {
+    throw 'Legacy Live mode is retired: use scripts/vm/run-v3-profile.py with an explicit cohort and the README smoke/profile gates. No model request was made.'
+}
 $label = if ($Mode -eq 'Offline') { 'OFFLINE-CONTROL' } else { 'LIVE' }
 $repository = Split-Path $PSScriptRoot -Parent
 $dotnet = (Get-Command dotnet -ErrorAction Stop).Source
@@ -111,12 +114,12 @@ try {
     & $dotnet build -c Release --no-restore --verbosity quiet
     if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
     $testProjects = @(Get-ChildItem -LiteralPath (Join-Path $repository 'tests') -Filter '*.csproj' -File -Recurse | Sort-Object FullName | ForEach-Object FullName)
-    Invoke-TestGate 'Category!=LiveModel&Category!=Hyperlight' 255 'OFFLINE-CONTROL' (Join-Path $OutputRoot 'non-live-tests') $testProjects
+    Invoke-TestGate 'Category!=LiveModel&Category!=Hyperlight' 314 'OFFLINE-CONTROL' (Join-Path $OutputRoot 'non-live-tests') $testProjects
     if ($Mode -ne 'Offline') {
         $env:HYPERLIGHT_PYTHON_GUEST_PATH = $saved.HYPERLIGHT_PYTHON_GUEST_PATH
         $hyperlightProject = Join-Path (Join-Path (Join-Path $repository 'tests') 'SterlingVale.CodeAct.IntegrationTests') 'SterlingVale.CodeAct.IntegrationTests.csproj'
         Write-Output '[KNOWN ISSUE] Native mid-execution cancellation is unsupported by the pinned SDK; HyperlightKnownIssue is explicitly excluded, not passed.'
-        Invoke-TestGate 'Category=Hyperlight&Category!=HyperlightKnownIssue' 5 'LIVE' (Join-Path $OutputRoot 'hyperlight-tests') @($hyperlightProject)
+        Invoke-TestGate 'Category=Hyperlight&Category!=HyperlightKnownIssue' 6 'LIVE' (Join-Path $OutputRoot 'hyperlight-tests') @($hyperlightProject)
         if ($Mode -eq 'Hyperlight') { return }
         $env:AZURE_OPENAI_ENDPOINT = $saved.AZURE_OPENAI_ENDPOINT
     }

@@ -8,7 +8,7 @@ import statistics
 import subprocess
 from decimal import Decimal
 from pathlib import Path
-from cohort_config import COHORTS, validate_function_policy
+from cohort_config import COHORTS, load_reference, validate_function_policy
 
 
 def read(path):
@@ -39,11 +39,13 @@ def argument_errors(events):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("profile", choices=("n1", "n3", "full-small"))
-    parser.add_argument("--reference-comparison", type=Path, required=True)
+    parser.add_argument("--reference-comparison", type=Path, help="Optional historical comparison and sibling run metadata.")
     parser.add_argument("--summarize", action="store_true")
     parser.add_argument("--cohort", choices=tuple(COHORTS))
     parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
+    if not args.reference_comparison and not args.cohort:
+        args.cohort = "gpt-4o-v3-enforced"
     if not os.environ.get("ARTIFACTS_ROOT"):
         parser.error("ARTIFACTS_ROOT must name the v3 sweep directory.")
     root = Path(os.environ["ARTIFACTS_ROOT"]).resolve()
@@ -51,7 +53,7 @@ def main():
         parser.error("--smoke requires a Responses N=1 cohort and cannot enter summaries.")
     count = 1 if args.smoke else 5
     path = select_comparison(root / ("smoke-n1" if args.smoke else args.profile))
-    report, reference = read(path), read(args.reference_comparison.resolve())
+    report, reference = read(path), load_reference(args.reference_comparison)
     assert report["outcome"]["isValid"], report["outcome"]
     assert report["promptRevision"] == "exposure-analysis/v3"
     assert report["promptHash"] == reference["promptHash"]
@@ -59,8 +61,7 @@ def main():
     assert report["scopedHouseholdCount"] == {"n1": 1, "n3": 3, "full-small": 10}[args.profile]
     assert report["measuredTrials"] == count and report["warmupsPerMode"] == 1
     assert len(report["rawTrials"]) == 2 * count and len(report["warmupTrials"]) == 2
-    original = reference["rawTrials"][0]
-    ref_metadata = read(args.reference_comparison.resolve().parent.parent / "runs" / original["runId"] / "metadata.json")
+    ref_metadata = reference
     pricing = ref_metadata["pricingConfiguration"]
     if args.cohort:
         first = report["rawTrials"][0]
@@ -85,7 +86,7 @@ def main():
         f"in={number(pricing['inputPerMillion'])};out={number(pricing['outputPerMillion'])}".encode()).hexdigest()
     for side in ("classicFingerprints", "codeActFingerprints"):
         for key in (("prompt", "schema", "tools", "dataset") if args.cohort else ("prompt", "schema", "tools", "dataset", "model")):
-            assert report["fairness"][side][key] == reference["fairness"][side][key], (side, key)
+            assert report["fairness"][side][key] == reference["fingerprints"][key], (side, key)
         if not args.cohort:
             assert report["fairness"][side]["pricing"] == price_hash
     for trial in report["rawTrials"] + report["warmupTrials"]:

@@ -9,15 +9,16 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--reference-comparison", required=True, type=Path)
+    parser.add_argument("--reference-comparison", type=Path, help="Optional historical comparison and sibling run metadata.")
     parser.add_argument("--gpt4o-root", required=True, type=Path)
     parser.add_argument("--sol-root", required=True, type=Path)
     parser.add_argument("--log-root", required=True, type=Path)
     parser.add_argument("--profiles", nargs="+", choices=("n3", "full-small"), default=["n3", "full-small"])
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[2]
-    reference, gpt4o, sol, logs = (path.resolve() for path in
-                                 (args.reference_comparison, args.gpt4o_root, args.sol_root, args.log_root))
+    gpt4o, sol, logs = (path.resolve() for path in (args.gpt4o_root, args.sol_root, args.log_root))
+    reference_args = (["--reference-comparison", str(args.reference_comparison.resolve())]
+                      if args.reference_comparison else [])
     logs.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, ARTIFACTS_ROOT=str(sol), AZURE_OPENAI_DEPLOYMENT_NAME="gpt-6.1-sol")
     scripts = repo / "scripts" / "vm"
@@ -27,7 +28,7 @@ def main():
         with (logs / f"sol-{profile}.log").open("x") as log:
             for name in ("run-v3-profile.py", "check-v3-profile.py"):
                 command = ["python3", str(scripts / name), profile, "--cohort", "gpt-6.1-sol-v3",
-                           "--reference-comparison", str(reference)]
+                           *reference_args]
                 with subprocess.Popen(command, cwd=repo, env=env, stdout=subprocess.PIPE,
                                       stderr=subprocess.STDOUT, text=True, bufsize=1) as process:
                     for line in process.stdout:

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Offline behavioral checks for the committed cohort report."""
 import importlib.util
+import json
 import subprocess
 import tempfile
 import unittest
 from decimal import Decimal
 from pathlib import Path
 from unittest import mock
-from cohort_config import COHORTS, validate_function_policy
+from cohort_config import COHORTS, DEFAULT_REFERENCE, load_reference, validate_function_policy
 
 spec = importlib.util.spec_from_file_location("cohort_report", Path(__file__).with_name("report-v3-cohorts.py"))
 report = importlib.util.module_from_spec(spec)
@@ -15,6 +16,99 @@ spec.loader.exec_module(report)
 resume_spec = importlib.util.spec_from_file_location("resume_sol", Path(__file__).with_name("resume-sol-v3.py"))
 resume = importlib.util.module_from_spec(resume_spec)
 resume_spec.loader.exec_module(resume)
+runner_spec = importlib.util.spec_from_file_location("profile_runner", Path(__file__).with_name("run-v3-profile.py"))
+runner = importlib.util.module_from_spec(runner_spec)
+runner_spec.loader.exec_module(runner)
+
+
+class ReferenceTests(unittest.TestCase):
+    def test_profile_launch_defaults_to_committed_reference_without_historical_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            guest = root / "guest.aot"
+            guest.touch()
+            env = dict(AZURE_OPENAI_ENDPOINT="https://example.invalid/",
+                       AZURE_OPENAI_DEPLOYMENT_NAME="gpt-6.1-sol",
+                       HYPERLIGHT_PYTHON_GUEST_PATH=str(guest), DATASET_ROOT=str(root / "data"),
+                       ARTIFACTS_ROOT=str(root / "cohort"))
+            argv = ["run-v3-profile.py", "n1", "--cohort", "gpt-6.1-sol-v3"]
+            with mock.patch("sys.argv", argv), mock.patch.dict(runner.os.environ, env, clear=True), \
+                    mock.patch.object(runner.subprocess, "check_output", side_effect=["", "a" * 40]), \
+                    mock.patch.object(runner.subprocess, "run") as validate, \
+                    mock.patch.object(runner, "verify", return_value={"verified": True}), \
+                    mock.patch.object(runner.os, "chdir"), mock.patch.object(runner.os, "execvpe") as execute, \
+                    mock.patch("builtins.print"):
+                runner.main()
+            validate.assert_called_once()
+            launched = execute.call_args.args[2]
+            self.assertEqual("responses", launched["MODEL_API_MODE"])
+            self.assertEqual("20", launched["BENCHMARK_MAX_TURNS"])
+            self.assertEqual("0", launched["CLASSIC_BATCH_SIZE"])
+            self.assertEqual("medium", launched["MODEL_DEFAULT_REASONING_EFFORT"])
+            launch = json.loads((root / "cohort" / "n1" / "launch.json").read_text())
+            self.assertEqual(load_reference()["referenceId"], launch["referenceComparison"])
+
+    def test_default_reference_is_portable_without_any_run_metadata(self):
+        value = load_reference()
+        self.assertEqual("exposure-analysis/v3", value["promptRevision"])
+        self.assertEqual(value["promptHash"], value["fingerprints"]["prompt"])
+        self.assertTrue(DEFAULT_REFERENCE.is_file())
+        self.assertNotIn("rawTrials", value)
+
+    def test_explicit_historical_reference_preserves_its_fingerprints_and_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "comparisons").mkdir()
+            (root / "runs" / "trial").mkdir(parents=True)
+            metadata = dict(modelConfiguration=dict(maxTurns=20), pricingConfiguration=dict(inputPerMillion=2.5))
+            (root / "runs" / "trial" / "metadata.json").write_text(json.dumps(metadata))
+            fingerprints = dict(prompt="hash", schema="schema", tools="tools", dataset="data")
+            value = dict(comparisonId="historical", promptRevision="exposure-analysis/v3",
+                         promptHash="hash", outcome=dict(isValid=True), rawTrials=[dict(runId="trial")],
+                         fairness=dict(classicFingerprints=fingerprints, codeActFingerprints=fingerprints))
+            path = root / "comparisons" / "comparison.json"
+            path.write_text(json.dumps(value))
+            loaded = load_reference(path)
+            self.assertEqual(fingerprints, loaded["fingerprints"])
+            self.assertEqual(metadata["modelConfiguration"], loaded["modelConfiguration"])
+            value["outcome"]["isValid"] = False
+            path.write_text(json.dumps(value))
+            with self.assertRaises(ValueError):
+                load_reference(path)
+
+
+class ProvisionPlanTests(unittest.TestCase):
+    def test_plan_uses_corporate_sources_on_both_nsgs_and_accepts_public_key_formats(self):
+        script = Path(__file__).resolve().parents[1] / "provision-vm.sh"
+        with tempfile.TemporaryDirectory() as directory:
+            public_key = Path(directory) / "fixture.pub"
+            for algorithm in ("ssh-ed25519", "ssh-rsa", "ecdsa-sha2-nistp256",
+                              "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521"):
+                with self.subTest(algorithm=algorithm):
+                    public_key.write_text(f"{algorithm} fixture\n")
+                    result = subprocess.run(["bash", str(script), "--subscription", "fixture",
+                                             "--ssh-public-key", str(public_key)], check=True,
+                                            capture_output=True, text=True)
+                    rules = [line for line in result.stdout.splitlines()
+                             if line.startswith("az network nsg rule create") and "AllowSshFromCorpNet" in line]
+                    self.assertEqual(2, len(rules))
+                    self.assertTrue(all("--source-address-prefixes CorpNetPublic" in line for line in rules))
+                    self.assertTrue(any("--nsg-name codeact-validation-subnet-nsg" in line for line in rules))
+                    self.assertIn("--network-security-group codeact-validation-subnet-nsg", result.stdout)
+                    self.assertIn("--nsg codeact-validation-nsg", result.stdout)
+                    self.assertIn("AllowBringYourOwnPublicIpAddress", result.stdout)
+                    self.assertNotIn("CurrentIp", result.stdout)
+                    self.assertIn("PLAN ONLY", result.stdout)
+
+    def test_private_or_unsupported_key_input_is_rejected_without_provisioning(self):
+        with tempfile.TemporaryDirectory() as directory:
+            key = Path(directory) / "fixture"
+            key.write_text("not-a-public-key\n")
+            result = subprocess.run(["bash", str(Path(__file__).resolve().parents[1] / "provision-vm.sh"),
+                                     "--subscription", "fixture", "--ssh-public-key", str(key)],
+                                    capture_output=True, text=True)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("PUBLIC key", result.stderr)
 
 
 class WithinModelTests(unittest.TestCase):
@@ -62,7 +156,7 @@ class WithinModelTests(unittest.TestCase):
 
 
 class ContinuationTests(unittest.TestCase):
-    def run_mocked(self, directory, *, infrastructure_failure=False, push_failure=False):
+    def run_mocked(self, directory, *, infrastructure_failure=False, push_failure=False, reference=True):
         commands = []
         def start(command, **kwargs):
             commands.append(command)
@@ -75,9 +169,10 @@ class ContinuationTests(unittest.TestCase):
             commands.append(command)
             if push_failure and command[:2] == ["git", "push"]:
                 raise subprocess.CalledProcessError(1, command)
-        argv = ["resume-sol-v3.py", "--reference-comparison", str(directory / "reference.json"),
-                "--gpt4o-root", str(directory / "4o"), "--sol-root", str(directory / "sol"),
+        argv = ["resume-sol-v3.py", "--gpt4o-root", str(directory / "4o"), "--sol-root", str(directory / "sol"),
                 "--log-root", str(directory)]
+        if reference:
+            argv += ["--reference-comparison", str(directory / "reference.json")]
         with mock.patch("sys.argv", argv), mock.patch.object(resume.subprocess, "Popen", side_effect=start), \
                 mock.patch.object(resume.subprocess, "run", side_effect=run), \
                 mock.patch.object(resume.subprocess, "check_output", return_value="a" * 40), \
@@ -88,6 +183,14 @@ class ContinuationTests(unittest.TestCase):
             else:
                 resume.main()
         return commands
+
+    def test_continuation_uses_committed_reference_by_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            commands = self.run_mocked(Path(directory), reference=False)
+            children = [command for command in commands if command[0] == "python3"
+                        and command[1].endswith(("run-v3-profile.py", "check-v3-profile.py"))]
+            self.assertEqual(4, len(children))
+            self.assertTrue(all("--reference-comparison" not in command for command in children))
 
     def test_check_report_commit_and_push_precede_the_next_profile_and_progress_is_persisted(self):
         with tempfile.TemporaryDirectory() as directory:

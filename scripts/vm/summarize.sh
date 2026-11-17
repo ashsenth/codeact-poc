@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Print a compact, human-readable summary of the newest comparison JSON per profile.
+set -euo pipefail
+: "${ARTIFACTS_ROOT:?Set ARTIFACTS_ROOT to the explicit comparison root}"
 python3 - <<'PY'
 import json, glob, os
 
@@ -10,7 +12,7 @@ def find(d, *names):
     return None
 
 for prof in ('small', 'medium', 'large'):
-    files = sorted(glob.glob(f'/root/codeact-poc/artifacts/comparisons/{prof}-*.json'))
+    files = sorted(glob.glob(os.path.join(os.environ['ARTIFACTS_ROOT'], 'comparisons', f'{prof}-*.json')))
     if not files:
         print(f'[{prof}] (no results yet)')
         continue

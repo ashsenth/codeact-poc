@@ -1,5 +1,11 @@
 # Full-Small correctness diagnosis: pair 1, H0001
 
+This is historical v2 evidence, not the current scorer/runbook. The later shared
+v3 prompt and completeness detection now report missing components with unavailable
+numeric metrics and `UnearnedCompleteness`; they do not rescore this preserved sample.
+See the [canonical methodology](../benchmark-methodology.md#validity-rules) and
+[current results](../v3-responses-results.md).
+
 ## Finding and first divergence
 
 CodeAct's first returned household has **USD 826,579.16**, which matches the unchanged

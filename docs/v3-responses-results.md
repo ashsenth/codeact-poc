@@ -1,6 +1,6 @@
 # v3 enforced stateless Responses: results
 
-See [configuration, pricing, audit and gates](v3-enforced-cohorts.md). Historical cohorts and isolated smoke pairs are excluded.
+See [configuration, pricing, audit and gates](v3-enforced-cohorts.md) and [canonical validity rules](benchmark-methodology.md#validity-rules). Historical cohorts and isolated smoke pairs are excluded.
 Five measured pairs per completed scope. Correct = Exact/WithinTolerance. All measured outcomes remain in medians; warm-ups excluded.
 Output/total tokens include reasoning once; R = median reasoning, V = median visible output, C = median cached input.
 Analysis excludes recorded retry wait; the unchanged 120-second deadline includes waiting. Cost uses per-request Azure retail cache/context rates, not an invoice.

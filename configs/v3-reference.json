@@ -1,0 +1,39 @@
+{
+  "referenceVersion": 1,
+  "referenceId": "exposure-analysis/v3-small",
+  "derivedFrom": "small-20261116204456-a702d6024c2a4eb1afcc742408d492f0-reclassified",
+  "promptRevision": "exposure-analysis/v3",
+  "promptHash": "f0cf5bce1c07cceb82ef7e9b2552788dc6154f7eb5e7b4a61a0e8d4d426b667c",
+  "fingerprints": {
+    "prompt": "f0cf5bce1c07cceb82ef7e9b2552788dc6154f7eb5e7b4a61a0e8d4d426b667c",
+    "schema": "0317a7103198e7334d459d44e378119813c4e44d64b1d2a440c4537e1a0f4fb2",
+    "tools": "0306cd96ac9cfa1fdf76cdd3c82a67058f2e1cbdc1837e64eccf632214b6d71e",
+    "dataset": "f686013740692996ccae5dcc82d626b76ffba902d27a84e07842666100c7f684",
+    "pricing": "1d3ecc56b26a79ade912464e4e17a7d00548faeb991f10846bb3a8e06a2ad41c"
+  },
+  "modelConfiguration": {
+    "maxTurns": 20,
+    "timeoutSeconds": 120,
+    "responseFormat": "json_schema",
+    "responseSchemaId": "exposure-report/v2",
+    "responseSchemaHash": "b2900d5996f3e35cdfd52345579e31dbfd14fbe77152dbbeac67ef3345fbf9dd",
+    "strict": false,
+    "parallel_tool_calls": true,
+    "maxOutputTokens": 16384
+  },
+  "executionPolicy": {
+    "apiMode": "responses",
+    "store": false,
+    "contextPolicy": "full-context/no-previous-response-id/v1",
+    "turnLimitEnforcement": "model-request-boundary/v1",
+    "functionInvocationPolicy": "sequential-within-response/v1",
+    "classicBatchSize": 0
+  },
+  "pricingConfiguration": {
+    "inputPerMillion": 2.5,
+    "outputPerMillion": 10,
+    "sourceUrl": "https://prices.azure.com/api/retail/prices?%24filter=productName%20eq%20%27Azure%20OpenAI%27%20and%20armRegionName%20eq%20%27eastus%27%20and%20contains(meterName,%27gpt%204o%201120%27)",
+    "verifiedOn": "2026-11-16",
+    "basis": "Historical reference: USD retail; gpt-4o 2024-11-20; GlobalStandard; eastus; uncached input. New Responses cohorts replace this with verified per-request cache/context rates from scripts/vm/cohort_config.py."
+  }
+}

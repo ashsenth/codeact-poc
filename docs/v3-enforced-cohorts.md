@@ -1,5 +1,19 @@
 # New v3 enforced, stateless Responses cohorts
 
+## Final status (November 17, 2026)
+
+All six measured profiles completed and were checked/pushed. Sol N=3 was published
+as `1b55bea6871614a1f564381f416519582a9ae909`; full Small as
+`6a50d817dc485fb49344133d3f081363bf45de09`. Sol Classic was correct 5/5 at N=1,
+but timed out 5/5 at each larger scope. Sol CodeAct was correct 5/5 in every scope,
+with one measured returned overflow in each larger scope. These are not
+correctness-equivalent comparisons outside N=1. See [final results](v3-responses-results.md)
+and [README](../README.md#results-gpt-61-sol-v3).
+
+Everything below describing a stop/hold is a **dated historical record**, superseded
+by that completed continuation, not a current instruction to launch or wait.
+Current [validity rules](benchmark-methodology.md#validity-rules) are canonical.
+
 November 17, 2026. Historical gpt-4o v3 is **not** the clean baseline: its
 post-return-only turn checks allowed four of 15 Classic and one of 15 CodeAct
 measured trials to exceed 20 requests. Those trials, scores and summaries remain
@@ -84,16 +98,12 @@ Actual retry waits are measured around the SDK's unchanged retry policy, includi
 cancellation; 429 counts include the terminal exhausted response. Wait is excluded
 from **analysis duration**, retained in process-inclusive duration and disclosed
 separately. The 120-second deadline is unchanged and still includes waiting.
-Exhausted retries/auth/transport failures remain infrastructure.
+See the [canonical validity rules](benchmark-methodology.md#validity-rules) for
+exhausted retries, authentication and transport failures.
 
-Model outcomes (including TurnLimitReached, invalid/incomplete answers and timeout)
-do not stop profiles. Under the revised approved rule, a shared-output-buffer abort
-is a **model-visible environment constraint** when the execution error is returned
-and its matching function result is carried into a subsequent model request.
-`SandboxOutputOverflow` remains a per-trial count, including warm-ups; recovery
-does not erase that count. A host crash or sandbox failure without that delivery
-and continuation evidence remains infrastructure. Infrastructure failure
-invalidates the comparison and stops further launches.
+Classification and stop/continue decisions use the
+[canonical validity rules](benchmark-methodology.md#validity-rules), including
+returned-overflow delivery/continuation evidence and separate warm-up counters.
 
 The request journal now records function-result call IDs independently of the
 65,536-character payload capture, so large history captures cannot hide delivery
@@ -124,6 +134,15 @@ Use the committed [runner](../scripts/vm/run-v3-profile.py) and
 `ARTIFACTS_ROOT`; Azure CLI and SDK authentication must have both inference access
 and deployment metadata read access. No key/token belongs in a manifest or log.
 Paths are caller-provided, never session-local constants in scripts.
+
+Fresh clones default to the committed [v3 reference contract](../configs/v3-reference.json).
+It preserves prompt/schema/tool/dataset fingerprints and limits from the original
+valid comparison, and records the current execution/concurrency policy separately.
+No historical artifacts are required. `--reference-comparison` is optional and retains
+the historical comparison-plus-sibling-metadata path for explicit legacy reproduction.
+Without that flag or `--cohort`, run/check default to `gpt-4o-v3-enforced`; pass
+`--cohort gpt-6.1-sol-v3` for Sol. Follow the [current runbook](../README.md#running-current-cohorts);
+the commands below describe the historical sequence.
 
 `ARTIFACTS_ROOT` must be a **different new directory per cohort**. Set the deployment
 to the matching cohort. The valid historical v3 reference is used only to preserve
@@ -255,7 +274,7 @@ helper and streams every child stdout/stderr line to the outer persistent log,
 while also retaining per-profile logs. Offline tests verify that checker, report,
 commit and push precede the following profile, and that infrastructure or
 publication failure prevents that launch. See [manual environment and launch
-commands](../README.md#reproducing-v3-runs-and-derived-reports).
+commands](../README.md#remaining-sol-controller-and-completion-signals).
 
 Profiles used the committed runner under managed background supervision, not
 literal `nohup`. Both deployments retained their pinned versions throughout all

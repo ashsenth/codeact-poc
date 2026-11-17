@@ -5,24 +5,21 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from cohort_config import COHORTS, configure_environment, verify
+from cohort_config import COHORTS, configure_environment, load_reference, verify
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("profile", choices=("n1", "n3", "full-small"))
-    parser.add_argument("--reference-comparison", type=Path, required=True)
+    parser.add_argument("--reference-comparison", type=Path, help="Optional historical comparison and sibling run metadata.")
     parser.add_argument("--cohort", choices=tuple(COHORTS))
     parser.add_argument("--smoke", action="store_true", help="One N=1 pair, isolated from measured profiles.")
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[2]
-    reference = args.reference_comparison.resolve()
-    report = json.loads(reference.read_text())
-    if report["promptRevision"] != "exposure-analysis/v3" or not report["outcome"]["isValid"]:
-        parser.error("The reference must be a valid v3 comparison.")
-    trial = report["rawTrials"][0]
-    metadata = json.loads((reference.parent.parent / "runs" / trial["runId"] / "metadata.json").read_text())
-    model, pricing = metadata["modelConfiguration"], metadata["pricingConfiguration"]
+    report = load_reference(args.reference_comparison)
+    if not args.reference_comparison and not args.cohort:
+        args.cohort = "gpt-4o-v3-enforced"
+    model, pricing = report["modelConfiguration"], report["pricingConfiguration"]
     if (model["maxTurns"], model["timeoutSeconds"], model["strict"], model["parallel_tool_calls"]) != (20, 120, False, True):
         parser.error("The reference does not use the approved limits/output settings.")
     for key in ("AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_DEPLOYMENT_NAME", "HYPERLIGHT_PYTHON_GUEST_PATH",
@@ -66,7 +63,7 @@ def main():
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
     (root / "launch.json").write_text(json.dumps({
         "sourceCommit": commit, "profile": args.profile, "trials": count, "cohort": args.cohort, "smoke": args.smoke,
-        "referenceComparison": report["comparisonId"], "promptHash": report["promptHash"],
+        "referenceComparison": report["referenceId"], "promptHash": report["promptHash"],
         "maxTurns": 20, "timeoutSeconds": 120,
     }, indent=2) + "\n")
     if verification:

@@ -61,7 +61,9 @@ Binary SHA-256 evidence:
 On the VM, `while True: pass` exceeded the existing test's five-second cancellation and ran
 for over six minutes until the test process was externally terminated. All original assertions
 remain. The test additionally carries `HyperlightKnownIssue`; the runtime gate explicitly
-excludes that category and requires **five actual passes**, never six.
+excludes that category. At that investigation it required five actual passes;
+the later overflow regression brings the current supported selection to **six**.
+The excluded cancellation test is never counted as passed.
 
 The approved benchmark workaround is supervised process isolation for both modes, warm-ups
 and Classic batches. At the configured per-run wall-time deadline the supervisor kills/reaps

@@ -1,8 +1,9 @@
 # Architecture
 
 Sterling Vale CodeAct is a controlled A/B comparison of two agent orchestrations over an
-**identical** application: **Classic** direct tool-calling vs **CodeAct** via
-`HyperlightCodeActProvider`. Everything except the orchestration wiring is shared.
+shared application: **Classic** direct tool-calling vs **CodeAct** via
+`HyperlightCodeActProvider`. The shared prompt body, tools and output contract match;
+mechanism addenda and model-facing tool surfaces intentionally differ.
 
 ## Dependency direction
 
@@ -60,7 +61,7 @@ resolves the snapshot, builds the shared tool service, computes fairness fingerp
 mode's agent, and runs it through `AnalysisRunner` (usage aggregation, turn/tool counting, timeout,
 turn cap, schema validation, raw-output capture) → `FileRunStore` persists artifacts → response DTO.
 
-The shared prompt is `exposure-analysis/v2`; its embedded `exposure-report/v2` schema requires
+The shared prompt is `exposure-analysis/v3`; its embedded `exposure-report/v2` schema requires
 `status` (`complete` or `incomplete`) and `missingItems` (strings). Incomplete requires at least
 one missing item, may omit unsupported households, and is retained as run status `Incomplete`.
 The scorer always classifies it Partial, never Exact/WithinTolerance; execution, schema validity
@@ -142,9 +143,10 @@ Failure events retain a safe category, HTTP status, allowlisted service code and
 guidance; raw provider messages/URLs/credentials are never copied. Normal console output prints
 full identity only at RUN STARTED, then a short run prefix; verbose/debug and journals retain
 full identity. Warm-ups carry `isWarmup` on context and every event, are persisted, and are excluded
-from measured trials. Completion/correctness precede telemetry validity in reports. Any failed or
-not-executed measured attempt invalidates the comparison and suppresses aggregate performance
-statistics in console, JSON, Markdown, HTML and scaling views while retaining raw trial evidence.
+from measured trials. Completion/correctness precede telemetry validity in reports.
+The [canonical validity rules](benchmark-methodology.md#validity-rules) distinguish
+infrastructure failures from recorded model outcomes, including returned overflow;
+this architecture document does not define a separate policy.
 Each run also persists `summary.json` with the final model finish reason, final-response output tokens,
 a redacted preview (up to 240 characters), all eight tool names including zero counts, and saved-source
 UTF-8 byte totals. These compact diagnostics are deliberately retained independently of payload mode.

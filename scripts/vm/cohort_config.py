@@ -6,6 +6,31 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
+
+
+DEFAULT_REFERENCE = Path(__file__).resolve().parents[2] / "configs" / "v3-reference.json"
+
+
+def load_reference(comparison=None):
+    """Load the portable contract, or an explicitly selected historical comparison."""
+    path = (comparison or DEFAULT_REFERENCE).resolve()
+    value = json.loads(path.read_text(), parse_float=Decimal)
+    if comparison is None:
+        if value["referenceVersion"] != 1:
+            raise ValueError("Unsupported committed reference version.")
+        return value
+    if value["promptRevision"] != "exposure-analysis/v3" or not value["outcome"]["isValid"]:
+        raise ValueError("The reference must be a valid v3 comparison.")
+    metadata = json.loads((path.parent.parent / "runs" / value["rawTrials"][0]["runId"] /
+                           "metadata.json").read_text(), parse_float=Decimal)
+    fingerprints = value["fairness"]["classicFingerprints"]
+    if fingerprints != value["fairness"]["codeActFingerprints"]:
+        raise ValueError("Reference comparison has mismatched fingerprints.")
+    return dict(referenceId=value["comparisonId"], promptRevision=value["promptRevision"],
+                promptHash=value["promptHash"], fingerprints=fingerprints,
+                modelConfiguration=metadata["modelConfiguration"],
+                pricingConfiguration=metadata["pricingConfiguration"])
 
 
 SOL_FILTER = ("productName eq 'Azure OpenAI GPT6' and armRegionName eq 'eastus' "

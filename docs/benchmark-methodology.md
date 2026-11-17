@@ -1,7 +1,10 @@
 # Benchmark methodology
 
 The benchmark performs a controlled A/B comparison whose **only intentional variable is
-orchestration** (Classic vs CodeAct). This document explains how it stays scientifically defensible.
+orchestration** (Classic vs CodeAct). The shared prompt body is fingerprinted; mechanism
+addenda and model-facing tool surfaces intentionally differ. Matching hashes establish
+configuration consistency, not scientific equivalence alone. This is the canonical source
+for validity rules; dated reports retain the historical policy in force at execution.
 
 ## Paired trials
 
@@ -85,7 +88,7 @@ These checks happen after execution for detection/reporting only, with no feedba
 Collections are sorted by stable keys before comparison. Two outputs are equivalent only when their
 normalized structured data matches — never because prose looks similar.
 
-## Reporting
+## Validity rules
 
 - **Comparison INVALID / stop sweep** means infrastructure/harness failure: auth or model-call
   errors, worker crash, missing guest, fairness/config/prompt-hash mismatch, missing/unpaired
@@ -94,13 +97,36 @@ normalized structured data matches — never because prose looks similar.
 - Explicit tool input errors (`ToolArgumentException` / `ToolNotFoundException`) returned to
   the model with a subsequent model request are model behavior, not infrastructure. Their
   `toolArgumentErrors` count is recorded per trial, deduplicating host/model wrapper events;
-  totals appear beside correctness in summaries. Other tool implementation exceptions and
-  actual sandbox/runtime faults remain infrastructure even when the agent later continues.
-  Warm-up task outcomes/counts are recorded separately and do not stop the sweep. Errors
-  without evidence of model continuation are not silently exempted.
+  totals appear beside correctness in summaries. Tool implementation exceptions and actual
+  sandbox/runtime faults remain infrastructure, with the narrowly evidenced returned-overflow
+  exception below. Warm-up task outcomes/counts are recorded separately and do not stop the
+  sweep. Errors without evidence of model continuation are not silently exempted.
+- A `SandboxOutputOverflow` is a counted **model-visible environment constraint** only
+  when the failure envelope is returned for that invocation and its matching function-result
+  call ID is carried in a subsequent model request. The provider catches the guest
+  serialization abort; this is not silent truncation. Recovery does not erase the overflow
+  count. A host crash, other runtime fault, unreturned error or absent delivery/continuation
+  evidence remains infrastructure. This rule applies equally to measured runs and warm-ups;
+  warm-up counts are never mixed into measured totals.
 - **Comparison VALID / recorded** does not mean model success. InvalidSchema, Partial,
   UnearnedCompleteness, declared incomplete, turn cap and TimedOut at the configured deadline are task outcomes;
   they do not stop the sweep when harness evidence reconciles.
+
+`TurnLimitReached` uses existing wire status `Capped`: request N+1 is blocked before
+dispatch, while a final answer on request N is allowed. Each analysis uses a separate
+worker process. At the configured deadline the parent kills/reaps its process tree;
+this watchdog contains native execution but is not native SDK cancellation. Standalone
+API hosts have no equivalent worker watchdog. A worker crash unrelated to the deadline
+is infrastructure.
+
+Immutable derived reclassification must identify its source and preserve original
+trials/statuses/scores/measurements. Zero measured pairs remain invalid for missing
+pairs even if a warm-up infrastructure classification changes. Never erase/retry away
+model outcomes or blend smoke, controls, aborted attempts and derived duplicates into
+measured cohorts.
+
+## Reporting
+
 - `median`, `min`, `max`, and every individual trial are reported. **No trial is removed** (failed
   or slow model task outcomes are kept). Correctness is shown first with both modes' full
   per-trial metrics and medians. Unknown measurements stay unavailable, not zero.
@@ -117,14 +143,17 @@ normalized structured data matches — never because prose looks similar.
 - Summary token medians are medians of each trial's total usage; analysis duration is not
   substituted with process-inclusive duration. A missing measurement makes that median
   unavailable rather than dropping the trial.
-- Analysis duration is the service's run metric; process-inclusive wall time additionally
-  includes worker startup/transport. Both modes use the same watchdog and accounting.
+- Analysis duration is the service's run metric, excluding recorded retry wait in current
+  Responses cohorts; retry waits and actual HTTP 429s are recorded separately.
+  Process-inclusive wall time and the worker deadline include waiting and startup/transport.
+  Both modes use the same watchdog and accounting.
 - Cost is an estimate from observed tokens and configured retail USD rates, not an invoice.
-  Pricing provenance/date/basis are recorded in run metadata when configured. The verified
-  GPT-4o 2024-11-20 GlobalStandard East US rates on November 16, 2026 are USD 2.50 input /
-  10.00 output per million, from the official Azure Retail Prices API (see README and
-  `.env.example`). Cached-input discounts, negotiated rates, unreported usage and infrastructure
-  charges are not included.
+  Pricing provenance/date/basis are recorded in run metadata. Historical Chat Completions
+  estimates used uncached GPT-4o input/output rates (USD 2.50 / 10.00 per million).
+  Current Responses cohorts use per-request cache-read/cache-write and context-tier rates;
+  reasoning is already output, never an additional charge. See
+  [verified meters and rate table](v3-enforced-cohorts.md#verified-retail-pricing).
+  Negotiated discounts, unreported usage and infrastructure charges are excluded.
 - Pricing fingerprints normalize decimal numeric values (`2.50` equals `2.5`); changing a
   numeric rate still changes the hash. Historical raw hashes/data are never rewritten.
   `reclassify --comparison <json> --source-root <root>` derives a separate comparison from raw

@@ -1,5 +1,13 @@
 # Optional x64 validation workflow
 
+**Historical validation ledger.** For current commands, provisioning, corporate VPN
+and dual CorpNetPublic NSGs, feature registration, deploy keys and VM lifecycle use
+the [README runbook](../../README.md#ubuntu-x64-vm-and-real-hyperlight).
+The current supported runtime selection has six tests; the native-cancellation
+known issue remains excluded, not passed. Earlier five-pass counts below are dated.
+Validity is defined by the [canonical methodology](../benchmark-methodology.md#validity-rules),
+not by historical classifications in this ledger.
+
 ## Request-budget and sandbox-capacity gate (November 17, 2026)
 
 The [infrastructure report](../infrastructure-gate-20261117.md) records the shared
@@ -262,7 +270,7 @@ recorded in the dated Phase B section; the complete helper workflow is not yet v
 - A Python guest matching the pinned Hyperlight package version, not an arbitrary guest build.
 - Authorized Azure OpenAI access, deployment configuration and sufficient request capacity.
 - A Release build and generated Small/Medium/Large data, as in the README.
-- Five actual supported Hyperlight test passes, not skips; explicitly exclude the retained
+- Six actual supported Hyperlight test passes, not skips; explicitly exclude the retained
   `HyperlightKnownIssue` cancellation test until the SDK supports interrupting native execution.
 
 An Azure VM must support nested virtualization. A catalog capability or SKU family document
@@ -275,15 +283,16 @@ must not be assumed to provide the required hypervisor device.
 | --- | --- |
 | [provision-vm.sh](../../scripts/provision-vm.sh) | Prints a plan by default; `--approved-create` can create resources only after explicit approval and metadata checks. Requires a new dedicated resource group. |
 | [bootstrap-vm.sh](../../scripts/bootstrap-vm.sh) | Prints a plan by default; `--approved-install` installs host packages, SDK and matching guest and changes KVM group membership. Reconnect before relying on new permissions. |
-| [verify-observability.ps1](../../scripts/verify-observability.ps1) | Offline, Hyperlight-only or Live gates. Preserves its selected environment values, uses isolated TRX directories and rejects skipped runtime tests. |
-| [older VM helpers](../../scripts/vm/) | Historical setup/download/run/summarize workflow; not reverified here. |
+| [verify-observability.ps1](../../scripts/verify-observability.ps1) | Offline or Hyperlight-only acceptance gates; legacy Live mode is retired before inference. Preserves selected environment, isolates TRX, and rejects skips. Use README commands for current cohorts. |
+| [VM helpers](../../scripts/vm/) | Setup/run compatibility entry points now delegate to approved bootstrap/cohort runners; download and summary helpers use caller/repository paths, not a root-user checkout. |
 
-The provisioning defaults reviewed previously were Ubuntu 24.04 x64, D4s v5, SSH public-key
-authentication, an SSH source IPv4 /32, otherwise denied inbound traffic, a 64 GiB Standard SSD
-and Standard public IPv4. Review the script's actual printed plan before approval.
-**Known open bug:** ECDSA public-key validation rejects valid ECDSA algorithm tokens; do not
-interpret that rejection as a private-key detection result. See finding D3 in the
-[POC review](poc-demo-review.md).
+The current provisioning plan uses Ubuntu 24.04 x64, D4s v5, SSH public-key
+authentication, CorpNetPublic TCP 22 rules on both NIC and subnet NSGs, a 64 GiB
+Standard SSD and Standard public IPv4. It requires the corporate VPN and
+Microsoft.Network/AllowBringYourOwnPublicIpAddress feature registration. Policy can
+delete SSH rules; follow the README inspection/recreation instructions.
+The historical ECDSA token validation defect is fixed; plan tests cover accepted
+public-key formats. Review the actual printed plan before approval.
 
 The old compute-only estimate was USD 0.192/hour in westus2, checked November 3, 2026.
 It is **not a current price or budget approval**. Disk, public IP, egress and Azure OpenAI are
@@ -309,9 +318,8 @@ $validation = Join-Path scripts verify-observability.ps1
 & $validation -Mode Live -Trials 1
 ```
 
-The Live preflight makes a small Azure call. Full Live mode restores/builds, requires all 236
-non-live passes and five actual guest passes, explicitly excluding `HyperlightKnownIssue`,
-then runs profiles sequentially. It requires exact
+Legacy Live mode is now retired before any inference; use the README's committed
+cohort runner instead. The old acceptance helper required exact
 oracle results, valid telemetry and actual code-execution completion without stand-in events.
 The benchmark now separates task outcomes from infrastructure validity; this optional stricter
 acceptance helper still requires exact oracle matches and actual guest execution. Live benchmark

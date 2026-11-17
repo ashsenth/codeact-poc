@@ -1,5 +1,10 @@
 # Infrastructure gate: request limits and sandbox output capacity
 
+This is a dated infrastructure investigation. Current comparison classification,
+including the later returned-overflow exception, is defined by the
+[canonical validity rules](benchmark-methodology.md#validity-rules); historical
+statuses below remain unchanged. Current results/runbook: [README](../README.md).
+
 November 17, 2026. **No live model runs. No prompt, schema, oracle, scorer, tool,
 dataset or dependency changes.** Historical trial data and generated summaries remain
 unchanged. Medium/Large sandbox controls were **not run**, because the pinned SDK

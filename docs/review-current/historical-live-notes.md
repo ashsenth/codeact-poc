@@ -1,6 +1,8 @@
 # Historical live-run notes from the previous README
 
 **Archived claims - NOT RE-VERIFIED. Not current validation evidence.**
+Current validity rules are defined by the [methodology](../benchmark-methodology.md#validity-rules);
+current supported scope and results are in the [README](../../README.md).
 Source: `README.md` at commit `03cb30a` (September 29, 2026) for the numerical table, placeholder
 and approximately 16 KB explanation; commit `5a65c6e` (September 29, 2026) for the 54-81-call
 and anti-placeholder-prompt narrative. These are source commit dates, not verified execution dates.
