@@ -34,6 +34,7 @@ public sealed record ModelConfiguration
     [JsonPropertyName("parallel_tool_calls")]
     public bool AllowMultipleToolCalls => true;
     public int MaxOutputTokens => 16384;
+    public string TurnLimitEnforcement => "model-request-boundary/v1";
 
     public string DescribeOutputSettings() =>
         $"Model output: response_format={ResponseFormat}; parallel_tool_calls={AllowMultipleToolCalls.ToString().ToLowerInvariant()}; " +
@@ -54,7 +55,7 @@ public sealed record ModelConfiguration
     /// <summary>A deterministic fingerprint over all model/limit fields.</summary>
     public string Fingerprint() => Hashing.Sha256Hex(string.Create(
         CultureInfo.InvariantCulture,
-        $"deployment={DeploymentName};temperature={Temperature:R};maxTurns={MaxTurns};timeoutSeconds={TimeoutSeconds};" +
+        $"deployment={DeploymentName};temperature={Temperature:R};maxTurns={MaxTurns};turnLimitEnforcement={TurnLimitEnforcement};timeoutSeconds={TimeoutSeconds};" +
         $"responseFormat={ResponseFormat};responseSchema={ResponseSchemaHash};strict={ResponseSchemaStrict};" +
         $"parallel_tool_calls={AllowMultipleToolCalls};maxOutputTokens={MaxOutputTokens}"));
 }

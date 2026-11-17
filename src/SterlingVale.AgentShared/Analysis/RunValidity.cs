@@ -6,7 +6,7 @@ namespace SterlingVale.AgentShared.Analysis;
 public static class RunValidity
 {
     public static bool IsModelOutcome(FailureInfo failure) => failure.HttpStatus is null &&
-        failure.Category is "InvalidModelOutput" or "IncompleteEvidence" or "TurnLimit" or "TimedOut";
+        failure.Category is "InvalidModelOutput" or "IncompleteEvidence" or "TurnLimit" or "TurnLimitReached" or "TimedOut";
 
     public static int ToolArgumentErrors(IReadOnlyList<ExecutionEvent> events) =>
         events.Count(entry => IsArgumentError(entry) &&

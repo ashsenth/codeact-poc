@@ -48,7 +48,7 @@ public sealed class AnalysisService(
         var fingerprints = FairnessFingerprints.Create(toolFingerprint, datasetHash, model, pricing);
 
         using var chatClient = new ObservedFunctionClient(new ObservedChatClient(
-            chatClientProvider.CreateChatClient(new ChatClientRequest(snapshot, request, executionRunId, agentFactory.Mode))));
+            chatClientProvider.CreateChatClient(new ChatClientRequest(snapshot, request, executionRunId, agentFactory.Mode)), model.MaxTurns));
         using var bundle = agentFactory.Create(chatClient, toolService, model);
 
         var context = new RunContext
@@ -92,7 +92,7 @@ public sealed class AnalysisService(
         {
             RunStatus.NotExecuted => new FailureInfo("NoHyperlightGuest", "not executed: no Hyperlight guest"),
             RunStatus.TimedOut => new FailureInfo("TimedOut", "The per-run time limit expired."),
-            RunStatus.Capped => new FailureInfo("TurnLimit", "The model turn limit was exceeded."),
+            RunStatus.Capped => new FailureInfo("TurnLimitReached", "The model request limit was reached."),
             RunStatus.Incomplete => new FailureInfo("IncompleteEvidence", "INCOMPLETE: model reported missing evidence; see missingItems."),
             _ => new FailureInfo("InvalidModelOutput", diagnostics.IncompleteReason is null
                 ? "The model did not return a valid non-empty analysis report." : diagnostics.Summary),

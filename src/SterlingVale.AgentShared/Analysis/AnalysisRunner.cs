@@ -48,6 +48,7 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
         AgentResponse? run = null;
         bool timedOut = false;
         bool failed = false;
+        bool turnLimitReached = false;
         try
         {
             using (ToolCallRecorder.Activate(recorder))
@@ -55,6 +56,10 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
                 run = await agent.RunAsync(context.UserMessage, cancellationToken: timeoutCts.Token)
                     .ConfigureAwait(false);
             }
+        }
+        catch (TurnLimitReachedException)
+        {
+            turnLimitReached = true;
         }
         catch (OperationCanceledException)
         {
@@ -90,7 +95,7 @@ public sealed partial class AnalysisRunner(ILogger<AnalysisRunner>? logger = nul
             {
                 EstimatedCostUsd = context.Pricing.EstimateCost(incompleteMetrics.InputTokens, incompleteMetrics.OutputTokens),
             };
-            return BuildRecord(context, failed ? RunStatus.Failed : RunStatus.TimedOut, rawOutput: string.Empty, report: null,
+            return BuildRecord(context, turnLimitReached ? RunStatus.Capped : failed ? RunStatus.Failed : RunStatus.TimedOut, rawOutput: string.Empty, report: null,
                 generatedCode: null, toolResults: null, toolCalls: toolCalls, transcript: [],
                 metrics: incompleteMetrics);
         }

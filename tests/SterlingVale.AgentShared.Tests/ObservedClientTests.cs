@@ -173,7 +173,33 @@ public sealed class ObservedClientTests : IDisposable
         Assert.Equal(["MODEL_REQUEST_STARTED", "MODEL_RESPONSE_RECEIVED", "MODEL_USAGE_RECORDED"], session.Snapshot().Select(entry => entry.EventType));
     }
 
-    public void Dispose() => Directory.Delete(_root, recursive: true);
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Request_limit_also_applies_without_telemetry_and_to_streaming(bool streaming)
+    {
+        using var client = new ObservedChatClient(
+            new DeterministicFakeChatClient(new FakeChatPlan().Respond("last allowed")), maxTurns: 1);
+        ChatMessage[] messages = [new(ChatRole.User, "test")];
+        if (streaming)
+        {
+            await foreach (var _ in client.GetStreamingResponseAsync(messages)) { }
+            await Assert.ThrowsAsync<TurnLimitReachedException>(async () =>
+            {
+                await foreach (var _ in client.GetStreamingResponseAsync(messages)) { }
+            });
+        }
+        else
+        {
+            await client.GetResponseAsync(messages);
+            await Assert.ThrowsAsync<TurnLimitReachedException>(() => client.GetResponseAsync(messages));
+        }
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
+    }
 
     private sealed class TestSnapshots : ISnapshotProvider
     {

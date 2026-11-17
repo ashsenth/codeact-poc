@@ -4,6 +4,12 @@ November 16, 2026. **No live model calls and no prompt changes.** These controls
 not model trials, rates, paired comparisons, or additions to the v3/v2 summaries.
 All existing model evidence and summaries are read-only inputs.
 
+**November 17 follow-up:** the [infrastructure gate](infrastructure-gate-20261117.md)
+fixes the historical post-return-only turn cap, annotates all available over-20-request
+trials, and confirms that the pinned SDK cannot configure the shared output buffer.
+The turn-limit caveat and all result tables below describe the historical source;
+they are not claims about the corrected enforcement. No historical artifacts were changed.
+
 ## 1. Hand-authored feasibility control
 
 The [reference Python](../scripts/vm/reference-analysis-control.py) performs valuation,

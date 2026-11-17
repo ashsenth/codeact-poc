@@ -147,7 +147,7 @@ More detail: [architecture](docs/architecture.md) and [security model](docs/secu
 
 **Verification scope:** the sequence below succeeded in a clean local-source clone on Windows
 ARM64. Ubuntu x64 additionally passed local-source clean-clone locked restore, Release build and
-231 non-live tests at `3088451`, using an empty NuGet cache. The current offline changes pass 283.
+231 non-live tests at `3088451`, using an empty NuGet cache. The current offline changes pass 291.
 The complete quickstart on Linux/macOS and a remote-origin clone are **not yet verified**.
 
 Clone setup template (**remote clone not yet verified**; replace the placeholder):
@@ -205,7 +205,7 @@ Optional verification, also run successfully:
 dotnet test -c Release --no-build --filter "Category!=LiveModel&Category!=Hyperlight"
 ```
 
-Current result: **283 passed, 0 failed, 0 skipped across ten projects**, including
+Current result: **291 passed, 0 failed, 0 skipped across ten projects**, including
 worker containment/recovery and model-outcome/infrastructure-validity regressions. On the ARM64 laptop the six Hyperlight tests
 previously skipped; on Ubuntu x64 five pass, while native cancellation remains a labelled
 known issue. Neither a skip nor an excluded known issue is a pass.
@@ -215,6 +215,15 @@ known issue. Neither a skip nor an excluded known issue is a pass.
 ### Results
 
 #### v3 cohort
+
+**Historical fairness annotation (November 17):** these runs used a post-return-only
+turn check, not an enforced in-flight 20-request budget. Four of 15 Classic and one
+of 15 CodeAct measured trials exceeded 20 requests. Raw results/summaries below are
+preserved, not rescored or rerun; their resource deltas are not fair enforced-20-request
+comparisons. The [infrastructure gate and audit](docs/infrastructure-gate-20261117.md)
+lists every affected trial and the unavailable v1 evidence. Future runs block request
+21 in the shared client, report Capped/TurnLimitReached as a model outcome, and carry
+a new enforcement-version model fingerprint. No new live runs have started.
 
 The shared prompt is now `exposure-analysis/v3`: the three approved additions require
 scope-aware household coverage, policy-target allocations/drifts and required breaches/trades,
@@ -370,6 +379,14 @@ or model summaries. The report documents the 65,536-character capture limit, an 
 execution/error/provenance findings, usage commands, and five passing supported
 real-Hyperlight tests in addition to the 283 offline passes.
 
+The [November 17 capacity investigation](docs/infrastructure-gate-20261117.md)
+adds an offline overflow regression: the guest abort is returned as an explicit error
+to the client, not silent truncation or a host crash. The pinned SDK has **no shared
+output-buffer setting**; Medium/Large canonical oracle reports are **64,764/196,685
+bytes**. Per the stop condition, no Medium/Large sandbox controls ran. The current
+gate is **291 offline plus six supported real-Hyperlight passes**. Further scaling
+requires an approved SDK change or output-protocol design.
+
 With `DATASET_ROOT` and an absolute `HYPERLIGHT_PYTHON_GUEST_PATH` set, run from
 the repository root after a Release build; use a new directory outside model sweeps:
 
@@ -383,6 +400,11 @@ The control requires no Azure settings and echoes executed stdout without oracle
 substitution. The forensic helper only reads artifacts; it never executes captured code.
 
 #### Historical v2 cohort (not rescored)
+
+The [raw-request audit](docs/infrastructure-gate-20261117.md#2-read-only-historical-audit)
+finds zero over-20-request trials in either mode, including both this nine-pair sweep
+and the earlier single pair (0/10 per mode total). These remain historical
+pre-enforcement results, not a rerun under the corrected request-boundary guard.
 
 Live VM sweep, three measured pairs per scope, shared prompt v2; **correctness first**.
 All comparisons are VALID infrastructure evidence, not proof of correct model answers.

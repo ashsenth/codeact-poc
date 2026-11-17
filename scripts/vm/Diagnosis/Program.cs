@@ -15,6 +15,10 @@ if (args.Length > 0 && args[0] == "control")
 {
     return await FeasibilityControl.RunAsync(args[1..]);
 }
+if (args.Length > 0 && args[0] == "sandbox-capacity")
+{
+    return SandboxCapacity.Write(args[1..]);
+}
 
 if (args.Length < 3)
     throw new ArgumentException("Usage: oracle <dataset-profile-dir> <output.json> [household IDs...] | sample <comparison.json> <output.html> [pair]");

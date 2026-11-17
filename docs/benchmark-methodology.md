@@ -28,13 +28,28 @@ Before aggregating, the harness computes fairness fingerprints for each mode and
 | `prompt` | SHA-256 of the shared prompt body |
 | `schema` | SHA-256 of the output JSON schema |
 | `tools` | hash of the 7 tool names + descriptions + schemas |
-| `model` | deployment + temperature + max turns + timeout |
+| `model` | deployment + temperature + max turns + turn-limit enforcement version + timeout + output settings |
 | `pricing` | input/output USD per million |
 | `dataset` | dataset manifest hash |
 
 If any fingerprint differs between modes, the comparison is marked **failed** (non-zero exit) and the
 mismatch is surfaced in the report. A cross-mode contract test also asserts the tool fingerprint is
 identical.
+
+## In-flight request budget
+
+`BENCHMARK_MAX_TURNS` limits dispatched model requests, identically in both modes,
+warm-ups and Classic batch workers. The shared observed client blocks request N+1
+before forwarding it; a final answer on request N is allowed. Blocking emits
+`TURN_LIMIT_REACHED`, ends the run with existing status `Capped` and failure category
+`TurnLimitReached`, and is a model outcome, not infrastructure. The blocked attempt
+is not counted as a dispatched request. The same 120-second worker watchdog remains.
+
+Execution configuration and the model fingerprint include
+`turnLimitEnforcement=model-request-boundary/v1`; do not mix future enforced runs
+with historical post-return-only cohorts. The [historical request audit and sandbox
+capacity stop decision](infrastructure-gate-20261117.md) annotate existing v1/v2/v3
+evidence without rewriting trial data, scores or summaries.
 
 ## Usage aggregation
 

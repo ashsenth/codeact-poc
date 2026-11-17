@@ -4,20 +4,22 @@ using SterlingVale.Telemetry;
 
 namespace SterlingVale.AgentShared.Analysis;
 
-public sealed class ObservedChatClient(IChatClient inner) : DelegatingChatClient(inner)
+public sealed class ObservedChatClient(IChatClient inner, int maxTurns = int.MaxValue) : DelegatingChatClient(inner)
 {
+    private readonly int _maxTurns = maxTurns > 0 ? maxTurns : throw new ArgumentOutOfRangeException(nameof(maxTurns));
     private int _turn;
 
     public override async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,
         ChatOptions? options = null, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var execution = ExecutionSession.Current;
+        int modelTurn = ReserveRequest(execution);
         if (execution is null)
         {
             return await base.GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
         }
 
-        int modelTurn = Interlocked.Increment(ref _turn);
         string requestId = Guid.NewGuid().ToString("N");
         using var activity = new Activity("model.request").SetIdFormat(ActivityIdFormat.W3C).Start();
         var input = messages.ToList();
@@ -52,6 +54,29 @@ public sealed class ObservedChatClient(IChatClient inner) : DelegatingChatClient
                 new { requestId, modelTurn, failure });
             throw;
         }
+    }
+
+    public override async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages,
+        ChatOptions? options = null,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ReserveRequest(ExecutionSession.Current);
+        await foreach (var update in base.GetStreamingResponseAsync(messages, options, cancellationToken).ConfigureAwait(false))
+            yield return update;
+    }
+
+    private int ReserveRequest(ExecutionSession? execution)
+    {
+        int modelTurn = Interlocked.Increment(ref _turn);
+        if (modelTurn > _maxTurns)
+        {
+            var failure = new FailureInfo("TurnLimitReached", $"The model request limit of {_maxTurns} was reached.");
+            execution?.Emit("TURN_LIMIT_REACHED", "Capped", errorCategory: failure.Category,
+                data: new { maxTurns = _maxTurns, blockedRequest = modelTurn, failure });
+            throw new TurnLimitReachedException(_maxTurns);
+        }
+        return modelTurn;
     }
 
     private static object ProjectMessages(IEnumerable<ChatMessage> messages) => messages.Select(message => new

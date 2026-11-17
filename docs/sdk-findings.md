@@ -8,6 +8,26 @@
 
 Original verification: 2026-08-31. Pinned cancellation investigation added 2026-11-16.
 
+## Shared output-buffer investigation (November 17, 2026)
+
+The same pinned Hyperlight provider 1.19.0-preview.260822.1 / sandbox .NET API and
+PInvoke 0.4.0 expose heap/stack sizes, not a shared output-buffer size.
+`WithOutputDir` is a filesystem setting, not a buffer override. Actual public
+members/FFI fields and assembly hashes were captured by the committed
+`Diagnosis sandbox-capacity` helper.
+
+A supported real-guest offline test prints 32,768 ASCII characters plus newline.
+The guest aborts while serializing its result (required 32,856, available 16,376
+buffer bytes). The provider catches the error and returns empty stdout, explicit
+stderr, exit_code -1, success false to the scripted model client; the host survives
+and that client continues. It is not silent truncation.
+
+Canonical Medium/Large oracle reports measure 64,764 / 196,685 UTF-8 bytes.
+There is no supported setting for the requested >=393,370-byte buffer, so scaling
+controls stop pending an approved SDK update or output-protocol redesign.
+No heap/stack hack, dependency change or Medium/Large guest run was attempted.
+See the [full investigation, evidence, tests and options](infrastructure-gate-20261117.md).
+
 ## Native execution cancellation (November 16, 2026)
 
 Verified against the installed **Microsoft.Agents.AI.Hyperlight

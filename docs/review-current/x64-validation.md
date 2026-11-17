@@ -1,5 +1,26 @@
 # Optional x64 validation workflow
 
+## Request-budget and sandbox-capacity gate (November 17, 2026)
+
+The [infrastructure report](../infrastructure-gate-20261117.md) records the shared
+in-flight request limit, read-only historical audit, real-guest overflow regression,
+Medium/Large oracle byte sizes, and the pinned SDK's absent buffer-setting API.
+Future runs stop before request 21 with budget 20 in both modes, measured/warm-ups;
+status Capped / category TurnLimitReached is a model outcome, not infrastructure.
+The enforcement version is in execution configuration and model fingerprint.
+
+Historical measured over-20 counts: v2 0/10 Classic and 0/10 CodeAct; v3 4/15 Classic
+and 1/15 CodeAct. v1 raw live artifacts are unavailable, not assumed to have zero
+violations. No raw trial, score, summary or prompt was edited or rerun.
+
+Release build: zero warnings/errors. **291 offline tests and six supported real
+Hyperlight tests passed**, zero failed/skipped; native-cancellation known issue remains
+excluded. Medium/Large canonical report sizes: 64,764 / 196,685 UTF-8 bytes.
+The provider returns a guest buffer-abort error to the client without killing the host.
+No supported shared-output-buffer setting exists in the pinned stack, so **no
+Medium/Large controls or live model runs were started**. See the report for the
+explicit stop decision and approval-dependent options.
+
 ## No-LLM v3 diagnostic gate (November 16, 2026)
 
 The [isolated feasibility control and complete failure-forensics report](../v3-diagnostics.md)
